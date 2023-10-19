@@ -12,9 +12,12 @@ class BlueskyController extends Controller
 {
 
     /**
+     * @param Request $request
+     *
+     * @return mixed
      * @throws JsonException
      */
-    public function index(Request $request)
+    public function index(Request $request): mixed
     {
         Log::info('Request:' . json_encode($request->all()));
 
