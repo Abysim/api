@@ -221,6 +221,26 @@ class Bluesky
         ];
 
         $urls = self::parseUrl($args['record']['text']);
+
+        // TODO: move into separate function
+        foreach ($urls as $index => $url) {
+            $newUrl = preg_replace("(^https?://)", "", $url['url']);
+            if (strlen($newUrl) > 23) {
+                $newUrl = substr($newUrl, 0, 20) . '...';
+            }
+
+            if (strlen($newUrl) != strlen($url['url'])) {
+                $diff = strlen($url['url']) - strlen($newUrl);
+                $urls[$index]['end'] -= $diff;
+                $args['record']['text'] = str_replace($url['url'], $newUrl, $args['record']['text']);
+
+                for ($i = $index + 1; $i < count($urls); $i++) {
+                    $urls[$i]['start'] -= $diff;
+                    $urls[$i]['end'] -= $diff;
+                }
+            }
+        }
+
         $args = $this->addUrls($args, $urls);
 
         $args = $this->addImages($args, $request->image ?? null);
