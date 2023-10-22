@@ -242,7 +242,6 @@ class Bluesky
         }
 
         $args = $this->addUrls($args, $urls);
-
         $args = $this->addImages($args, $request->image ?? null);
 
         return $this->request('POST', 'com.atproto.repo.createRecord', $args);
