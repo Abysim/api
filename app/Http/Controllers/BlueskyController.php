@@ -21,13 +21,14 @@ class BlueskyController extends Controller
     {
         Log::info('Request:' . json_encode($request->all()));
 
-        $connection = BlueskyConnection::where('handle', $request->handle)
-            ->where('secret', $request->secret)
+        $connection = BlueskyConnection::query()
+            ->where('handle', '=', $request->handle)
+            ->where('secret', '=', $request->secret)
             ->first();
 
         if ($connection) {
             $bluesky = new Bluesky($connection);
-            $response = $bluesky->post($request);
+            $response = $bluesky->post($request->text,  $request->image ? ['url' => $request->image] : []);
 
             Log::info('Response:' . json_encode($response));
 

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use JsonException;
 use Exception;
 
-class Bluesky
+class Bluesky extends Social
 {
     /**
      * @var BlueskyConnection
@@ -26,10 +26,20 @@ class Bluesky
     protected BlueskyApi $api;
 
     /**
-     * @param BlueskyConnection $connection
+     * @param int|BlueskyConnection $connection
+     *
+     * @throws Exception
      */
-    public function __construct(BlueskyConnection $connection)
+    public function __construct(int|BlueskyConnection $connection)
     {
+        if (is_numeric($connection)) {
+            $connection = BlueskyConnection::query()->find($connection);
+
+            if (empty($connection)) {
+                throw new Exception('Connection not found');
+            }
+        }
+
         $this->connection = $connection;
         if ($connection->did && $connection->jwt) {
             $this->api = new BlueskyApi();
@@ -217,18 +227,19 @@ class Bluesky
     }
 
     /**
-     * @param Request $request
+     * @param string $text
+     * @param array $media
      *
      * @return mixed|object
      * @throws JsonException
      */
-    public function post(Request $request): mixed
+    public function post(string $text, array $media = []): mixed
     {
         $args = [
             'collection' => 'app.bsky.feed.post',
             'repo' => $this->connection->did,
             'record' => [
-                'text' => $request->text ?? '',
+                'text' => $text ?? '',
                 'langs' => ['uk-UA'], // TODO: autodetect or retrieve language from the request
                 'createdAt' => date('c'),
                 '$type' => 'app.bsky.feed.post',
@@ -257,7 +268,7 @@ class Bluesky
         }
 
         $args = $this->addUrls($args, $urls);
-        $args = $this->addImages($args, $request->image ?? null);
+        $args = $this->addImages($args, $media[0]['path'] ?? $media[0]['url'] ?? null);
 
         return $this->request('POST', 'com.atproto.repo.createRecord', $args);
     }

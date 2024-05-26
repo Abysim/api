@@ -1,0 +1,32 @@
+<?php
+
+namespace App\Models;
+
+use App\Bluesky;
+use App\Friendica;
+use App\Twitter;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Class Forward
+ * @package App\Models
+ * @mixin Builder
+ *
+ * @property int $id
+ * @property string $fromConnection
+ * @property int $fromId
+ * @property string $toConnection
+ * @property int $toId
+ */
+class Forward extends Model
+{
+    public const CONNECTIONS = [
+        'bluesky' => Bluesky::class,
+        'twitter' => Twitter::class,
+        'friendica' => Friendica::class,
+    ];
+
+    use HasFactory;
+}
