@@ -11,6 +11,7 @@ use cjrasmussen\BlueskyApi\BlueskyApi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use JsonException;
+use Mockery\Exception;
 
 class Bluesky
 {
@@ -168,7 +169,19 @@ class Bluesky
             return $args;
         }
 
-        $body = file_get_contents($imageUrl);
+        for ($i = 1; $i <= 4; $i++) {
+            try {
+                $body = file_get_contents($imageUrl);
+                break;
+            } catch (Exception $e) {
+                if ($i == 4) {
+                    throw $e;
+                }
+
+                Log::info('Image reading problem: ' . $e->getMessage());
+                sleep($i * $i);
+            }
+        }
 
         $fh = fopen('php://memory', 'w+b');
         fwrite($fh, $body);
@@ -177,6 +190,8 @@ class Bluesky
 
         Log::info('Image Type: ' . $type);
         if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
+            Log::info('Unsupported image type!');
+
             return $args;
         }
 
