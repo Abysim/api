@@ -11,7 +11,7 @@ use cjrasmussen\BlueskyApi\BlueskyApi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use JsonException;
-use Mockery\Exception;
+use Exception;
 
 class Bluesky
 {
