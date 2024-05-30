@@ -8,6 +8,7 @@ use App\Twitter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Class Forward
@@ -22,6 +23,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Forward extends Model
 {
+    use SoftDeletes;
+
     public const CONNECTIONS = [
         'bluesky' => Bluesky::class,
         'twitter' => Twitter::class,

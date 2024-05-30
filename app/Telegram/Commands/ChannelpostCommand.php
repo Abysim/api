@@ -4,10 +4,10 @@
 namespace App\Telegram\Commands;
 
 
+use App\Jobs\ProcessTelegramChannelPost;
 use App\Models\Forward;
-use App\Social;
-use Exception;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
@@ -37,69 +37,13 @@ class ChannelpostCommand extends SystemCommand
             ->where('from_id', (string) $channelPost->getChat()->getId())
             ->get();
 
-        $data = ['chat_id' => $this->telegram->getAdminList()[0]];
-        $data['text'] = $forwards->count() . ' ' . $channelPost->getChat()->getId() . "\n";
-        if (!$forwards->count()) {
-            return Request::sendMessage($data);
+        Log::info($channelPost->getMessageId() . ': ' . $forwards->count() . ' ' . $channelPost->getChat()->getId());
+
+        if ($forwards->count()) {
+            ProcessTelegramChannelPost::dispatch($channelPost, $forwards);
+            Log::info($channelPost->getMessageId() . ": job dispatched");
         }
 
-        $media = [];
-
-        try {
-            switch ($channelPost->getType()) {
-                case 'photo':
-                    $this->telegram->setDownloadPath(storage_path('app/public/telegram'));
-                    $text = $channelPost->getCaption();
-                    $photos = $channelPost->getPhoto();
-                    $maxSize = 0;
-                    foreach ($photos as $p) {
-                        if ($p->getFileSize() > $maxSize) {
-                            $maxSize = $p->getFileSize();
-                            $photo = $p;
-                        }
-                    }
-
-                    if (empty($photo)) {
-                        throw new TelegramException('Photo not found');
-                    }
-
-                    for ($i = 0; $i < 5; $i++) {
-                        $file = Request::getFile(['file_id' => $photo->getFileId()]);
-                        if ($file->isOk()) {
-                            if (Request::downloadFile($file->getResult())) {
-                                $media[] = [
-                                    'url' => asset(Storage::url('telegram/' . $file->getResult()->getFilePath())),
-                                    'path' => storage_path('app/public/telegram/' . $file->getResult()->getFilePath()),
-                                ];
-                                break;
-                            }
-                        }
-                    }
-                    if (empty($media)) {
-                        throw new TelegramException('File not found');
-                    }
-
-                    break;
-                case 'text':
-                    $text = $channelPost->getText();
-                    break;
-                default:
-                    throw new TelegramException('Unsupported type');
-            }
-
-            $data['text'] .= $text . "\n";
-
-            foreach ($forwards as $forward) {
-                $data['text'] .= json_encode($forward->getAttributes());
-                $socialClass = Forward::CONNECTIONS[$forward->to_connection];
-                /** @var Social $social */
-                $social = new $socialClass($forward->to_id);
-                $data['text'] .= ': ' . json_encode($social->post($text, $media)) . "\n";
-            }
-        } catch (Exception $e) {
-            $data['text'] = $e->getMessage();
-        }
-
-        return Request::sendMessage($data);
+        return Request::emptyResponse();
     }
 }

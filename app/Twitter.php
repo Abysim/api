@@ -22,10 +22,15 @@ class Twitter extends Social
      */
     public function post(string $text, array $media = []): mixed
     {
+        $mediaIds = [];
         if (!empty($media)) {
             /** @var TwitterV1 $twitter */
             $twitter = TwitterFacade::forApiV1();
-            $uploadedMedia = $twitter->uploadMedia(['media' => File::get($media[0]['path'])]);
+            foreach ($media as $item) {
+                $uploadedMedia = $twitter->uploadMedia(['media' => File::get($item['path'])]);
+                $mediaIds[] = $uploadedMedia->media_id_string;
+            }
+
         }
 
         /** @var Querier $querier */
@@ -35,7 +40,7 @@ class Twitter extends Social
             'text' => $text . '‌',
         ];
         if (!empty($uploadedMedia)) {
-            $params['media'] = ['media_ids' => [$uploadedMedia->media_id_string]];
+            $params['media'] = ['media_ids' => $mediaIds];
         }
 
         return $querier->post('tweets', $params);

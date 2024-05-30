@@ -24,8 +24,23 @@ class Friendica extends Social
             'date' =>  Carbon::now()->toISOString(),
         ];
 
-        if (!empty($media[0]['url'])) {
-            $data['image'] = $media[0]['url'];
+        $count = 0;
+        foreach ($media as $item) {
+            if (empty($item['url'])) {
+                continue;
+            }
+
+            if ($count == 0) {
+                $data['msg'] .= "\n\n";
+            }
+
+            if (!empty($item['text'])) {
+                $data['msg'] .= '[img=' . $item['url'] . ']' . $item['text'] . '[/img]';
+            } else {
+                $data['msg'] .= '[img]' . $item['url'] . '[/img]';
+            }
+
+            $count++;
         }
 
         return Http::asForm()->post(config('friendica.url'), $data);

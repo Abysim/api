@@ -173,55 +173,62 @@ class Bluesky extends Social
      * @return array
      * @throws JsonException
      */
-    private function addImages(array $args, ?string $imageUrl = null): array
+    private function addImages(array $args, ?array $media = []): array
     {
-        if (empty($imageUrl)) {
-            return $args;
-        }
-
-        for ($i = 1; $i <= 4; $i++) {
-            try {
-                $body = file_get_contents($imageUrl);
-                break;
-            } catch (Exception $e) {
-                if ($i == 4) {
-                    throw $e;
-                }
-
-                Log::info('Image reading problem: ' . $e->getMessage());
-                sleep($i * $i);
+        $images = [];
+        foreach ($media as $item) {
+            $image = $item['path'] ?? $item['url'] ?? null;
+            if (empty($image)) {
+                continue;
             }
-        }
 
-        $fh = fopen('php://memory', 'w+b');
-        fwrite($fh, $body);
-        $type = mime_content_type($fh);
-        fclose($fh);
+            $body = '';
+            for ($i = 0; $i < 5; $i++) {
+                try {
+                    $body = file_get_contents($image);
+                    break;
+                } catch (Exception $e) {
+                    if ($i == 4) {
+                        continue;
+                    }
 
-        Log::info('Image Type: ' . $type);
-        if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
-            Log::info('Unsupported image type!');
+                    Log::info('Image reading problem: ' . $e->getMessage());
+                    sleep($i * $i);
+                }
+            }
 
-            return $args;
-        }
+            $fh = fopen('php://memory', 'w+b');
+            fwrite($fh, $body);
+            $type = mime_content_type($fh);
+            fclose($fh);
 
-        $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-        Log::info('Image: ' . json_encode($response));
-        // retry if uploading failed
-        if (!isset($response->blob)) {
+            Log::info('Image Type: ' . $type);
+            if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
+                Log::info('Unsupported image type!');
+
+                return $args;
+            }
+
             $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-            Log::info('Retry Image: ' . json_encode($response));
+            Log::info('Image: ' . json_encode($response));
+            // retry if uploading failed
+            if (!isset($response->blob)) {
+                $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
+                Log::info('Retry Image: ' . json_encode($response));
+            }
+
+            $images[] = [
+                'alt' => $media['text'] ?? '',
+                'image' => $response->blob,
+            ];
         }
 
-        $args['record']['embed'] = [
-            '$type' => 'app.bsky.embed.images',
-            'images' => [
-                [
-                    'alt' => '',
-                    'image' => $response->blob,
-                ],
-            ],
-        ];
+        if (!empty($images)) {
+            $args['record']['embed'] = [
+                '$type' => 'app.bsky.embed.images',
+                'images' => $images,
+            ];
+        }
 
         return $args;
     }
@@ -268,7 +275,7 @@ class Bluesky extends Social
         }
 
         $args = $this->addUrls($args, $urls);
-        $args = $this->addImages($args, $media[0]['path'] ?? $media[0]['url'] ?? null);
+        $args = $this->addImages($args, $media);
 
         return $this->request('POST', 'com.atproto.repo.createRecord', $args);
     }
