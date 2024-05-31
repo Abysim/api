@@ -14,14 +14,32 @@ use Illuminate\Support\Facades\File;
 
 class Twitter extends Social
 {
+    const MAX_TEXT_LENGTH = 280;
+    const MAX_MEDIA_COUNT = 4;
+    const MAX_LINK_LENGTH = 24;
+
     /**
      * @param string $text
      * @param array $media
      *
      * @return mixed
      */
-    public function post(string $text, array $media = []): mixed
+    public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
+        $posts = $this->splitPost($text, $media);
+        if (!empty($posts)) {
+            $results = [];
+            foreach ($posts as $post) {
+                if (!empty($result->data->id)) {
+                    $reply = ['in_reply_to_tweet_id' => $result->data->id];
+                }
+
+                $result = $this->post($post['text'], $post['media'], $reply);
+                $results[] = $result;
+            }
+            return $results;
+        }
+
         $mediaIds = [];
         if (!empty($media)) {
             /** @var TwitterV1 $twitter */
@@ -37,10 +55,13 @@ class Twitter extends Social
         $querier = TwitterFacade::forApiV2()->getQuerier();
         $params = [
             Client::KEY_REQUEST_FORMAT => Client::REQUEST_FORMAT_JSON,
-            'text' => $text . '‌',
+            'text' => $text,// . '‌',
         ];
         if (!empty($uploadedMedia)) {
             $params['media'] = ['media_ids' => $mediaIds];
+        }
+        if (!empty($reply)) {
+            $params['reply'] = $reply;
         }
 
         return $querier->post('tweets', $params);

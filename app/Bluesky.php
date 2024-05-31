@@ -15,6 +15,11 @@ use Exception;
 
 class Bluesky extends Social
 {
+    const MAX_TEXT_LENGTH = 300;
+    const MAX_MEDIA_COUNT = 4;
+    const MAX_LINK_LENGTH = 24;
+
+
     /**
      * @var BlueskyConnection
      */
@@ -151,11 +156,9 @@ class Bluesky extends Social
     {
         $spans = [];
 
-        // https://atproto.com/blog/create-post#mentions-and-links
-        $regex = '^\b(https?://(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*[-a-zA-Z0-9@%_+~#//=])?)^u';
-        preg_match_all($regex, $text, $matches, PREG_OFFSET_CAPTURE);
+        $matches = static::getParsedUrls($text);
 
-        foreach($matches[0] as $match) {
+        foreach($matches as $match) {
             $spans[] = [
                 "start" => $match[1],
                 "end" => $match[1] + strlen($match[0]),
@@ -240,8 +243,31 @@ class Bluesky extends Social
      * @return mixed|object
      * @throws JsonException
      */
-    public function post(string $text, array $media = []): mixed
+    public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
+        $posts = $this->splitPost($text, $media);
+        if (!empty($posts)) {
+            $results = [];
+            $rootResult = null;
+            foreach ($posts as $post) {
+                if (!empty($result)) {
+                    $reply = [
+                        'root' => $rootResult,
+                        'parent' => $result,
+                    ];
+                }
+
+                $result = $this->post($post['text'], $post['media'], $reply);
+                if (empty($rootResult)) {
+                    $rootResult = $result;
+                }
+                $results[] = $result;
+            }
+            return $results;
+        }
+
+        Log::info('posting: ' . $text);
+
         $args = [
             'collection' => 'app.bsky.feed.post',
             'repo' => $this->connection->did,
@@ -258,8 +284,8 @@ class Bluesky extends Social
         // TODO: move into separate function
         foreach ($urls as $index => $url) {
             $newUrl = preg_replace("(^https?://)", "", $url['url']);
-            if (strlen($newUrl) > 23) {
-                $newUrl = substr($newUrl, 0, 20) . '...';
+            if (strlen($newUrl) > $this->getMaxLinkLength()) {
+                $newUrl = substr($newUrl, 0, $this->getMaxLinkLength() - 3) . '...';
             }
 
             if (strlen($newUrl) != strlen($url['url'])) {
@@ -276,6 +302,10 @@ class Bluesky extends Social
 
         $args = $this->addUrls($args, $urls);
         $args = $this->addImages($args, $media);
+
+        if (!empty($reply)) {
+            $args['record']['reply'] = $reply;
+        }
 
         return $this->request('POST', 'com.atproto.repo.createRecord', $args);
     }

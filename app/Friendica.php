@@ -15,7 +15,7 @@ class Friendica extends Social
     /**
      * @inheritDoc
      */
-    public function post(string $text, array $media = []): mixed
+    public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
         $data = [
             'key' => config('friendica.key'),

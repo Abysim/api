@@ -31,6 +31,9 @@ class ChannelpostCommand extends SystemCommand
     {
         // Get the channel post
         $channelPost = $this->getChannelPost();
+        if (str_contains($channelPost->getText() ?? '', '‌')) {
+            return Request::emptyResponse();
+        }
 
         $forwards = Forward::query()
             ->where('from_connection', 'telegram')

@@ -135,9 +135,13 @@ class ProcessTelegramChannelPost implements ShouldQueue
                     }
 
                     $text = '';
-                    foreach ($mediaGroup as $item) {
+                    foreach ($mediaGroup as $id => $item) {
                         if (empty($text) && !empty($item['text'])) {
                             $text = $item['text'];
+
+                            if ($id == $messageId) {
+                                $mediaGroup[$id]['text'] = '';
+                            }
 
                             break;
                         }
