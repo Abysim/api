@@ -43,7 +43,7 @@ abstract class Social
     protected static function getParsedUrls(string $text): array
     {
         // https://atproto.com/blog/create-post#mentions-and-links
-        $regex = '^\b(https?://(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*[-a-zA-Z0-9@%_+~#//=])?)^u';
+        $regex = '^\b(https?://(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*[-a-zA-Z0-9()@%_+~#//=])?)^u';
         preg_match_all($regex, $text, $matches, PREG_OFFSET_CAPTURE);
         return $matches[0] ?? [];
     }

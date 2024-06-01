@@ -8,8 +8,11 @@ namespace App;
 
 use App\Models\BlueskyConnection;
 use cjrasmussen\BlueskyApi\BlueskyApi;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use JsonException;
 use Exception;
 
@@ -85,6 +88,40 @@ class Bluesky extends Social
                     [
                         '$type' => 'app.bsky.richtext.facet#link',
                         'uri' => $url['url'],
+                    ],
+                ],
+            ];
+        }
+
+        return $args;
+    }
+
+    /**
+     * @param array $args
+     * @param array $urls
+     *
+     * @return array
+     */
+    private function addTags(array $args, array $tags): array
+    {
+        if (empty($tags)) {
+            return $args;
+        }
+
+        if (!isset($args['record']['facets'])) {
+            $args['record']['facets'] = [];
+        }
+
+        foreach ($tags as $tag) {
+            $args['record']['facets'][] = [
+                'index' => [
+                    'byteStart' => $tag['start'],
+                    'byteEnd' => $tag['end'],
+                ],
+                'features' => [
+                    [
+                        '$type' => 'app.bsky.richtext.facet#tag',
+                        'tag' => $tag['tag'],
                     ],
                 ],
             ];
@@ -170,8 +207,40 @@ class Bluesky extends Social
     }
 
     /**
+     * @param string $text
+     *
+     * @return array
+     */
+    public static function parseTags(string $text): array
+    {
+        $spans = [];
+
+        $regex = '/(?:^|\s)(#[^\d\s]\S*)(?=\s)?/u';
+        preg_match_all($regex, $text, $matches, PREG_OFFSET_CAPTURE);
+
+        foreach($matches[0] as $match) {
+            $tag = $match[0];
+            $hasLeadingSpace = preg_match('/^\s/', $tag);
+            $tag = preg_replace('/\p{P}+$/u', '', trim($tag));
+
+            if(Str::length($tag) > 66) {
+                continue;
+            }
+            $index = $match[1] + ($hasLeadingSpace ? 1 : 0);
+
+            $spans[] = [
+                'start' => $index,
+                'end' => $index + strlen($tag),
+                'tag' =>  preg_replace('/^#/', '', $tag),
+            ];
+        }
+
+        return $spans;
+    }
+
+    /**
      * @param array $args
-     * @param string|null $imageUrl
+     * @param array|null $media
      *
      * @return array
      * @throws JsonException
@@ -302,6 +371,166 @@ class Bluesky extends Social
 
         $args = $this->addUrls($args, $urls);
         $args = $this->addImages($args, $media);
+
+        if (empty($args['record']['embed']) && !empty($args['record']['facets'])) {
+            foreach ($args['record']['facets'] as $index => $facet) {
+                if (
+                    $facet['index']['byteEnd'] == strlen($args['record']['text'])
+                    || $index == count($args['record']['facets']) - 1
+                ) {
+                    foreach ($facet['features'] as $feature) {
+                        if ($feature['$type'] == 'app.bsky.richtext.facet#link') {
+                            try {
+                                $url = $feature['uri'];
+                                $card = [
+                                    'uri' => $url,
+                                    'title' => '',
+                                    'description' => '',
+                                ];
+                                $dom = new DOMDocument();
+                                libxml_use_internal_errors(true);
+                                $dom->loadHTMLFile($url);
+                                $xpath = new DOMXPath($dom);
+                                $query = '//meta[@property="og:title"]/@content';
+                                foreach ($xpath->query($query) as $node) {
+                                    if (!empty($node->value)) {
+                                        $card['title'] = $node->value;
+                                        break;
+                                    }
+                                }
+                                if (empty($card['title'])) {
+                                    $query = '//title';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $card['title'] = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (empty($card['title'])) {
+                                    $query = '//meta[@name="twitter:title"]/@content';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $card['title'] = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+                                $query = '//meta[@property="og:description"]/@content';
+                                foreach ($xpath->query($query) as $node) {
+                                    if (!empty($node->value)) {
+                                        $card['description'] = $node->value;
+                                        break;
+                                    }
+                                }
+                                if (empty($card['description'])) {
+                                    $query = '//meta[@name="description"]/@content';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $card['description'] = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (empty($card['description'])) {
+                                    $query = '//meta[@name="twitter:description"]/@content';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $card['description'] = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+                                $imageUrl = null;
+                                $query = '//meta[@property="og:image"]/@content';
+                                foreach ($xpath->query($query) as $node) {
+                                    if (!empty($node->value)) {
+                                        $imageUrl = $node->value;
+                                        break;
+                                    }
+                                }
+                                if (empty($imageUrl)) {
+                                    $query = '//meta[@name="twitter:image"]/@content';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $imageUrl = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (!empty($imageUrl)) {
+                                    if (!str_contains($imageUrl, '://')) {
+                                        $imageUrl = $url . $imageUrl;
+                                    }
+
+                                    $body = '';
+                                    for ($i = 0; $i < 5; $i++) {
+                                        try {
+                                            $body = file_get_contents($imageUrl);
+                                            break;
+                                        } catch (Exception $e) {
+                                            if ($i == 4) {
+                                                continue;
+                                            }
+
+                                            Log::info('Image reading problem: ' . $e->getMessage());
+                                            sleep($i * $i);
+                                        }
+                                    }
+
+                                    $fh = fopen('php://memory', 'w+b');
+                                    fwrite($fh, $body);
+                                    $type = mime_content_type($fh);
+                                    fclose($fh);
+
+                                    Log::info('Image Type: ' . $type);
+                                    if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
+                                        Log::info('Unsupported image type!');
+
+                                        return $args;
+                                    }
+
+                                    $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
+                                    Log::info('Image: ' . json_encode($response));
+                                    // retry if uploading failed
+                                    if (!isset($response->blob)) {
+                                        $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
+                                        Log::info('Retry Image: ' . json_encode($response));
+                                    }
+
+                                    $card['thumb'] = $response->blob;
+                                }
+
+                                $args['record']['embed'] = [
+                                    '$type' => 'app.bsky.embed.external',
+                                    'external' => $card,
+                                ];
+
+                                if ($facet['index']['byteEnd'] == strlen($args['record']['text'])) {
+                                    $args['record']['text'] = trim(substr(
+                                        $args['record']['text'],
+                                        0,
+                                        $facet['index']['byteStart']
+                                    ));
+                                    unset($args['record']['facets'][$index]);
+                                }
+                            } catch (Exception $e) {
+                                Log::warning('Failed to parse ' . $url . ': ' . $e->getMessage());
+                            } finally {
+                                libxml_use_internal_errors(false);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $tags = static::parseTags($args['record']['text']);
+        $args = $this->addTags($args, $tags);
+
+        $args['record']['facets'] = array_values($args['record']['facets']);
 
         if (!empty($reply)) {
             $args['record']['reply'] = $reply;
