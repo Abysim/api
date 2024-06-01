@@ -530,8 +530,10 @@ class Bluesky extends Social
         $tags = static::parseTags($args['record']['text']);
         $args = $this->addTags($args, $tags);
 
-        $args['record']['facets'] = array_values($args['record']['facets']);
-
+        if (isset($args['record']['facets'])) {
+            $args['record']['facets'] = array_values($args['record']['facets']);
+        }
+        
         if (!empty($reply)) {
             $args['record']['reply'] = $reply;
         }
