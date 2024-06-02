@@ -60,10 +60,10 @@ class ProcessTelegramChannelPost implements ShouldQueue
             if (!empty($mediaGroupId)) {
                 if (!Cache::has($mediaGroupId)) {
                     $isGroupHead = true;
-                    Cache::put($mediaGroupId, [$messageId => []], 60);
+                    Cache::put($mediaGroupId, [$messageId => ['isHead' => true]], 60);
                 } else {
                     $mediaGroup = Cache::get($mediaGroupId);
-                    $mediaGroup[$messageId] = [];
+                    $mediaGroup[$messageId] = ['isHead' => false];
                     Cache::put($mediaGroupId, $mediaGroup, 60);
                 }
             }
@@ -116,6 +116,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                     'text' => $text,
                     'url' => $media[0]['url'],
                     'path' => $media[0]['path'],
+                    'isHead' => $isGroupHead,
                 ];
                 Cache::put($mediaGroupId, $mediaGroup, 60);
 
@@ -125,9 +126,22 @@ class ProcessTelegramChannelPost implements ShouldQueue
                     for ($i = 0; $i < 6; $i++) {
                         sleep(10);
                         $mediaGroup = Cache::get($mediaGroupId);
-                        foreach ($mediaGroup as $item) {
+                        foreach ($mediaGroup as $id => $item) {
                             if (empty($item['path'])) {
                                 continue 2;
+                            }
+                            if ($id != $messageId && $item['isHead']) {
+                                if ($id < $messageId) {
+                                    $mediaGroup[$messageId]['isHead'] = false;
+                                    Cache::put($mediaGroupId, $mediaGroup, 60);
+                                    Log::warning($messageId . ': media group collision. Resolving.');
+
+                                    return;
+                                } else {
+                                    Log::warning($messageId . ': media group collision. Waiting.');
+
+                                    continue 2;
+                                }
                             }
                         }
 
