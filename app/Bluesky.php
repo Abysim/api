@@ -314,6 +314,10 @@ class Bluesky extends Social
      */
     public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
+        if (!Str::contains($text, '#фільм', true)) {
+            $text = Str::replaceFirst('фільм', '#фільм', $text);
+        }
+
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
             $results = [];
@@ -533,7 +537,7 @@ class Bluesky extends Social
         if (isset($args['record']['facets'])) {
             $args['record']['facets'] = array_values($args['record']['facets']);
         }
-        
+
         if (!empty($reply)) {
             $args['record']['reply'] = $reply;
         }
