@@ -74,8 +74,7 @@ abstract class Social
                 for ($i = $this->getMaxTextLength() - 2; $i > 0; $i--) {
 
                     if (
-                        Str::charAt($text, $i) == '.'
-                        && Str::charAt($text, $i - 1) != '.'
+                        in_array(Str::charAt($text, $i), ['.', '!', '?'])
                         && trim(Str::charAt($text, $i + 1)) == ''
                     ) {
                         break;
@@ -84,7 +83,7 @@ abstract class Social
 
                 if ($i == 0) {
                     for ($i = $this->getMaxTextLength() - 2; $i > 0; $i--) {
-                        if (Str::charAt($text, $i) == ',' && rim(Str::charAt($text, $i + 1)) == '') {
+                        if (Str::charAt($text, $i) == ',' && trim(Str::charAt($text, $i + 1)) == '') {
                             break;
                         }
                     }
