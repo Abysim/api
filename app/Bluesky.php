@@ -368,7 +368,7 @@ class Bluesky extends Social
             'collection' => 'app.bsky.feed.post',
             'repo' => $this->connection->did,
             'record' => [
-                'text' => $text ?? '',
+                'text' => $text,
                 'langs' => [$lang],
                 'createdAt' => date('c'),
                 '$type' => 'app.bsky.feed.post',
