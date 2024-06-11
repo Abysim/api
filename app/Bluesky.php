@@ -7,6 +7,7 @@
 namespace App;
 
 use App\Models\BlueskyConnection;
+use Aws\Comprehend\ComprehendClient;
 use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
@@ -341,12 +342,34 @@ class Bluesky extends Social
 
         Log::info('posting: ' . $text);
 
+        $text = $text ?? '';
+        $lang = 'uk';
+        try {
+            $comprehend = new ComprehendClient([
+                'region' => config('comprehend.region'),
+                'version' => 'latest',
+                'credentials' => [
+                    'key' => config('comprehend.key'),
+                    'secret' => config('comprehend.secret'),
+                ]
+            ]);
+            $languages = $comprehend->detectDominantLanguage(['Text' => $text])->get('Languages');
+            $lang = $languages[0]['LanguageCode'] ?? 'uk';
+            $score = $languages[0]['Score'] ?? 0;
+            if ($lang == 'ru' || $score < 0.7) {
+                Log::warning('strange lang detected: ' . $text);
+                $lang = 'uk';
+            }
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+        }
+
         $args = [
             'collection' => 'app.bsky.feed.post',
             'repo' => $this->connection->did,
             'record' => [
                 'text' => $text ?? '',
-                'langs' => ['uk-UA'], // TODO: autodetect or retrieve language from the request
+                'langs' => [$lang],
                 'createdAt' => date('c'),
                 '$type' => 'app.bsky.feed.post',
             ],
