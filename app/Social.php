@@ -8,7 +8,6 @@ namespace App;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use kamermans\OAuth2\Signer\AccessToken\SignerInterface;
 
 abstract class Social
 {

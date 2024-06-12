@@ -332,6 +332,7 @@ class Bluesky extends Social
                 }
 
                 $result = $this->post($post['text'], $post['media'], $reply);
+                sleep(1);
                 if (empty($rootResult)) {
                     $rootResult = $result;
                 }
