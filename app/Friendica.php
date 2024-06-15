@@ -22,6 +22,7 @@ class Friendica extends Social
             'type' => empty($media[0]['url']) ? 'status' : 'photo',
             'msg' => $text,
             'date' =>  Carbon::now()->toISOString(),
+            'app' => 'Telegram',
         ];
 
         $count = 0;
