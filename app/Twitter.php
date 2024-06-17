@@ -6,10 +6,12 @@
 
 namespace App;
 
+use App\Models\TwitterConnection;
 use Atymic\Twitter\ApiV1\Service\Twitter as TwitterV1;
 use Atymic\Twitter\Contract\Http\Client;
 use Atymic\Twitter\Facade\Twitter as TwitterFacade;
 use Atymic\Twitter\Service\Querier;
+use Exception;
 use Illuminate\Support\Facades\File;
 
 class Twitter extends Social
@@ -17,6 +19,28 @@ class Twitter extends Social
     const MAX_TEXT_LENGTH = 280;
     const MAX_MEDIA_COUNT = 4;
     const MAX_LINK_LENGTH = 24;
+
+    /**
+     * @var TwitterConnection
+     */
+    protected TwitterConnection $connection;
+
+    /**
+     * @param int $id
+     *
+     * @throws Exception
+     */
+    public function __construct(int $id)
+    {
+        /** @var TwitterConnection $connection */
+        $connection = TwitterConnection::query()->find($id);
+
+        if (empty($connection)) {
+            throw new Exception('Connection not found');
+        }
+
+        $this->connection = $connection;
+    }
 
     /**
      * @param string $text
@@ -43,7 +67,8 @@ class Twitter extends Social
         $mediaIds = [];
         if (!empty($media)) {
             /** @var TwitterV1 $twitter */
-            $twitter = TwitterFacade::forApiV1();
+            $t = TwitterFacade::forApiV1();
+            $twitter = $t->usingCredentials($this->connection->token, $this->connection->secret);
             foreach ($media as $item) {
                 $uploadedMedia = $twitter->uploadMedia(['media' => File::get($item['path'])]);
                 $mediaIds[] = $uploadedMedia->media_id_string;
@@ -51,8 +76,9 @@ class Twitter extends Social
 
         }
 
+        $t = TwitterFacade::forApiV2();
         /** @var Querier $querier */
-        $querier = TwitterFacade::forApiV2()->getQuerier();
+        $querier = $t->usingCredentials($this->connection->token, $this->connection->secret)->getQuerier();
         $params = [
             Client::KEY_REQUEST_FORMAT => Client::REQUEST_FORMAT_JSON,
             'text' => $text,// . '‌',
