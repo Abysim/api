@@ -37,7 +37,8 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')
                 ->group(base_path('routes/api.php'));
 
-            Route::middleware('api')
+            Route::middleware('web')
+                ->prefix('twitter')
                 ->group(base_path('routes/twitter.php'));
 
             Route::middleware('web')
