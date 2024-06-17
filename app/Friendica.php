@@ -15,7 +15,7 @@ class Friendica extends Social
     /**
      * @inheritDoc
      */
-    public function post(string $text, array $media = [], mixed $reply = null): mixed
+    public function post(string $text, array $media = [], mixed $reply = null, ?string $cat = null): mixed
     {
         $data = [
             'key' => config('friendica.key'),
@@ -24,6 +24,10 @@ class Friendica extends Social
             'date' =>  Carbon::now()->toISOString(),
             'app' => 'Telegram',
         ];
+
+        if (!empty($cat)) {
+            $data['cat'] = $cat;
+        }
 
         $count = 0;
         foreach ($media as $item) {

@@ -174,7 +174,13 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 $socialClass = Forward::CONNECTIONS[$forward->to_connection];
                 /** @var Social $social */
                 $social = new $socialClass($forward->to_id);
-                $resultResponse = $social->post($text, $media);
+
+                if ($forward->from_id == '-1001702307388' && $forward->to_connection == 'friendica') {
+                    $resultResponse = $social->post($text, $media, null, 'Серіальні думки');
+                } else {
+                    $resultResponse = $social->post($text, $media);
+                }
+
                 Log::info($messageId . ': ' . json_encode($resultResponse));
             }
         } catch (Exception $e) {
