@@ -66,6 +66,8 @@ Route::get('callback', ['as' => 'twitter.callback', static function () {
             Log::info('Twitter connection: ' . json_encode($connection->getAttributes()));
 
             return 'Congrats! You\'ve successfully signed in!';
+        } elseif (is_object($credentials)) {
+            return $credentials->error;
         }
     }
 
