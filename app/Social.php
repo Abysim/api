@@ -8,6 +8,7 @@ namespace App;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use SteppingHat\EmojiDetector\EmojiDetector;
 
 abstract class Social
 {
@@ -64,32 +65,73 @@ abstract class Social
             }
         }
 
-        if (Str::length($text) >= $this->getMaxTextLength() || count($media) > $this->getMaxMediaCount()) {
+        if (Str::length($text) > $this->getMaxTextLength() || count($media) > $this->getMaxMediaCount()) {
+            $detector = new EmojiDetector();
             Log::info('real splitting');
             $posts = [];
 
             $count = 0;
             while (Str::length($text) > $this->getMaxTextLength()) {
-                for ($i = $this->getMaxTextLength() - 2; $i > 0; $i--) {
+                for ($i = $this->getMaxTextLength() - 1; $i > 0; $i--) {
+                    $isNextCapital = false;
+                    if (trim(Str::charAt($text, $i + 1)) == '') {
+                        for ($j = $i + 2; $j < Str::length($text); $j++) {
+                            if (trim(Str::charAt($text, $j)) == '' || $detector->isEmojiString(Str::charAt($text, $j))) {
+                                continue;
+                            } elseif (Str::charAt($text, $j) != Str::lower(Str::charAt($text, $j))) {
+                                $isNextCapital = true;
+                            }
+
+                            break;
+                        }
+                    }
 
                     if (
-                        in_array(Str::charAt($text, $i), ['.', '!', '?'])
-                        && trim(Str::charAt($text, $i + 1)) == ''
+                        Str::charAt($text, $i + 1) == "\n"
+                        || (
+                            in_array(Str::charAt($text, $i), ['.', '!', '?', '…', '…'])
+                            && trim(Str::charAt($text, $i + 1)) == ''
+                        )
+                        || (
+                            (
+                                in_array(Str::charAt($text, $i), ['(', ')', '[', ']', '<', '>', '{', '}'])
+                                || $detector->isEmojiString(Str::charAt($text, $i))
+                            )
+                            && trim(Str::charAt($text, $i + 1)) == ''
+                            && $isNextCapital
+                        )
                     ) {
                         break;
                     }
                 }
 
                 if ($i == 0) {
-                    for ($i = $this->getMaxTextLength() - 2; $i > 0; $i--) {
-                        if (Str::charAt($text, $i) == ',' && trim(Str::charAt($text, $i + 1)) == '') {
+                    for ($i = $this->getMaxTextLength() - 1; $i > 0; $i--) {
+                        if (
+                            (
+                                in_array(
+                                    Str::charAt($text, $i),
+                                    ['(', ')', '[', ']', '<', '>', '{', '}', ',', ':', ';', '-', '‐', '‒', '–', '—', '―']
+                                )
+                                || $detector->isEmojiString(Str::charAt($text, $i))
+                            )
+                            && trim(Str::charAt($text, $i + 1)) == ''
+                        ) {
                             break;
                         }
                     }
                 }
 
                 if ($i == 0) {
-                    $i = $this->getMaxTextLength() - 2;
+                    for ($i = $this->getMaxTextLength() - 1; $i > 0; $i--) {
+                        if (trim(Str::charAt($text, $i + 1)) == '') {
+                            break;
+                        }
+                    }
+                }
+
+                if ($i == 0) {
+                    $i = $this->getMaxTextLength() - 1;
                 }
 
                 $posts[$count] = [
