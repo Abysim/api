@@ -11,6 +11,7 @@ use Aws\Comprehend\ComprehendClient;
 use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
+use GuzzleHttp\Client;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -443,9 +444,16 @@ class Bluesky extends Social
                                     'title' => '',
                                     'description' => '',
                                 ];
+
+                                $client = new Client();
+                                $res = $client->get($url, ['timeout' => 10]);
+                                Log::info('Response code: ' . $res->getStatusCode());
+                                $content = (string) $res->getBody();
+                                Log::info('Content length: ' . strlen($content));
+
                                 $dom = new DOMDocument();
                                 libxml_use_internal_errors(true);
-                                $dom->loadHTMLFile($url);
+                                $dom->loadHTML($content);
                                 $xpath = new DOMXPath($dom);
                                 $query = '//meta[@property="og:title"]/@content';
                                 foreach ($xpath->query($query) as $node) {
@@ -457,8 +465,8 @@ class Bluesky extends Social
                                 if (empty($card['title'])) {
                                     $query = '//title';
                                     foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $card['title'] = $node->value;
+                                        if (!empty($node->textContent)) {
+                                            $card['title'] = $node->textContent;
                                             break;
                                         }
                                     }
@@ -507,6 +515,15 @@ class Bluesky extends Social
                                 }
                                 if (empty($imageUrl)) {
                                     $query = '//meta[@name="twitter:image"]/@content';
+                                    foreach ($xpath->query($query) as $node) {
+                                        if (!empty($node->value)) {
+                                            $imageUrl = $node->value;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (empty($imageUrl)) {
+                                    $query = '//img/@src';
                                     foreach ($xpath->query($query) as $node) {
                                         if (!empty($node->value)) {
                                             $imageUrl = $node->value;
