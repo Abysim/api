@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Class BlueskyConnection
@@ -17,6 +18,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $secret
  * @property string $password
  * @property string $jwt
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property string $refresh
  */
 class BlueskyConnection extends Model
 {

@@ -11,7 +11,7 @@ use Aws\Comprehend\ComprehendClient;
 use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
-use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use JsonException;
@@ -22,6 +22,7 @@ class Bluesky extends Social
     const MAX_TEXT_LENGTH = 300;
     const MAX_MEDIA_COUNT = 4;
     const MAX_LINK_LENGTH = 24;
+    const SESSION_TTL = 120;
 
 
     /**
@@ -132,6 +133,26 @@ class Bluesky extends Social
     }
 
     /**
+     * @param object $data
+     *
+     * @return void
+     */
+    private function updateSession(object $data): void
+    {
+        if (isset($data->error)) {
+            Log::error($data->error . ': '  . $data->message);
+
+            return;
+        }
+
+        $this->connection->jwt = $data->accessJwt;
+        $this->connection->refresh = $data->refreshJwt;
+        $this->connection->handle = $data->handle;
+        $this->api->setApiKey($data->accessJwt);
+        $this->connection->save();
+    }
+
+    /**
      * Tries retrieve a new token is the old token invalid during request
      *
      * @param string $type
@@ -150,18 +171,25 @@ class Bluesky extends Social
         ?string $body = null,
         ?string $contentType = null
     ): mixed {
+        if (
+            Carbon::now()->diffInMinutes($this->connection->updated_at) > self::SESSION_TTL
+            && !empty($this->connection->refresh)
+        ) {
+            $this->api->setApiKey($this->connection->refresh);
+            $data = $this->api->request('POST', 'com.atproto.server.refreshSession');
+            $this->updateSession($data);
+        }
+
         $response = $this->api->request($type, $request, $args, $body, $contentType);
 
         if (isset($response->error) && in_array($response->error, ['InvalidToken', 'ExpiredToken'])) {
+            Log::warning($this->connection->updated_at . ': ' . $response->error . ': '  . $response->message);
             $keyArgs = [
                 'identifier' => $this->connection->did,
                 'password' => $this->connection->password,
             ];
             $data = $this->api->request('POST', 'com.atproto.server.createSession', $keyArgs);
-
-            $this->connection->jwt = $data->accessJwt;
-            $this->api->setApiKey($data->accessJwt);
-            $this->connection->save();
+            $this->updateSession($data);
 
             $response = $this->api->request($type, $request, $args, $body, $contentType);
         }
