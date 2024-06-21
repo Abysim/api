@@ -285,7 +285,7 @@ class Bluesky extends Social
             }
 
             $body = '';
-            for ($i = 0; $i < 5; $i++) {
+            for ($i = 0; $i <= 4; $i++) {
                 try {
                     $body = file_get_contents($image);
                     break;
@@ -333,6 +333,43 @@ class Bluesky extends Social
         }
 
         return $args;
+    }
+
+    /**
+     * @param string $url
+     * @param bool $isBinary
+     *
+     * @return string
+     * @throws Exception
+     */
+    private function getUrl(string $url, bool $isBinary = false): string
+    {
+        try {
+            $res = Http::withOptions(['timeout' => 4])->get($url);
+            if ($res->status() >= 400) {
+                throw new Exception($res->body());
+            }
+        } catch (Exception $e) {
+            Log::warning('Failed get URL without scraper: ' . $e->getMessage());
+
+            $params = [
+                'api_key' => config('scraper.key'),
+                'url' => $url,
+                'country_code' => 'eu',
+                'device_type' => 'desktop',
+            ];
+            if ($isBinary) {
+                $params['binary_target'] = true;
+            }
+
+            $res = Http::withOptions(['timeout' => 8])->get(config('scraper.url'), $params);
+            Log::info('Response code: ' . $res->status());
+            if ($res->status() >= 400) {
+                throw new Exception($res->body());
+            }
+        }
+
+        return $res->body();
     }
 
     /**
@@ -445,16 +482,7 @@ class Bluesky extends Social
                                     'description' => '',
                                 ];
 
-                                $res = Http::withOptions([
-                                    'timeout' => 10,
-                                ])->get(config('scraper.url'), [
-                                    'api_key' =>config('scraper.key'),
-                                    'url' => $url,
-                                    'country_code' => 'eu',
-                                    'device_type' => 'desktop',
-                                ]);
-                                Log::info('Response code: ' . $res->status());
-                                $content = $res->body();
+                                $content = $this->getUrl($url);
                                 Log::info('Content length: ' . strlen($content));
 
                                 $dom = new DOMDocument();
@@ -547,20 +575,11 @@ class Bluesky extends Social
                                     }
 
                                     $body = '';
-                                    for ($i = 0; $i < 5; $i++) {
+                                    for ($i = 0; $i <= 4; $i++) {
                                         try {
                                             Log::info('Getting image: ' . $imageUrl);
 
-                                            $res = Http::withOptions([
-                                                'timeout' => 10,
-                                            ])->get(config('scraper.url'), [
-                                                'api_key' =>config('scraper.key'),
-                                                'url' => $imageUrl,
-                                                'country_code' => 'eu',
-                                                'device_type' => 'desktop',
-                                                'binary_target' => true,
-                                            ]);
-                                            $body = $res->body();
+                                            $body = $this->getUrl($imageUrl, true);
                                             break;
                                         } catch (Exception $e) {
                                             if ($i == 4) {

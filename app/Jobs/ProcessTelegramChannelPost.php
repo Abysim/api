@@ -123,8 +123,8 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 Log::info($messageId . ': ' . json_encode($mediaGroup[$messageId]));
 
                 if ($isGroupHead) {
-                    for ($i = 0; $i < 6; $i++) {
-                        sleep(5);
+                    for ($i = 0; $i < 8; $i++) {
+                        sleep(4);
                         $mediaGroup = Cache::get($mediaGroupId);
                         foreach ($mediaGroup as $id => $item) {
                             if (empty($item['path'])) {
