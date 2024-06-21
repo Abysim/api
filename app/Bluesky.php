@@ -381,8 +381,12 @@ class Bluesky extends Social
      */
     public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
-        if (!Str::contains($text, '#фільм', true)) {
+        if (!Str::contains($text, '#фільм', true) && !empty($media)) {
             $text = Str::replaceFirst('фільм', '#фільм', $text);
+        }
+
+        if (!Str::contains($text, '#подкаст', true)) {
+            $text = Str::replaceFirst('https://www.podcastics.com', '#подкаст https://www.podcastics.com', $text);
         }
 
         $posts = $this->splitPost($text, $media);
