@@ -11,8 +11,8 @@ use Aws\Comprehend\ComprehendClient;
 use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
-use GuzzleHttp\Client;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use JsonException;
@@ -445,10 +445,16 @@ class Bluesky extends Social
                                     'description' => '',
                                 ];
 
-                                $client = new Client();
-                                $res = $client->get($url, ['timeout' => 10]);
-                                Log::info('Response code: ' . $res->getStatusCode());
-                                $content = (string) $res->getBody();
+                                $res = Http::withOptions([
+                                    'timeout' => 10,
+                                ])->get(config('scraper.url'), [
+                                    'api_key' =>config('scraper.key'),
+                                    'url' => $url,
+                                    'country_code' => 'eu',
+                                    'device_type' => 'desktop',
+                                ]);
+                                Log::info('Response code: ' . $res->status());
+                                $content = $res->body();
                                 Log::info('Content length: ' . strlen($content));
 
                                 $dom = new DOMDocument();
@@ -533,14 +539,28 @@ class Bluesky extends Social
                                 }
 
                                 if (!empty($imageUrl)) {
-                                    if (!str_contains($imageUrl, '://')) {
+                                    if (
+                                        Str::substr($imageUrl, 0, 2) != '//'
+                                        && !str_contains($imageUrl, '://')
+                                    ) {
                                         $imageUrl = $url . $imageUrl;
                                     }
 
                                     $body = '';
                                     for ($i = 0; $i < 5; $i++) {
                                         try {
-                                            $body = file_get_contents($imageUrl);
+                                            Log::info('Getting image: ' . $imageUrl);
+
+                                            $res = Http::withOptions([
+                                                'timeout' => 10,
+                                            ])->get(config('scraper.url'), [
+                                                'api_key' =>config('scraper.key'),
+                                                'url' => $imageUrl,
+                                                'country_code' => 'eu',
+                                                'device_type' => 'desktop',
+                                                'binary_target' => true,
+                                            ]);
+                                            $body = $res->body();
                                             break;
                                         } catch (Exception $e) {
                                             if ($i == 4) {
