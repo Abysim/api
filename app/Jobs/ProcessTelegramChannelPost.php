@@ -124,7 +124,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
                 if ($isGroupHead) {
                     for ($i = 0; $i < 6; $i++) {
-                        sleep(10);
+                        sleep(5);
                         $mediaGroup = Cache::get($mediaGroupId);
                         foreach ($mediaGroup as $id => $item) {
                             if (empty($item['path'])) {
