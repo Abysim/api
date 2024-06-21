@@ -17,6 +17,7 @@
         "laravel/sanctum": "^3.2",
         "laravel/tinker": "^2.8",
         "php-telegram-bot/laravel": "^2.1",
+        "stechstudio/laravel-jwt": "^2.3",
         "steppinghat/emoji-detector": "^1.5"
     },
     "require-dev": {

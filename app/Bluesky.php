@@ -11,12 +11,12 @@ use Aws\Comprehend\ComprehendClient;
 use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use JsonException;
 use Exception;
+use STS\JWT\ParsedToken;
 
 class Bluesky extends Social
 {
@@ -173,8 +173,9 @@ class Bluesky extends Social
         ?string $contentType = null
     ): mixed {
         if (
-            Carbon::now()->diffInMinutes($this->connection->updated_at) > self::SESSION_TTL
-            && !empty($this->connection->refresh)
+            !empty($this->connection->refresh)
+            && ParsedToken::fromString($this->connection->jwt)->isExpired()
+            && !ParsedToken::fromString($this->connection->refresh)->isExpired()
         ) {
             $this->api->setApiKey($this->connection->refresh);
             $data = $this->api->request('POST', 'com.atproto.server.refreshSession');
@@ -375,6 +376,7 @@ class Bluesky extends Social
     /**
      * @param string $text
      * @param array $media
+     * @param mixed|null $reply
      *
      * @return mixed|object
      * @throws JsonException
