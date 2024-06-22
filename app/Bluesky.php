@@ -298,7 +298,7 @@ class Bluesky extends Social
             fclose($fh);
 
             Log::info('Image Type: ' . $type);
-            if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
+            if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg', 'image/gif', 'image/webp', 'image/heic', 'image/heif'])) {
                 Log::info('Unsupported image type!');
 
                 return $args;
