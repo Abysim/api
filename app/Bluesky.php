@@ -52,16 +52,17 @@ class Bluesky extends Social
         }
 
         $this->connection = $connection;
+        $this->api = new BlueskyApi();
         if ($connection->did && $connection->jwt) {
-            $this->api = new BlueskyApi();
             $this->api->setAccountDid($connection->did);
             $this->api->setApiKey($connection->jwt);
         } else {
-            $this->api = new BlueskyApi($connection->handle, $connection->password);
+            $args = ['handle' => $connection->handle];
+            $data = $this->request('GET', 'com.atproto.identity.resolveHandle', $args);
+            $this->api->setAccountDid($data->did);
+            $connection->did = $data->did;
 
-            $connection->jwt = $this->getApiKey();
-            $connection->did = $this->api->getAccountDid();
-            $connection->save();
+            $this->createSession();
         }
     }
 
@@ -154,6 +155,19 @@ class Bluesky extends Social
     }
 
     /**
+     * @throws JsonException
+     */
+    private function createSession(): void
+    {
+        $keyArgs = [
+            'identifier' => $this->connection->did,
+            'password' => $this->connection->password,
+        ];
+        $data = $this->api->request('POST', 'com.atproto.server.createSession', $keyArgs);
+        $this->updateSession($data);
+    }
+
+    /**
      * Tries retrieve a new token is the old token invalid during request
      *
      * @param string $type
@@ -186,33 +200,11 @@ class Bluesky extends Social
 
         if (isset($response->error) && in_array($response->error, ['InvalidToken', 'ExpiredToken'])) {
             Log::warning($this->connection->updated_at . ': ' . $response->error . ': '  . $response->message);
-            $keyArgs = [
-                'identifier' => $this->connection->did,
-                'password' => $this->connection->password,
-            ];
-            $data = $this->api->request('POST', 'com.atproto.server.createSession', $keyArgs);
-            $this->updateSession($data);
-
+            $this->createSession();
             $response = $this->api->request($type, $request, $args, $body, $contentType);
         }
 
         return $response;
-    }
-
-    /**
-     * @todo: remove hacky logic of retrieving private property value
-     * @return mixed
-     */
-    public function getApiKey(): string
-    {
-        $array = (array) $this->api;
-        foreach ($array as $key => $value) {
-            $propertyNameParts = explode("\0", $key);
-            $propertyName = end($propertyNameParts);
-            if ($propertyName === 'apiKey') {
-                return $value;
-            }
-        }
     }
 
     /**
@@ -384,7 +376,7 @@ class Bluesky extends Social
     public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
-            $text = Str::replaceFirst('фільм', '#фільм', $text);
+            $text = Str::replaceFirst(' фільм', ' Куафсещкштп фгер дщпшс#фільм', $text);
         }
 
         if (!Str::contains($text, '#подкаст', true)) {
