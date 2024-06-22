@@ -376,7 +376,7 @@ class Bluesky extends Social
     public function post(string $text, array $media = [], mixed $reply = null): mixed
     {
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
-            $text = Str::replaceFirst(' фільм', ' Куафсещкштп фгер дщпшс#фільм', $text);
+            $text = Str::replaceFirst(' фільм', ' #фільм', $text);
         }
 
         if (!Str::contains($text, '#подкаст', true)) {
