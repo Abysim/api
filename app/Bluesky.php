@@ -99,7 +99,7 @@ class Bluesky extends Social
 
     /**
      * @param array $args
-     * @param array $urls
+     * @param array $tags
      *
      * @return array
      */
@@ -390,7 +390,7 @@ class Bluesky extends Social
      * @param mixed|null $reply
      *
      * @return array|object|null
-     * @throws JsonException
+     * @throws Exception
      */
     public function post(string $text, array $media = [], mixed $reply = null): array|null|object
     {
@@ -657,16 +657,16 @@ class Bluesky extends Social
     ): ?object {
         $url = $this->apiUri . $request;
 
-        if ($type == 'GET') {
-            return Http::get($url, $args)->object();
-        }
-
         $request = Http::asJson();
         if ($this->connection->jwt) {
             $request = $request->withToken($this->connection->jwt);
         }
         if (count($args)) {
-            $args = ['json' => $args];
+            if ($type == 'GET') {
+                $args = ['query' => $args];
+            } else {
+                $args = ['json' => $args];
+            }
         }
         if ($body) {
             $request = $request->withBody($body, $contentType);
