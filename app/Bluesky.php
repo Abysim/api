@@ -8,9 +8,9 @@ namespace App;
 
 use App\Models\BlueskyConnection;
 use Aws\Comprehend\ComprehendClient;
-use cjrasmussen\BlueskyApi\BlueskyApi;
 use DOMDocument;
 use DOMXPath;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -23,7 +23,6 @@ class Bluesky extends Social
     const MAX_TEXT_LENGTH = 300;
     const MAX_MEDIA_COUNT = 4;
     const MAX_LINK_LENGTH = 24;
-    const SESSION_TTL = 120;
 
 
     /**
@@ -32,17 +31,20 @@ class Bluesky extends Social
     protected BlueskyConnection $connection;
 
     /**
-     * @var BlueskyApi
+     * @var string
      */
-    protected BlueskyApi $api;
+    private string $apiUri;
 
     /**
      * @param int|BlueskyConnection $connection
+     * @param string $apiUri
      *
      * @throws Exception
      */
-    public function __construct(int|BlueskyConnection $connection)
+    public function __construct(int|BlueskyConnection $connection, string $apiUri = 'https://bsky.social/xrpc/')
     {
+        $this->apiUri = $apiUri;
+
         if (is_numeric($connection)) {
             $connection = BlueskyConnection::query()->find($connection);
 
@@ -52,14 +54,9 @@ class Bluesky extends Social
         }
 
         $this->connection = $connection;
-        $this->api = new BlueskyApi();
-        if ($connection->did && $connection->jwt) {
-            $this->api->setAccountDid($connection->did);
-            $this->api->setApiKey($connection->jwt);
-        } else {
+        if (!$connection->did || !$connection->jwt) {
             $args = ['handle' => $connection->handle];
-            $data = $this->request('GET', 'com.atproto.identity.resolveHandle', $args);
-            $this->api->setAccountDid($data->did);
+            $data = $this->apiRequest('GET', 'com.atproto.identity.resolveHandle', $args);
             $connection->did = $data->did;
 
             $this->createSession();
@@ -150,12 +147,11 @@ class Bluesky extends Social
         $this->connection->jwt = $data->accessJwt;
         $this->connection->refresh = $data->refreshJwt;
         $this->connection->handle = $data->handle;
-        $this->api->setApiKey($data->accessJwt);
         $this->connection->save();
     }
 
     /**
-     * @throws JsonException
+     * @throws Exception
      */
     private function createSession(): void
     {
@@ -163,7 +159,7 @@ class Bluesky extends Social
             'identifier' => $this->connection->did,
             'password' => $this->connection->password,
         ];
-        $data = $this->api->request('POST', 'com.atproto.server.createSession', $keyArgs);
+        $data = $this->apiRequest('POST', 'com.atproto.server.createSession', $keyArgs);
         $this->updateSession($data);
     }
 
@@ -176,8 +172,8 @@ class Bluesky extends Social
      * @param string|null $body
      * @param string|null $contentType
      *
-     * @return mixed|object
-     * @throws JsonException
+     * @return object|null
+     * @throws Exception
      */
     public function request(
         string $type,
@@ -185,23 +181,23 @@ class Bluesky extends Social
         array $args = [],
         ?string $body = null,
         ?string $contentType = null
-    ): mixed {
+    ): ?object {
         if (
             !empty($this->connection->refresh)
             && ParsedToken::fromString($this->connection->jwt)->isExpired()
             && !ParsedToken::fromString($this->connection->refresh)->isExpired()
         ) {
-            $this->api->setApiKey($this->connection->refresh);
-            $data = $this->api->request('POST', 'com.atproto.server.refreshSession');
+            $this->connection->jwt = $this->connection->refresh;
+            $data = $this->apiRequest('POST', 'com.atproto.server.refreshSession');
             $this->updateSession($data);
         }
 
-        $response = $this->api->request($type, $request, $args, $body, $contentType);
+        $response = $this->apiRequest($type, $request, $args, $body, $contentType);
 
         if (isset($response->error) && in_array($response->error, ['InvalidToken', 'ExpiredToken'])) {
             Log::warning($this->connection->updated_at . ': ' . $response->error . ': '  . $response->message);
             $this->createSession();
-            $response = $this->api->request($type, $request, $args, $body, $contentType);
+            $response = $this->apiRequest($type, $request, $args, $body, $contentType);
         }
 
         return $response;
@@ -266,7 +262,6 @@ class Bluesky extends Social
      * @param array|null $media
      *
      * @return array
-     * @throws JsonException
      */
     private function addImages(array $args, ?array $media = []): array
     {
@@ -277,45 +272,15 @@ class Bluesky extends Social
                 continue;
             }
 
-            $body = '';
-            for ($i = 0; $i <= 4; $i++) {
-                try {
-                    $body = file_get_contents($image);
-                    break;
-                } catch (Exception $e) {
-                    if ($i == 4) {
-                        continue;
-                    }
-
-                    Log::info('Image reading problem: ' . $e->getMessage());
-                    sleep($i * $i);
-                }
+            try {
+                $response = $this->uploadImage($image);
+                $images[] = [
+                    'alt' => $media['text'] ?? '',
+                    'image' => $response->blob,
+                ];
+            } catch (Exception $e) {
+                Log::error($e->getMessage());
             }
-
-            $fh = fopen('php://memory', 'w+b');
-            fwrite($fh, $body);
-            $type = mime_content_type($fh);
-            fclose($fh);
-
-            Log::info('Image Type: ' . $type);
-            if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg', 'image/gif', 'image/webp', 'image/heic', 'image/heif'])) {
-                Log::info('Unsupported image type!');
-
-                return $args;
-            }
-
-            $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-            Log::info('Image: ' . json_encode($response));
-            // retry if uploading failed
-            if (!isset($response->blob)) {
-                $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-                Log::info('Retry Image: ' . json_encode($response));
-            }
-
-            $images[] = [
-                'alt' => $media['text'] ?? '',
-                'image' => $response->blob,
-            ];
         }
 
         if (!empty($images)) {
@@ -329,6 +294,56 @@ class Bluesky extends Social
     }
 
     /**
+     * @param string $image
+     *
+     * @return object|null
+     * @throws Exception
+     */
+    private function uploadImage(string $image): ?object
+    {
+        $body = '';
+        for ($i = 0; $i <= 4; $i++) {
+            try {
+                $body = $this->getUrl($image, true);
+                break;
+            } catch (Exception $e) {
+                if ($i == 4) {
+                    continue;
+                }
+
+                Log::info('Image reading problem: ' . $e->getMessage());
+                sleep($i * $i);
+            }
+        }
+
+        $fh = fopen('php://memory', 'w+b');
+        fwrite($fh, $body);
+        $type = mime_content_type($fh);
+        fclose($fh);
+
+        Log::info('Image Type: ' . $type);
+        if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg', 'image/gif', 'image/webp', 'image/heic', 'image/heif'])) {
+            Log::info('Unsupported image type!');
+
+            throw new Exception('Unsupported image type!');
+        }
+
+        $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
+        Log::info('Image: ' . json_encode($response));
+        // retry if uploading failed
+        if (!isset($response->blob)) {
+            $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
+            Log::info('Retry Image: ' . json_encode($response));
+        }
+
+        if (!isset($response->blob)) {
+            throw new Exception($response);
+        }
+
+        return $response;
+    }
+
+    /**
      * @param string $url
      * @param bool $isBinary
      *
@@ -337,8 +352,12 @@ class Bluesky extends Social
      */
     private function getUrl(string $url, bool $isBinary = false): string
     {
+        if (File::isFile($url)) {
+            return File::get($url);
+        }
+
         try {
-            $res = Http::withOptions(['timeout' => 4])->get($url);
+            $res = Http::timeout(4)->get($url);
             if ($res->status() >= 400) {
                 throw new Exception($res->body());
             }
@@ -355,7 +374,7 @@ class Bluesky extends Social
                 $params['binary_target'] = true;
             }
 
-            $res = Http::withOptions(['timeout' => 8])->get(config('scraper.url'), $params);
+            $res = Http::timeout(8)->get(config('scraper.url'), $params);
             Log::info('Response code: ' . $res->status());
             if ($res->status() >= 400) {
                 throw new Exception($res->body());
@@ -370,10 +389,10 @@ class Bluesky extends Social
      * @param array $media
      * @param mixed|null $reply
      *
-     * @return mixed|object
+     * @return array|object|null
      * @throws JsonException
      */
-    public function post(string $text, array $media = [], mixed $reply = null): mixed
+    public function post(string $text, array $media = [], mixed $reply = null): array|null|object
     {
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
             $text = Str::replaceFirst(' фільм', ' #фільм', $text);
@@ -572,44 +591,12 @@ class Bluesky extends Social
                                         $imageUrl = $url . $imageUrl;
                                     }
 
-                                    $body = '';
-                                    for ($i = 0; $i <= 4; $i++) {
-                                        try {
-                                            Log::info('Getting image: ' . $imageUrl);
-
-                                            $body = $this->getUrl($imageUrl, true);
-                                            break;
-                                        } catch (Exception $e) {
-                                            if ($i == 4) {
-                                                continue;
-                                            }
-
-                                            Log::info('Image reading problem: ' . $e->getMessage());
-                                            sleep($i * $i);
-                                        }
+                                    try {
+                                        $response = $this->uploadImage($imageUrl);
+                                        $card['thumb'] = $response->blob;
+                                    } catch (Exception $e) {
+                                        Log::error($e->getMessage());
                                     }
-
-                                    $fh = fopen('php://memory', 'w+b');
-                                    fwrite($fh, $body);
-                                    $type = mime_content_type($fh);
-                                    fclose($fh);
-
-                                    Log::info('Image Type: ' . $type);
-                                    if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg'])) {
-                                        Log::info('Unsupported image type!');
-
-                                        return $args;
-                                    }
-
-                                    $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-                                    Log::info('Image: ' . json_encode($response));
-                                    // retry if uploading failed
-                                    if (!isset($response->blob)) {
-                                        $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
-                                        Log::info('Retry Image: ' . json_encode($response));
-                                    }
-
-                                    $card['thumb'] = $response->blob;
                                 }
 
                                 $args['record']['embed'] = [
@@ -649,5 +636,42 @@ class Bluesky extends Social
         }
 
         return $this->request('POST', 'com.atproto.repo.createRecord', $args);
+    }
+
+    /**
+     * @param string $type
+     * @param string $request
+     * @param array $args
+     * @param string|null $body
+     * @param string|null $contentType
+     *
+     * @return object|null
+     * @throws Exception
+     */
+    private function apiRequest(
+        string $type,
+        string $request,
+        array $args = [],
+        ?string $body = null,
+        ?string $contentType = null,
+    ): ?object {
+        $url = $this->apiUri . $request;
+
+        if ($type == 'GET') {
+            return Http::get($url, $args)->object();
+        }
+
+        $request = Http::asJson();
+        if ($this->connection->jwt) {
+            $request = $request->withToken($this->connection->jwt);
+        }
+        if (count($args)) {
+            $args = ['json' => $args];
+        }
+        if ($body) {
+            $request = $request->withBody($body, $contentType);
+        }
+
+        return $request->send($type, $url, $args)->object();
     }
 }

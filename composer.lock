@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ca822f129ee53aadaa9403b036aae40e",
+    "content-hash": "cce0339bc06d28b1164067e5c8076782",
     "packages": [
         {
             "name": "atymic/twitter",
@@ -370,53 +370,6 @@
                 }
             ],
             "time": "2023-12-11T17:09:12+00:00"
-        },
-        {
-            "name": "cjrasmussen/bluesky-api",
-            "version": "1.1.2",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/cjrasmussen/BlueskyApi.git",
-                "reference": "759e39ef951d5929e6ba32b430b604d960e2d9e6"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/cjrasmussen/BlueskyApi/zipball/759e39ef951d5929e6ba32b430b604d960e2d9e6",
-                "reference": "759e39ef951d5929e6ba32b430b604d960e2d9e6",
-                "shasum": ""
-            },
-            "require": {
-                "ext-curl": "*",
-                "ext-json": "*",
-                "php": ">=7.4"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "cjrasmussen\\BlueskyApi\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Clark Rasmussen",
-                    "homepage": "https://cjr.dev",
-                    "role": "Developer"
-                }
-            ],
-            "description": "Simple helper for interacting with the Bluesky API/AT protocol",
-            "homepage": "https://cjr.dev",
-            "keywords": [
-                "bluesky"
-            ],
-            "support": {
-                "issues": "https://github.com/cjrasmussen/BlueskyApi/issues",
-                "source": "https://github.com/cjrasmussen/BlueskyApi"
-            },
-            "time": "2024-01-04T20:04:03+00:00"
         },
         {
             "name": "dflydev/dot-access-data",

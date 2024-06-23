@@ -122,32 +122,43 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
                 Log::info($messageId . ': ' . json_encode($mediaGroup[$messageId]));
 
-                if ($isGroupHead) {
-                    for ($i = 0; $i < 8; $i++) {
-                        sleep(4);
-                        $mediaGroup = Cache::get($mediaGroupId);
-                        foreach ($mediaGroup as $id => $item) {
-                            if (empty($item['path'])) {
+                for ($i = 0; $i < 8; $i++) {
+                    sleep($isGroupHead ? 4 : 1);
+                    $mediaGroup = Cache::get($mediaGroupId);
+                    foreach ($mediaGroup as $id => $item) {
+                        if (empty($item['path'])) {
+                            if ($id == $messageId) {
+                                $mediaGroup[$messageId] = [
+                                    'text' => $text,
+                                    'url' => $media[0]['url'],
+                                    'path' => $media[0]['path'],
+                                    'isHead' => $isGroupHead,
+                                ];
+                                Cache::put($mediaGroupId, $mediaGroup, 60);
+                                Log::warning($messageId . ': media group collision. Fixing.');
+                            }
+
+                            continue 2;
+                        }
+                        if ($isGroupHead && $id != $messageId && $item['isHead']) {
+                            if ($id < $messageId) {
+                                $mediaGroup[$messageId]['isHead'] = false;
+                                Cache::put($mediaGroupId, $mediaGroup, 60);
+                                Log::warning($messageId . ': media group collision. Resolving.');
+
+                                return;
+                            } else {
+                                Log::warning($messageId . ': media group collision. Waiting.');
+
                                 continue 2;
                             }
-                            if ($id != $messageId && $item['isHead']) {
-                                if ($id < $messageId) {
-                                    $mediaGroup[$messageId]['isHead'] = false;
-                                    Cache::put($mediaGroupId, $mediaGroup, 60);
-                                    Log::warning($messageId . ': media group collision. Resolving.');
-
-                                    return;
-                                } else {
-                                    Log::warning($messageId . ': media group collision. Waiting.');
-
-                                    continue 2;
-                                }
-                            }
                         }
-
-                        break;
                     }
 
+                    break;
+                }
+
+                if ($isGroupHead) {
                     $text = '';
                     foreach ($mediaGroup as $id => $item) {
                         if (empty($text) && !empty($item['text'])) {
@@ -176,9 +187,9 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 $social = new $socialClass($forward->to_id);
 
                 if ($forward->from_id == '-1001702307388' && $forward->to_connection == 'friendica') {
-                    $resultResponse = $social->post($text, $media, null, 'Серіальні думки');
+                    $resultResponse = $social->post($text ?? '', $media, null, 'Серіальні думки');
                 } else {
-                    $resultResponse = $social->post($text, $media);
+                    $resultResponse = $social->post($text ?? '', $media);
                 }
 
                 Log::info($messageId . ': ' . json_encode($resultResponse));
