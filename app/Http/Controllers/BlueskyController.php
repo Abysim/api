@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Bluesky;
 use App\Models\BlueskyConnection;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use JsonException;
 
 class BlueskyController extends Controller
 {
@@ -15,12 +15,13 @@ class BlueskyController extends Controller
      * @param Request $request
      *
      * @return mixed
-     * @throws JsonException
+     * @throws Exception
      */
     public function index(Request $request): mixed
     {
         Log::info('Request:' . json_encode($request->all()));
 
+        /** @var BlueskyConnection $connection */
         $connection = BlueskyConnection::query()
             ->where('handle', '=', $request->handle)
             ->where('secret', '=', $request->secret)
@@ -28,7 +29,7 @@ class BlueskyController extends Controller
 
         if ($connection) {
             $bluesky = new Bluesky($connection);
-            $response = $bluesky->post($request->text,  $request->image ? ['url' => $request->image] : []);
+            $response = $bluesky->post($request->text,  $request->image ? [['url' => $request->image]] : []);
 
             Log::info('Response:' . json_encode($response));
 
