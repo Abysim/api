@@ -30,7 +30,7 @@ Route::get('login', ['as' => 'fediverse.login', static function () {
             Session::put('fediverse_cat', request('cat', ''));
             Session::put('fediverse_url', $url);
 
-            Log::info('Fediverse login apps: ' . json_encode($apps));
+            Log::info('Fediverse login apps: ' . json_encode($apps->json()));
 
             return Redirect::away($url . 'oauth/authorize?' . http_build_query([
                 'client_id' => $apps['client_id'],
