@@ -42,6 +42,10 @@ class RouteServiceProvider extends ServiceProvider
                 ->group(base_path('routes/twitter.php'));
 
             Route::middleware('web')
+                ->prefix('fediverse')
+                ->group(base_path('routes/fediverse.php'));
+
+            Route::middleware('web')
                 ->group(base_path('routes/web.php'));
         });
     }
