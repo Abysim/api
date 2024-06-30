@@ -74,6 +74,7 @@ class Twitter extends Social
                 if (!empty($item['text'])) {
                     $twitter->post('media/metadata/create', [
                         Client::KEY_REQUEST_FORMAT => Client::REQUEST_FORMAT_JSON,
+                        Client::KEY_RESPONSE_FORMAT => Client::RESPONSE_FORMAT_JSON,
                         'media_id' => $uploadedMedia->media_id_string,
                         'alt_text' => [
                             'text' => $item['text'],
