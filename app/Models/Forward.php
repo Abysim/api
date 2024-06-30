@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Bluesky;
+use App\Fediverse;
 use App\Friendica;
 use App\Twitter;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,6 +30,7 @@ class Forward extends Model
         'bluesky' => Bluesky::class,
         'twitter' => Twitter::class,
         'friendica' => Friendica::class,
+        'fediverse' => Fediverse::class,
     ];
 
     use HasFactory;

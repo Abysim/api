@@ -48,6 +48,6 @@ class Friendica extends Social
             $count++;
         }
 
-        return Http::asForm()->post(config('friendica.url'), $data);
+        return Http::asForm()->post(config('friendica.url'), $data)->json();
     }
 }

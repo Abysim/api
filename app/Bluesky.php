@@ -316,10 +316,14 @@ class Bluesky extends Social
             }
         }
 
-        $fh = fopen('php://memory', 'w+b');
-        fwrite($fh, $body);
-        $type = mime_content_type($fh);
-        fclose($fh);
+        if (File::isFile($image)) {
+            $type = File::mimeType($image);
+        } else {
+            $fh = fopen('php://memory', 'w+b');
+            fwrite($fh, $body);
+            $type = mime_content_type($fh);
+            fclose($fh);
+        }
 
         Log::info('Image Type: ' . $type);
         if (!in_array($type, ['image/png', 'image/jpg', 'image/jpeg', 'image/gif', 'image/webp', 'image/heic', 'image/heif'])) {
@@ -427,26 +431,7 @@ class Bluesky extends Social
         Log::info('posting: ' . $text);
 
         $text = $text ?? '';
-        $lang = 'uk';
-        try {
-            $comprehend = new ComprehendClient([
-                'region' => config('comprehend.region'),
-                'version' => 'latest',
-                'credentials' => [
-                    'key' => config('comprehend.key'),
-                    'secret' => config('comprehend.secret'),
-                ]
-            ]);
-            $languages = $comprehend->detectDominantLanguage(['Text' => $text])->get('Languages');
-            $lang = $languages[0]['LanguageCode'] ?? 'uk';
-            $score = $languages[0]['Score'] ?? 0;
-            if ($lang == 'ru' || $score < 0.7) {
-                Log::warning('strange lang detected: ' . $text);
-                $lang = 'uk';
-            }
-        } catch (Exception $e) {
-            Log::error($e->getMessage());
-        }
+        $lang = static::detectLanguage($text);
 
         $args = [
             'collection' => 'app.bsky.feed.post',

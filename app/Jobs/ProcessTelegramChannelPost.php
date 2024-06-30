@@ -86,7 +86,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                         throw new TelegramException('Photo not found');
                     }
 
-                    for ($i = 0; $i < 5; $i++) {
+                    for ($i = 0; $i <= 4; $i++) {
                         $file = Request::getFile(['file_id' => $photo->getFileId()]);
                         if ($file->isOk()) {
                             if (Request::downloadFile($file->getResult())) {
@@ -122,8 +122,8 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
                 Log::info($messageId . ': ' . json_encode($mediaGroup[$messageId]));
 
-                for ($i = 0; $i < 8; $i++) {
-                    sleep($isGroupHead ? 4 : 1);
+                for ($i = 0; $i < 4; $i++) {
+                    sleep($isGroupHead ? 8 : 1);
                     $mediaGroup = Cache::get($mediaGroupId);
                     foreach ($mediaGroup as $id => $item) {
                         if (empty($item['path'])) {
