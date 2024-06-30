@@ -37,6 +37,11 @@ class PostToSocial implements ShouldQueue
     protected array $media = [];
 
     /**
+     * @var int
+     */
+    public int $timeout = 180;
+
+    /**
      * Create a new job instance.
      */
     public function __construct(int $messageId, Forward $forward, string $text = '', array $media = [])
@@ -57,7 +62,7 @@ class PostToSocial implements ShouldQueue
             /** @var Social $social */
             $social = new $socialClass($this->forward->to_id);
             $resultResponse = $social->post($this->text ?? '', $this->media);
-            Log::info($this->messageId . ': ' . json_encode($resultResponse));
+            Log::info($this->messageId . ': ' . json_encode($resultResponse, JSON_UNESCAPED_UNICODE));
         } catch (Exception $e) {
             Log::error($this->messageId . ': ' . $e->getMessage());
         }

@@ -37,6 +37,12 @@ class ProcessTelegramChannelPost implements ShouldQueue
     protected Collection $forwards;
 
     /**
+     * @var int
+     */
+    public int $timeout = 180;
+
+
+    /**
      * Create a new job instance.
      * @throws TelegramException
      */
@@ -123,7 +129,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 ];
                 Cache::put($mediaGroupId, $mediaGroup, 60);
 
-                Log::info($messageId . ': ' . json_encode($mediaGroup[$messageId]));
+                Log::info($messageId . ': ' . json_encode($mediaGroup[$messageId], JSON_UNESCAPED_UNICODE));
 
                 for ($i = 0; $i < 4; $i++) {
                     sleep($isGroupHead ? 8 : 1);
@@ -185,29 +191,36 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
             foreach ($media as &$item) {
                 if (empty($item['text'])) {
-                    try {
-                        $response = MyCloudflareAI::runModel([
-                            'image' => array_values(unpack('C*', File::get($item['path']))),
-                            'prompt' => 'Generate a caption for this image',
-                            'max_tokens' => 64,
-                        ], 'unum/uform-gen2-qwen-500m');
+                    for ($i = 0; $i < 4; $i++) {
+                        try {
+                            $response = MyCloudflareAI::runModel([
+                                'image' => array_values(unpack('C*', File::get($item['path']))),
+                                'prompt' => 'Generate a caption for this image',
+                                'max_tokens' => 64,
+                            ], 'unum/uform-gen2-qwen-500m');
 
-                        Log::info($messageId . ': image description : ' . json_encode($response));
+                            Log::info($messageId . ': image description : ' . json_encode($response));
 
-                        if (!empty($response['result']['description'])) {
-                            $item['text'] = $response['result']['description'];
+                            if (!empty($response['result']['description'])) {
+                                $item['text'] = $response['result']['description'];
 
-                            if ($language != 'en') {
-                                try {
-                                    $translator = new Translator(config('deepl.key'));
-                                    $item['text'] = (string) $translator->translateText($item['text'], 'en', $language);
-                                } catch (Exception $e) {
-                                    Log::error($messageId . ': translation fail: ' . $e->getMessage());
+                                if ($language != 'en') {
+                                    try {
+                                        $translator = new Translator(config('deepl.key'));
+                                        $item['text'] =
+                                            (string) $translator->translateText($item['text'], 'en', $language);
+                                    } catch (Exception $e) {
+                                        Log::error($messageId . ': translation fail: ' . $e->getMessage());
+                                    }
                                 }
                             }
+                        } catch (Exception $e) {
+                            Log::error($messageId . ': image description fail: ' . $e->getMessage());
                         }
-                    } catch (Exception $e) {
-                        Log::error($messageId . ': image description fail: ' . $e->getMessage());
+
+                        if (!empty($item['text'])) {
+                            break;
+                        }
                     }
                 }
             }

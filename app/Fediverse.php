@@ -57,7 +57,7 @@ class Fediverse extends Social
         $mediaIds = [];
         foreach ($media as $item) {
             $result = $this->request('v2/media', ['description' => $item['text'] ?? ''], $item['path']);
-            Log::info('Image uploaded: ' . json_encode($result));
+            Log::info('Image uploaded: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
 
             $mediaIds[] = $result['id'];
         }
