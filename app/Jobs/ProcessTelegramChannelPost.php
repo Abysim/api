@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Forward;
+use App\MyCloudflareAI;
 use App\Social;
+use DeepL\Translator;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Longman\TelegramBot\Entities\Message;
@@ -178,21 +181,43 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 }
             }
 
+            $language = Social::detectLanguage($text); // TODO: remove further detections of the language and pass this value
+
+            foreach ($media as &$item) {
+                if (empty($item['text'])) {
+                    try {
+                        $response = MyCloudflareAI::runModel([
+                            'image' => array_values(unpack('C*', File::get($item['path']))),
+                            'prompt' => 'Generate a caption for this image',
+                            'max_tokens' => 64,
+                        ], 'unum/uform-gen2-qwen-500m');
+
+                        Log::info($messageId . ': image description : ' . json_encode($response));
+
+                        if (!empty($response['result']['description'])) {
+                            $item['text'] = $response['result']['description'];
+
+                            if ($language != 'en') {
+                                try {
+                                    $translator = new Translator(config('deepl.key'));
+                                    $item['text'] = (string) $translator->translateText($item['text'], 'en', $language);
+                                } catch (Exception $e) {
+                                    Log::error($messageId . ': translation fail: ' . $e->getMessage());
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        Log::error($messageId . ': image description fail: ' . $e->getMessage());
+                    }
+                }
+            }
+
             Log::info($messageId . ': ' . $text);
 
             foreach ($this->forwards as $forward) {
                 Log::info($messageId . ': ' . json_encode($forward->getAttributes()));
-                $socialClass = Forward::CONNECTIONS[$forward->to_connection];
-                /** @var Social $social */
-                $social = new $socialClass($forward->to_id);
 
-                if ($forward->from_id == '-1001702307388' && $forward->to_connection == 'friendica') {
-                    $resultResponse = $social->post($text ?? '', $media, null, 'Серіальні думки');
-                } else {
-                    $resultResponse = $social->post($text ?? '', $media);
-                }
-
-                Log::info($messageId . ': ' . json_encode($resultResponse));
+                PostToSocial::dispatch( $messageId, $forward, $text ?? '', $media);
             }
         } catch (Exception $e) {
             Log::error($messageId . ': ' . $e->getMessage());

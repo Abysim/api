@@ -187,8 +187,12 @@ abstract class Social
         return [];
     }
 
-
-    protected static function detectLanguage(string $text): string
+    /**
+     * @param string $text
+     *
+     * @return string
+     */
+    public static function detectLanguage(string $text): string
     {
         $lang = 'uk';
         try {

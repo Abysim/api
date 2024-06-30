@@ -71,9 +71,17 @@ class Twitter extends Social
             $twitter = $t->usingCredentials($this->connection->token, $this->connection->secret);
             foreach ($media as $item) {
                 $uploadedMedia = $twitter->uploadMedia(['media' => File::get($item['path'])]);
+                if (!empty($item['text'])) {
+                    $twitter->post('media/metadata/create', [
+                        Client::KEY_REQUEST_FORMAT => Client::REQUEST_FORMAT_JSON,
+                        'media_id' => $uploadedMedia->media_id_string,
+                        'alt_text' => [
+                            'text' => $item['text'],
+                        ],
+                    ]);
+                }
                 $mediaIds[] = $uploadedMedia->media_id_string;
             }
-
         }
 
         $t = TwitterFacade::forApiV2();

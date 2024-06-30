@@ -275,7 +275,7 @@ class Bluesky extends Social
             try {
                 $response = $this->uploadImage($image);
                 $images[] = [
-                    'alt' => $media['text'] ?? '',
+                    'alt' => $item['text'] ?? '',
                     'image' => $response->blob,
                 ];
             } catch (Exception $e) {
