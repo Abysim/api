@@ -197,7 +197,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                                 'image' => array_values(unpack('C*', File::get($item['path']))),
                                 'prompt' => 'Generate a caption for this image',
                                 'max_tokens' => 64,
-                            ], 'unum/uform-gen2-qwen-500m');
+                            ], $i % 2 ? 'llava-hf/llava-1.5-7b-hf' : 'unum/uform-gen2-qwen-500m');
 
                             Log::info($messageId . ': image description : ' . json_encode($response));
 
