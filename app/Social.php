@@ -188,13 +188,17 @@ abstract class Social
     }
 
     /**
-     * @param string $text
+     * @param string|null $text
      *
      * @return string
      */
-    public static function detectLanguage(string $text): string
+    public static function detectLanguage(?string $text): string
     {
         $lang = 'uk';
+        if (empty($text)) {
+            return $lang;
+        }
+
         try {
             $comprehend = new ComprehendClient([
                 'region' => config('comprehend.region'),
