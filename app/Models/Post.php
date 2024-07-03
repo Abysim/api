@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * Class Forward
@@ -23,4 +24,19 @@ class Post extends Model
     use HasFactory;
 
     protected $fillable = ['connection', 'connection_id', 'post_id', 'parent_post_id', 'root_post_id'];
+
+    /**
+     * @param string $connection
+     *
+     * @return BelongsToMany
+     */
+    public function forwards(string $connection): BelongsToMany
+    {
+        return $this
+            ->belongsToMany(Post::class, 'post_forwards', 'from_id', 'to_id')
+            ->where('connection', $connection)
+            ->orderBy('post_id', 'DESC');
+    }
+
+
 }

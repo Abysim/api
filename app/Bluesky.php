@@ -391,16 +391,23 @@ class Bluesky extends Social
     }
 
     /**
-     * @param array $textData
-     * @param array $media
-     * @param mixed|null $reply
-     *
-     * @return array|object|null
-     * @throws Exception
+     * @inheritDoc
      */
-    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): array|null|object
-    {
+    public function post(
+        array $textData = [],
+        array $media = [],
+        mixed $reply = null,
+        mixed $root = null,
+        mixed $quote = null
+    ): array|null|object {
         $text = $textData['text'];
+
+        if (!empty($quote) && !empty($media)) {
+            $parts = explode('/', $quote->uri);
+            $link = 'https://bsky.app/profile/' . $this->connection->handle . '/post/' . end($parts);
+            $text .= "\n" . $link;
+            $quote = null;
+        }
 
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
             $text = Str::replaceFirst(' фільм', ' #фільм', $text);
@@ -419,10 +426,13 @@ class Bluesky extends Social
                 }
 
                 $textData['text'] = $post['text'];
-                $result = $this->post($textData, $post['media'], $reply, $root);
+                $result = $this->post($textData, $post['media'], $reply, $root, $quote);
                 sleep(1);
                 if (empty($root)) {
                     $root = $result;
+                }
+                if (!empty($quote)) {
+                    $quote = null;
                 }
                 $results[] = $result;
             }
@@ -468,6 +478,13 @@ class Bluesky extends Social
 
         $args = $this->addUrls($args, $urls);
         $args = $this->addImages($args, $media);
+
+        if (empty($args['record']['embed']) && !empty($quote)) {
+            $args['record']['embed'] = [
+                '$type' => 'app.bsky.embed.record',
+                'record' => $quote,
+            ];
+        }
 
         if (empty($args['record']['embed']) && !empty($args['record']['facets'])) {
             foreach ($args['record']['facets'] as $index => $facet) {

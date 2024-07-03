@@ -38,6 +38,16 @@ class PostToSocial implements ShouldQueue
     protected array $media = [];
 
     /**
+     * @var Post|null
+     */
+    protected ?Post $reply = null;
+
+    /**
+     * @var Post|null
+     */
+    protected ?Post $quote = null;
+
+    /**
      * @var int
      */
     public int $timeout = 180;
@@ -45,12 +55,20 @@ class PostToSocial implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(int $messageId, Forward $forward, array $textData = [], array $media = [])
-    {
+    public function __construct(
+        int $messageId,
+        Forward $forward,
+        array $textData = [],
+        array $media = [],
+        ?Post $reply = null,
+        ?Post $quote = null
+    ) {
         $this->messageId = $messageId;
         $this->forward = $forward;
         $this->textData = $textData;
         $this->media = $media;
+        $this->reply = $reply;
+        $this->quote = $quote;
     }
 
     /**
@@ -63,8 +81,8 @@ class PostToSocial implements ShouldQueue
                 'connection' => $this->forward->from_connection,
                 'connection_id' => $this->forward->from_id,
                 'post_id' => $this->messageId,
-                'parent_post_id' => $this->messageId,
-                'root_post_id' => $this->messageId,
+                'parent_post_id' => $this->reply->post_id ?? $this->messageId,
+                'root_post_id' => $this->reply->root_post_id ?? $this->messageId,
             ];
             /** @var Post $post */
             $post = Post::query()->updateOrCreate($postData);
@@ -79,7 +97,6 @@ class PostToSocial implements ShouldQueue
 
                 $postData['post_id'] = $messageId;
                 $postData['parent_post_id'] = $parentId;
-                $postData['root_post_id'] = $this->messageId;
                 /** @var Post $post */
                 $post = Post::query()->updateOrCreate($postData);
                 $this->media[$messageId]['post_id'] = $post->id;
@@ -89,7 +106,36 @@ class PostToSocial implements ShouldQueue
             $socialClass = Forward::CONNECTIONS[$this->forward->to_connection];
             /** @var Social $social */
             $social = new $socialClass($this->forward->to_id);
-            $resultResponse = $social->post($this->textData, $this->media);
+
+            $reply = null;
+            $root = null;
+            $quote = null;
+            if (!empty($this->reply)) {
+                /** @var Post $replyPost */
+                $replyPost = $this->reply->forwards($this->forward->to_connection)->first();
+                if (!empty($replyPost)) {
+                    if ($this->forward->to_connection == 'bluesky') {
+                        $reply = json_decode($replyPost->post_id);
+                        $root = json_decode($replyPost->root_post_id);
+                    } else {
+                        $reply = $replyPost->post_id;
+                        $root = $replyPost->root_post_id;
+                    }
+                }
+            }
+            if (!empty($this->quote)) {
+                /** @var Post $quotePost */
+                $quotePost = $this->quote->forwards($this->forward->to_connection)->first();
+                if (!empty($quotePost)) {
+                    if ($this->forward->to_connection == 'bluesky') {
+                        $quote = json_decode($quotePost->post_id);
+                    } else {
+                        $quote = $quotePost->post_id;
+                    }
+                }
+            }
+
+            $resultResponse = $social->post($this->textData, $this->media, $reply, $root, $quote);
             Log::info($this->messageId . ': ' . json_encode($resultResponse, JSON_UNESCAPED_UNICODE));
         } catch (Exception $e) {
             Log::error($this->messageId . ': ' . $e->getMessage());

@@ -15,11 +15,16 @@ class Friendica extends Social
     /**
      * @inheritDoc
      */
-    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): ?object
-    {
+    public function post(
+        array $textData = [],
+        array $media = [],
+        mixed $reply = null,
+        mixed $root = null,
+        mixed $quote = null
+    ): ?object {
         $data = [
             'key' => config('friendica.key'),
-            'type' => empty($media[0]['url']) ? 'status' : 'photo',
+            'type' => empty($media) ? 'status' : 'photo',
             'msg' => $textData['text'] ?? '',
             'date' =>  Carbon::now()->toISOString(),
             'app' => 'Telegram',

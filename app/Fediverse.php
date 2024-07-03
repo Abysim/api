@@ -43,8 +43,13 @@ class Fediverse extends Social
      * @inheritDoc
      * @throws Exception
      */
-    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): mixed
-    {
+    public function post(
+        array $textData = [],
+        array $media = [],
+        mixed $reply = null,
+        mixed $root = null,
+        mixed $quote = null
+    ): mixed {
         $data = [];
         if (!empty($textData['text'])) {
             $data['status'] = $textData['text'];
@@ -66,6 +71,15 @@ class Fediverse extends Social
         if (!empty($mediaIds)) {
             $data['media_ids'] = $mediaIds;
         }
+
+        if (!empty($reply)) {
+            $data['in_reply_to_id'] = $reply;
+        }
+
+        if (!empty($quote)) {
+            $data['quote_id'] = $quote;
+        }
+
 
         $result = $this->request('v1/statuses', $data);
 

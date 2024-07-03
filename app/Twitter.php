@@ -50,8 +50,13 @@ class Twitter extends Social
      *
      * @return mixed
      */
-    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): mixed
-    {
+    public function post(
+        array $textData = [],
+        array $media = [],
+        mixed $reply = null,
+        mixed $root = null,
+        mixed $quote = null,
+    ): mixed {
         $text = $textData['text'] ?? '';
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
@@ -62,9 +67,12 @@ class Twitter extends Social
                 }
 
                 $textData['text'] = $post['text'];
-                $result = $this->post($textData, $post['media'], $reply, $root);
+                $result = $this->post($textData, $post['media'], $reply, $root, $quote);
                 if (empty($root) && !empty($result->data->id)) {
                     $root = $result->data->id;
+                }
+                if (!empty($quote)) {
+                    $quote = null;
                 }
                 $results[] = $result;
             }
@@ -104,6 +112,9 @@ class Twitter extends Social
         }
         if (!empty($reply)) {
             $params['reply'] = ['in_reply_to_tweet_id' => $reply];
+        }
+        if (!empty($quote)) {
+            $params['quote_tweet_id'] = $quote;
         }
 
         $result = $querier->post('tweets', $params);

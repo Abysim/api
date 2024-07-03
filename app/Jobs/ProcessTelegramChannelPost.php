@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Forward;
+use App\Models\Post;
 use App\MyCloudflareAI;
 use App\Social;
 use DeepL\Translator;
@@ -60,6 +61,11 @@ class ProcessTelegramChannelPost implements ShouldQueue
     {
         $channelPost = $this->channelPost;
         $messageId = $channelPost->getMessageId();
+        $replyToPost = $channelPost->getReplyToMessage();
+        if ($replyToPost) {
+            $replyToPostId = $replyToPost->getMessageId();
+        }
+
         $media = [];
 
         try {
@@ -171,16 +177,20 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
                 if ($isGroupHead) {
                     $text = '';
+                    ksort($mediaGroup);
+                    $first = true;
                     foreach ($mediaGroup as $id => $item) {
                         if (empty($text) && !empty($item['text'])) {
                             $text = $item['text'];
 
-                            if ($id == $messageId) {
+                            if ($first) {
                                 $mediaGroup[$id]['text'] = '';
                             }
 
                             break;
                         }
+
+                        $first = false;
                     }
 
                     $media = $mediaGroup;
@@ -229,10 +239,42 @@ class ProcessTelegramChannelPost implements ShouldQueue
 
             Log::info($messageId . ': ' . $text);
 
+            $reply = null;
+            $quote = null;
+            if (!empty($replyToPostId)) {
+                /** @var Post $replyPost */
+                $replyPost = Post::query()->where([
+                    'connection' => 'telegram',
+                    'connection_id' => $channelPost->getChat()->getId(),
+                    'post_id' => $replyToPostId,
+                ])->first();
+
+                if (!empty($replyPost)) {
+                    /** @var Post $lastPost */
+                    $lastPost = Post::query()->where([
+                        'connection' => 'telegram',
+                        'connection_id' => $channelPost->getChat()->getId(),
+                    ])->orderBy('post_id', 'DESC')->first();
+
+                    if ($lastPost->root_post_id == $replyPost->root_post_id) {
+                        $reply = $replyPost;
+                    } else {
+                        $quote = $replyPost;
+                    }
+                }
+            }
+
             foreach ($this->forwards as $forward) {
                 Log::info($messageId . ': ' . json_encode($forward->getAttributes()));
 
-                PostToSocial::dispatch($messageId, $forward, ['text' => $text ?? '', 'language' => $language], $media);
+                PostToSocial::dispatch(
+                    $messageId,
+                    $forward,
+                    ['text' => $text ?? '', 'language' => $language],
+                    $media,
+                    $reply,
+                    $quote,
+                );
             }
         } catch (Exception $e) {
             Log::error($messageId . ': ' . $e->getMessage());

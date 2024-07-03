@@ -23,10 +23,18 @@ abstract class Social
      * @param array $textData
      * @param array $media
      * @param mixed|null $reply
+     * @param mixed|null $root
+     * @param mixed|null $quote
      *
      * @return mixed
      */
-    abstract public function post(array $textData = [], array $media = [], mixed $reply = null): mixed;
+    abstract public function post(
+        array $textData = [],
+        array $media = [],
+        mixed $reply = null,
+        mixed $root = null,
+        mixed $quote = null
+    ): mixed;
 
     protected function getMaxTextLength(): int
     {
