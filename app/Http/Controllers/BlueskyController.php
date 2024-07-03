@@ -29,7 +29,7 @@ class BlueskyController extends Controller
 
         if ($connection) {
             $bluesky = new Bluesky($connection);
-            $response = $bluesky->post($request->text,  $request->image ? [['url' => $request->image]] : []);
+            $response = $bluesky->post(['text' => $request->text], $request->image ? [['url' => $request->image]] : []);
 
             Log::info('Response:' . json_encode($response));
 

@@ -6,6 +6,7 @@
 
 namespace App;
 
+use App\Models\PostForward;
 use Aws\Comprehend\ComprehendClient;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -19,13 +20,13 @@ abstract class Social
     const MAX_LINK_LENGTH = 256;
 
     /**
-     * @param string $text
+     * @param array $textData
      * @param array $media
      * @param mixed|null $reply
      *
      * @return mixed
      */
-    abstract public function post(string $text, array $media = [], mixed $reply = null): mixed;
+    abstract public function post(array $textData = [], array $media = [], mixed $reply = null): mixed;
 
     protected function getMaxTextLength(): int
     {
@@ -154,7 +155,7 @@ abstract class Social
             while (count($media) > $this->getMaxMediaCount()) {
                 $posts[$count] = [
                     'text' => $posts[$count]['text'] ?? '',
-                    'media' => array_splice($media, 0,  $this->getMaxMediaCount()),
+                    'media' => array_splice($media, 0, $this->getMaxMediaCount()),
                 ];
                 $count++;
             }
@@ -220,5 +221,32 @@ abstract class Social
         }
 
         return $lang;
+    }
+
+    /**
+     * @param int $toId
+     * @param int $fromId
+     * @param int[] $fromIds
+     *
+     * @return void
+     */
+    protected static function createPostForward(int $toId, int $fromId, array $fromIds): void
+    {
+        if (!empty($fromIds)) {
+            foreach ($fromIds as $item) {
+                if (empty($item)) {
+                    continue;
+                }
+                PostForward::query()->updateOrCreate([
+                    'from_id' => $item,
+                    'to_id' => $toId,
+                ]);
+            }
+        } elseif (!empty($fromId)) {
+            PostForward::query()->updateOrCreate([
+                'from_id' => $fromId,
+                'to_id' => $toId,
+            ]);
+        }
     }
 }

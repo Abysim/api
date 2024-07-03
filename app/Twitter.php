@@ -6,6 +6,8 @@
 
 namespace App;
 
+use App\Models\Post;
+use App\Models\PostForward;
 use App\Models\TwitterConnection;
 use Atymic\Twitter\ApiV1\Service\Twitter as TwitterV1;
 use Atymic\Twitter\Contract\Http\Client;
@@ -43,22 +45,27 @@ class Twitter extends Social
     }
 
     /**
-     * @param string $text
+     * @param array $text
      * @param array $media
      *
      * @return mixed
      */
-    public function post(string $text, array $media = [], mixed $reply = null): mixed
+    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): mixed
     {
+        $text = $textData['text'] ?? '';
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
             $results = [];
             foreach ($posts as $post) {
                 if (!empty($result->data->id)) {
-                    $reply = ['in_reply_to_tweet_id' => $result->data->id];
+                    $reply = $result->data->id;
                 }
 
-                $result = $this->post($post['text'], $post['media'], $reply);
+                $textData['text'] = $post['text'];
+                $result = $this->post($textData, $post['media'], $reply, $root);
+                if (empty($root) && !empty($result->data->id)) {
+                    $root = $result->data->id;
+                }
                 $results[] = $result;
             }
             return $results;
@@ -96,9 +103,23 @@ class Twitter extends Social
             $params['media'] = ['media_ids' => $mediaIds];
         }
         if (!empty($reply)) {
-            $params['reply'] = $reply;
+            $params['reply'] = ['in_reply_to_tweet_id' => $reply];
         }
 
-        return $querier->post('tweets', $params);
+        $result = $querier->post('tweets', $params);
+
+        if (!empty($result->data->id)) {
+            /** @var Post $post */
+            $post = Post::query()->updateOrCreate([
+                'connection' => 'twitter',
+                'connection_id' => $this->connection->id,
+                'post_id' => $result->data->id,
+                'parent_post_id' => $reply ?? $result->data->id,
+                'root_post_id' => $root ?? $result->data->id,
+            ]);
+            static::createPostForward($post->id, $textData['post_id'], array_column($media, 'post_id'));
+        }
+
+        return $result;
     }
 }

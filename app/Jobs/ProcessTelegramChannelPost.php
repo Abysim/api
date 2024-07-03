@@ -99,7 +99,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                         $file = Request::getFile(['file_id' => $photo->getFileId()]);
                         if ($file->isOk()) {
                             if (Request::downloadFile($file->getResult())) {
-                                $media[0] = [
+                                $media[$messageId] = [
                                     'url' => asset(Storage::url('telegram/' . $file->getResult()->getFilePath())),
                                     'path' => storage_path('app/public/telegram/' . $file->getResult()->getFilePath()),
                                 ];
@@ -123,8 +123,8 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 $mediaGroup = Cache::get($mediaGroupId);
                 $mediaGroup[$messageId] = [
                     'text' => $text,
-                    'url' => $media[0]['url'],
-                    'path' => $media[0]['path'],
+                    'url' => $media[$messageId]['url'],
+                    'path' => $media[$messageId]['path'],
                     'isHead' => $isGroupHead,
                 ];
                 Cache::put($mediaGroupId, $mediaGroup, 60);
@@ -139,8 +139,8 @@ class ProcessTelegramChannelPost implements ShouldQueue
                             if ($id == $messageId) {
                                 $mediaGroup[$messageId] = [
                                     'text' => $text,
-                                    'url' => $media[0]['url'],
-                                    'path' => $media[0]['path'],
+                                    'url' => $media[$messageId]['url'],
+                                    'path' => $media[$messageId]['path'],
                                     'isHead' => $isGroupHead,
                                 ];
                                 Cache::put($mediaGroupId, $mediaGroup, 60);
@@ -164,7 +164,9 @@ class ProcessTelegramChannelPost implements ShouldQueue
                         }
                     }
 
-                    break;
+                    if ($i > 0) {
+                        break;
+                    }
                 }
 
                 if ($isGroupHead) {
@@ -187,7 +189,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 }
             }
 
-            $language = Social::detectLanguage($text); // TODO: remove further detections of the language and pass this value
+            $language = Social::detectLanguage($text);
 
             foreach ($media as &$item) {
                 if (empty($item['text'])) {
@@ -230,7 +232,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
             foreach ($this->forwards as $forward) {
                 Log::info($messageId . ': ' . json_encode($forward->getAttributes()));
 
-                PostToSocial::dispatch( $messageId, $forward, $text ?? '', $media);
+                PostToSocial::dispatch($messageId, $forward, ['text' => $text ?? '', 'language' => $language], $media);
             }
         } catch (Exception $e) {
             Log::error($messageId . ': ' . $e->getMessage());

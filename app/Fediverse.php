@@ -7,6 +7,8 @@
 namespace App;
 
 use App\Models\FediverseConnection;
+use App\Models\Post;
+use App\Models\PostForward;
 use Exception;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -41,13 +43,12 @@ class Fediverse extends Social
      * @inheritDoc
      * @throws Exception
      */
-    public function post(string $text, array $media = [], mixed $reply = null, ?string $cat = null): mixed
+    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): mixed
     {
         $data = [];
-        if (!empty($text)) {
-            $data['status'] = $text;
-            $data['text'] = $text;
-            $data['language'] = static::detectLanguage($text);
+        if (!empty($textData['text'])) {
+            $data['status'] = $textData['text'];
+            $data['language'] = $textData['language'] ?? static::detectLanguage($textData['text']);
         }
 
         if (!empty($this->connection->cat)) {
@@ -59,14 +60,28 @@ class Fediverse extends Social
             $result = $this->request('v2/media', ['description' => $item['text'] ?? ''], $item['path']);
             Log::info('Image uploaded: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
 
-            $mediaIds[] = $result['id'];
+            $mediaIds[] = $result->id;
         }
 
         if (!empty($mediaIds)) {
             $data['media_ids'] = $mediaIds;
         }
 
-        return $this->request('v1/statuses', $data);
+        $result = $this->request('v1/statuses', $data);
+
+        if (!empty($result->id)) {
+            /** @var Post $post */
+            $post = Post::query()->updateOrCreate([
+                'connection' => 'fediverse',
+                'connection_id' => $this->connection->id,
+                'post_id' => $result->id,
+                'parent_post_id' => $reply ?? $result->id,
+                'root_post_id' => $root ?? $result->id,
+            ]);
+            static::createPostForward($post->id, $textData['post_id'], array_column($media, 'post_id'));
+        }
+
+        return $result;
     }
 
     /**
@@ -81,6 +96,6 @@ class Fediverse extends Social
             $request = $request->attach('file', File::get($file), File::basename($file));
         }
 
-        return $request->post($url, $args)->json();
+        return $request->post($url, $args)->object();
     }
 }

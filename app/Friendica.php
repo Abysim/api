@@ -15,12 +15,12 @@ class Friendica extends Social
     /**
      * @inheritDoc
      */
-    public function post(string $text, array $media = [], mixed $reply = null, ?string $cat = null): mixed
+    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): ?object
     {
         $data = [
             'key' => config('friendica.key'),
             'type' => empty($media[0]['url']) ? 'status' : 'photo',
-            'msg' => $text,
+            'msg' => $textData['text'] ?? '',
             'date' =>  Carbon::now()->toISOString(),
             'app' => 'Telegram',
         ];
@@ -48,6 +48,6 @@ class Friendica extends Social
             $count++;
         }
 
-        return Http::asForm()->post(config('friendica.url'), $data)->json();
+        return Http::asForm()->post(config('friendica.url'), $data)->object();
     }
 }

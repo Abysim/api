@@ -17,10 +17,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @mixin Builder
  *
  * @property int $id
- * @property string $fromConnection
- * @property int $fromId
- * @property string $toConnection
- * @property int $toId
+ * @property string $from_connection
+ * @property int $from_id
+ * @property string $to_connection
+ * @property int $to_id
  */
 class Forward extends Model
 {

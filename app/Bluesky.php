@@ -7,6 +7,8 @@
 namespace App;
 
 use App\Models\BlueskyConnection;
+use App\Models\Post;
+use App\Models\PostForward;
 use Aws\Comprehend\ComprehendClient;
 use DOMDocument;
 use DOMXPath;
@@ -389,15 +391,17 @@ class Bluesky extends Social
     }
 
     /**
-     * @param string $text
+     * @param array $textData
      * @param array $media
      * @param mixed|null $reply
      *
      * @return array|object|null
      * @throws Exception
      */
-    public function post(string $text, array $media = [], mixed $reply = null): array|null|object
+    public function post(array $textData = [], array $media = [], mixed $reply = null, mixed $root = null): array|null|object
     {
+        $text = $textData['text'];
+
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
             $text = Str::replaceFirst(' фільм', ' #фільм', $text);
         }
@@ -409,19 +413,16 @@ class Bluesky extends Social
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
             $results = [];
-            $rootResult = null;
             foreach ($posts as $post) {
                 if (!empty($result)) {
-                    $reply = [
-                        'root' => $rootResult,
-                        'parent' => $result,
-                    ];
+                    $reply = $result;
                 }
 
-                $result = $this->post($post['text'], $post['media'], $reply);
+                $textData['text'] = $post['text'];
+                $result = $this->post($textData, $post['media'], $reply, $root);
                 sleep(1);
-                if (empty($rootResult)) {
-                    $rootResult = $result;
+                if (empty($root)) {
+                    $root = $result;
                 }
                 $results[] = $result;
             }
@@ -431,7 +432,7 @@ class Bluesky extends Social
         Log::info('posting: ' . $text);
 
         $text = $text ?? '';
-        $lang = static::detectLanguage($text);
+        $lang = $textData['language'] ?? static::detectLanguage($text);
 
         $args = [
             'collection' => 'app.bsky.feed.post',
@@ -617,10 +618,27 @@ class Bluesky extends Social
         }
 
         if (!empty($reply)) {
-            $args['record']['reply'] = $reply;
+            $args['record']['reply'] =  [
+                'root' => $root,
+                'parent' => $reply,
+            ];
         }
 
-        return $this->request('POST', 'com.atproto.repo.createRecord', $args);
+        $result = $this->request('POST', 'com.atproto.repo.createRecord', $args);
+
+        if (!empty($result) && empty($result->error)) {
+            /** @var Post $post */
+            $post = Post::query()->updateOrCreate([
+                'connection' => 'bluesky',
+                'connection_id' => $this->connection->id,
+                'post_id' => json_encode($result),
+                'parent_post_id' => $reply ? json_encode($reply) : json_encode($result),
+                'root_post_id' => $root ? json_encode($root) : json_encode($result),
+            ]);
+            static::createPostForward($post->id, $textData['post_id'], array_column($media, 'post_id'));
+        }
+
+        return $result;
     }
 
     /**
