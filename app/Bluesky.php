@@ -461,7 +461,7 @@ class Bluesky extends Social
         foreach ($urls as $index => $url) {
             $newUrl = preg_replace("(^https?://)", "", $url['url']);
             if (strlen($newUrl) > $this->getMaxLinkLength()) {
-                $newUrl = substr($newUrl, 0, $this->getMaxLinkLength() - 3) . '...';
+                $newUrl = substr($newUrl, 0, $this->getMaxLinkLength() - 1) . '…';
             }
 
             if (strlen($newUrl) != strlen($url['url'])) {
@@ -644,34 +644,39 @@ class Bluesky extends Social
                     }
 
                     $newUrl = preg_replace("(^https?://)", "", $facet['features'][0]['uri']);
-                    $currentLinkVisibleLength = $args['record']['facets'][$index]['index']['byteEnd']
+                    $linkVisibleLengthBytes = $args['record']['facets'][$index]['index']['byteEnd']
                         - $args['record']['facets'][$index]['index']['byteStart'];
-                    $neededCharsForLink = strlen($newUrl) - $currentLinkVisibleLength;
+                    $linkVisibleLength = Str::length(substr(
+                        $args['record']['text'],
+                        $args['record']['facets'][$index]['index']['byteStart'],
+                        $linkVisibleLengthBytes
+                    ));
+                    $neededCharsForLink = Str::length($newUrl) - $linkVisibleLength;
 
                     if ($neededCharsForLink > 0) {
                         $addedChars = min($neededCharsForLink, $availableCharsPerLink);
 
-                        if (strlen($newUrl) > $currentLinkVisibleLength + $addedChars) {
-                            $newUrl = substr($newUrl, 0, $currentLinkVisibleLength + $addedChars - 3) . '...';
+                        if (Str::length($newUrl) > $linkVisibleLength + $addedChars) {
+                            $newUrl = substr($newUrl, 0, $linkVisibleLength + $addedChars - 1) . '…';
                         }
 
                         $args['record']['text'] = substr_replace(
                             $args['record']['text'],
                             $newUrl,
                             $args['record']['facets'][$index]['index']['byteStart'],
-                            $currentLinkVisibleLength
+                            $linkVisibleLengthBytes
                         );
-                        $addedLength = strlen($newUrl) - $currentLinkVisibleLength;
+                        $addedLength = strlen($newUrl) - $linkVisibleLengthBytes;
 
                         $args['record']['facets'][$index]['index']['byteEnd'] =
                             $args['record']['facets'][$index]['index']['byteEnd'] + $addedLength;
 
-                        foreach ($args['record']['facets'] as $j => $f) {
-                            if ($j <= $index) {
+                        foreach ($args['record']['facets'] as $i => $f) {
+                            if ($i <= $index) {
                                 continue;
                             }
-                            $args['record']['facets'][$j]['index']['byteStart'] += $addedLength;
-                            $args['record']['facets'][$j]['index']['byteEnd'] += $addedLength;
+                            $args['record']['facets'][$i]['index']['byteStart'] += $addedLength;
+                            $args['record']['facets'][$i]['index']['byteEnd'] += $addedLength;
                         }
                     }
                 }
