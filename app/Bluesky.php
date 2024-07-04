@@ -636,7 +636,6 @@ class Bluesky extends Social
             if ($availableCharsPerLink > 0) {
                 foreach ($args['record']['facets'] as $index => $facet) {
                     // at this step, only links should be present in facets, but let's be sure
-                    Log::info('$facetType: '. $facet['features'][0]['$type']);
                     if (
                         empty($facet['features'][0]['$type'])
                         || $facet['features'][0]['$type'] != 'app.bsky.richtext.facet#link'
@@ -651,7 +650,7 @@ class Bluesky extends Social
 
                     if ($neededCharsForLink > 0) {
                         $addedChars = min($neededCharsForLink, $availableCharsPerLink);
-                        Log::info('$addedChars: '. $addedChars);
+
                         if (strlen($newUrl) > $currentLinkVisibleLength + $addedChars) {
                             $newUrl = substr($newUrl, 0, $currentLinkVisibleLength + $addedChars - 3) . '...';
                         }
@@ -663,7 +662,6 @@ class Bluesky extends Social
                             $currentLinkVisibleLength
                         );
                         $addedLength = strlen($newUrl) - $currentLinkVisibleLength;
-                        Log::info('textAfterReplace: '. $args['record']['text']);
 
                         $args['record']['facets'][$index]['index']['byteEnd'] =
                             $args['record']['facets'][$index]['index']['byteEnd'] + $addedLength;
