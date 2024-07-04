@@ -668,9 +668,7 @@ class Bluesky extends Social
                         );
                         $addedLength = strlen($newUrl) - $linkVisibleLengthBytes;
 
-                        $args['record']['facets'][$index]['index']['byteEnd'] =
-                            $args['record']['facets'][$index]['index']['byteEnd'] + $addedLength;
-
+                        $args['record']['facets'][$index]['index']['byteEnd'] += $addedLength;
                         foreach ($args['record']['facets'] as $i => $f) {
                             if ($i <= $index) {
                                 continue;
