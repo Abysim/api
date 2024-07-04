@@ -627,6 +627,59 @@ class Bluesky extends Social
             }
         }
 
+         //make links longer when possible
+        if (!empty($args['record']['facets']) && Str::length($args['record']['text']) < $this->getMaxTextLength()) {
+            $linkCount = count($args['record']['facets']);
+            $availableChars = $this->getMaxTextLength() - Str::length($args['record']['text']);
+            $availableCharsPerLink = (int) ($availableChars / $linkCount);
+
+            if ($availableCharsPerLink > 0) {
+                foreach ($args['record']['facets'] as $index => $facet) {
+                    // at this step, only links should be present in facets, but let's be sure
+                    Log::info('$facetType: '. $facet['features'][0]['$type']);
+                    if (
+                        empty($facet['features'][0]['$type'])
+                        || $facet['features'][0]['$type'] != 'app.bsky.richtext.facet#link'
+                    ) {
+                        continue;
+                    }
+
+                    $newUrl = preg_replace("(^https?://)", "", $facet['features'][0]['uri']);
+                    $currentLinkVisibleLength = $args['record']['facets'][$index]['index']['byteEnd']
+                        - $args['record']['facets'][$index]['index']['byteStart'];
+                    $neededCharsForLink = strlen($newUrl) - $currentLinkVisibleLength;
+
+                    if ($neededCharsForLink > 0) {
+                        $addedChars = min($neededCharsForLink, $availableCharsPerLink);
+                        Log::info('$addedChars: '. $addedChars);
+                        if (strlen($newUrl) > $currentLinkVisibleLength + $addedChars) {
+                            $newUrl = substr($newUrl, 0, $currentLinkVisibleLength + $addedChars - 3) . '...';
+                        }
+
+                        $args['record']['text'] = substr_replace(
+                            $args['record']['text'],
+                            $newUrl,
+                            $args['record']['facets'][$index]['index']['byteStart'],
+                            $currentLinkVisibleLength
+                        );
+                        $addedLength = strlen($newUrl) - $currentLinkVisibleLength;
+                        Log::info('textAfterReplace: '. $args['record']['text']);
+
+                        $args['record']['facets'][$index]['index']['byteEnd'] =
+                            $args['record']['facets'][$index]['index']['byteEnd'] + $addedLength;
+
+                        foreach ($args['record']['facets'] as $j => $f) {
+                            if ($j <= $index) {
+                                continue;
+                            }
+                            $args['record']['facets'][$j]['index']['byteStart'] += $addedLength;
+                            $args['record']['facets'][$j]['index']['byteEnd'] += $addedLength;
+                        }
+                    }
+                }
+            }
+        }
+
         $tags = static::parseTags($args['record']['text']);
         $args = $this->addTags($args, $tags);
 
@@ -641,6 +694,7 @@ class Bluesky extends Social
             ];
         }
 
+        Log::info('text len: '. Str::length($args['record']['text']));
         $result = $this->request('POST', 'com.atproto.repo.createRecord', $args);
 
         if (!empty($result) && empty($result->error)) {
