@@ -405,7 +405,8 @@ class Bluesky extends Social
         if (!empty($quote) && !empty($media)) {
             $parts = explode('/', $quote->uri);
             $link = 'https://bsky.app/profile/' . $this->connection->handle . '/post/' . end($parts);
-            $text .= "\n" . $link;
+            $text = $link . "\n" . $text;
+            $optionalQuote = $quote;
             $quote = null;
         }
 
@@ -420,6 +421,24 @@ class Bluesky extends Social
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
             $results = [];
+
+            if (!empty($optionalQuote)) {
+                $firstPostParts = explode("\n",  $posts[0]['text']);
+                $link = array_shift($firstPostParts);
+
+                if (empty($posts[count($posts) - 1]['media'])) {
+                    $quote = $optionalQuote;
+                    for ($i = count($posts) - 1; $i > 0; $i--) {
+                        $posts[$i]['media'] = $posts[$i - 1]['media'];
+                    }
+                    $posts[0]['media'] = [];
+                } else {
+                    $firstPostParts[] = $link;
+                }
+
+                $posts[0]['text'] = implode("\n", $firstPostParts);
+            }
+
             foreach ($posts as $post) {
                 if (!empty($result)) {
                     $reply = $result;
@@ -437,6 +456,13 @@ class Bluesky extends Social
                 $results[] = $result;
             }
             return $results;
+        }
+
+        if (!empty($optionalQuote)) {
+            $firstPostParts = explode("\n",  $text);
+            $link = array_shift($firstPostParts);
+            $firstPostParts[] = $link;
+            $text = implode("\n", $firstPostParts);
         }
 
         Log::info('posting: ' . $text);
