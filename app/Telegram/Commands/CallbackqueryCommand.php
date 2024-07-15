@@ -6,6 +6,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Models\FlickrPhoto;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\ServerResponse;
@@ -95,7 +96,10 @@ class CallbackqueryCommand extends SystemCommand
                         ]);
                     }
                 } elseif ($action == 'flickr_original') {
-                    return $callbackQuery->answer(['text' => $model->title, 'show_alert' => true]);
+                    return $callbackQuery->answer([
+                        'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),
+                        'show_alert' => true,
+                    ]);
                 } else {
                     return $callbackQuery->answer(['text' => 'Unknown action!', 'show_alert' => true]);
                 }
