@@ -175,6 +175,14 @@ class FlickrPhotoController extends Controller
             $model->status = FlickrPhotoStatus::PUBLISHED;
             $model->published_at = now();
             $model->save();
+
+            if ($model->message_id) {
+                Request::editMessageReplyMarkup([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                    'reply_markup' => new InlineKeyboard([]),
+                ]);
+            }
         } else {
             Log::error($model->id . ': Flickr photo not published!');
         }
