@@ -6,7 +6,6 @@ namespace App\Telegram\Commands;
 
 use App\Jobs\ProcessTelegramChannelPost;
 use App\Models\Forward;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;

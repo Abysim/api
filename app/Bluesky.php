@@ -733,7 +733,7 @@ class Bluesky extends Social
                 'parent_post_id' => $reply ? json_encode($reply) : json_encode($result),
                 'root_post_id' => $root ? json_encode($root) : json_encode($result),
             ]);
-            static::createPostForward($post->id, $textData['post_id'], array_column($media, 'post_id'));
+            static::createPostForward($post->id, $textData['post_id'] ?? 0, array_column($media, 'post_id'));
         }
 
         return $result;

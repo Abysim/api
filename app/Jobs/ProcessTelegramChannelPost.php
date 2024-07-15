@@ -230,6 +230,9 @@ class ProcessTelegramChannelPost implements ShouldQueue
                             Log::error($messageId . ': image description fail: ' . $e->getMessage());
                         }
 
+                        unset($response);
+                        gc_collect_cycles();
+
                         if (!empty($item['text'])) {
                             break;
                         }

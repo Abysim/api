@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e13cab6ab48e37bf284a96c061a2e3da",
+    "content-hash": "201def23109054a775c08a8901dd4611",
     "packages": [
         {
             "name": "atymic/twitter",
@@ -1510,6 +1510,73 @@
                 }
             ],
             "time": "2023-12-03T19:50:20+00:00"
+        },
+        {
+            "name": "jeroen-g/flickr",
+            "version": "V2.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Jeroen-G/Flickr.git",
+                "reference": "1256bce9f30786cbef27e8e03623e7ee2a4683f7"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Jeroen-G/Flickr/zipball/1256bce9f30786cbef27e8e03623e7ee2a4683f7",
+                "reference": "1256bce9f30786cbef27e8e03623e7ee2a4683f7",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.0",
+                "php": "^7.4 || ^8.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^9.0",
+                "vlucas/phpdotenv": "^5.3"
+            },
+            "suggest": {
+                "illuminate/support": "This package provides a Laravel Service Provider"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "JeroenG\\Flickr\\FlickrServiceProvider"
+                    ],
+                    "aliases": {
+                        "Flickr": "JeroenG\\Flickr\\FlickrLaravelFacade"
+                    }
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "JeroenG\\Flickr\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "EUPL-1.1"
+            ],
+            "authors": [
+                {
+                    "name": "JeroenG",
+                    "email": "jeroengjeroeng@gmail.com",
+                    "homepage": "https://github.com/Jeroen-G"
+                }
+            ],
+            "description": "Modern PHP package to make Flickr API calls. Ships with Laravel implementation.",
+            "homepage": "https://github.com/Jeroen-G/Flickr",
+            "keywords": [
+                "JeroenG",
+                "api",
+                "flickr",
+                "laravel",
+                "php"
+            ],
+            "support": {
+                "issues": "https://github.com/Jeroen-G/Flickr/issues",
+                "source": "https://github.com/Jeroen-G/Flickr/tree/V2.2.0"
+            },
+            "time": "2021-05-11T13:29:17+00:00"
         },
         {
             "name": "kamermans/guzzle-oauth2-subscriber",
