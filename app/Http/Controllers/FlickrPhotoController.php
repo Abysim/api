@@ -106,11 +106,14 @@ class FlickrPhotoController extends Controller
         'scouts',
         'scout',
         'ubisoft',
+        'ai',
     ];
 
     private const LOAD_TIME = '16:00:00';
 
-    private const PUBLISH_INTERVAL_MINUTES = 1410;
+    private const PUBLISH_INTERVAL_MINUTES = 1404;
+
+    private const MAX_DAILY_PUBLISH_COUNT = 4;
 
     /**
      * @return void
@@ -138,9 +141,14 @@ class FlickrPhotoController extends Controller
     {
         /** @var FlickrPhoto $lastPublishedPhoto */
         $lastPublishedPhoto = FlickrPhoto::query()->latest('published_at')->first();
+
+        $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
+        $dailyPublishCount = min(self::MAX_DAILY_PUBLISH_COUNT, max($pendingPublishSize - 1, 1));
+        $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount);
+
         if (
             empty($lastPublishedPhoto->published_at)
-            || now()->subMinutes(self::PUBLISH_INTERVAL_MINUTES)->gt($lastPublishedPhoto->published_at)
+            || now()->subMinutes($publishInterval)->gt($lastPublishedPhoto->published_at)
         ) {
             Log::info('Publishing Flickr photos');
             /** @var FlickrPhoto $photoToPublish */
