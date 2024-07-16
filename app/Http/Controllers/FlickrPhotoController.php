@@ -75,6 +75,16 @@ class FlickrPhotoController extends Controller
         'pantheras' => '#пантера',
         'mountainlion' => '#пума',
         'mountainlions' => '#пума',
+        'leopardcub' => '#леопард',
+        'bigcats' => '',
+        'bigcat' => '',
+        'lioncub' => '#лев',
+        'tigercub' => '#тигр',
+        'jaguarcub' => '#ягуар',
+        'cheetahcub' => '#гепард',
+        'lynxcub' => '#рись',
+        'kingcheetah' => '#гепард #королівськийгепард',
+        'pumacub' => '#пума',
     ];
 
     private const EXCLUDED_TAGS = [
