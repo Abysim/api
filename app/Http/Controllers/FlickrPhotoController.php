@@ -222,10 +222,7 @@ class FlickrPhotoController extends Controller
                 if (in_array($tag, self::EXCLUDED_TAGS)) {
                     $model->status = FlickrPhotoStatus::REJECTED_BY_TAG;
                     $model->save();
-
-                    if (!empty($model->getFilePath())) {
-                        File::delete($model->getFilePath());
-                    }
+                    $model->deleteFile();
 
                     break;
                 }
@@ -434,9 +431,7 @@ class FlickrPhotoController extends Controller
             ]),
         ]);
 
-        if (!empty($model->getFilePath())) {
-            File::delete($model->getFilePath());
-        }
+        $model->deleteFile();
     }
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Casts\AsArrayObject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 
@@ -113,5 +114,20 @@ class FlickrPhoto extends Model
         }
 
         return asset(Storage::url('flickr/' . $this->filename));
+    }
+
+    /**
+     * @return void
+     */
+    public function deleteFile(): void
+    {
+        if (!empty($this->getFilePath())) {
+            if (File::isFile($this->getFilePath())) {
+                File::delete($this->getFilePath());
+            }
+
+            $this->filename = null;
+            $this->save();
+        }
     }
 }

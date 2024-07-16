@@ -75,8 +75,8 @@ class CallbackqueryCommand extends SystemCommand
                     $controller->publish();
                 } elseif ($action == 'flickr_decline') {
                     $model->status = FlickrPhotoStatus::REJECTED_MANUALLY;
-                    File::delete($model->getFilePath());
                     $model->save();
+                    $model->deleteFile();
 
                     if ($message) {
                         Request::deleteMessage([
