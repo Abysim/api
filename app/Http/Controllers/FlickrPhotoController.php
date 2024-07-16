@@ -493,6 +493,9 @@ class FlickrPhotoController extends Controller
         ) {
             unset($tags[$key]);
         }
+        if (($key = array_search('', $tags)) !== false) {
+            unset($tags[$key]);
+        }
 
         $model->publish_tags = implode(' ', $tags);
         $model->save();
