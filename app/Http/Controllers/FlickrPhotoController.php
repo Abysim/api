@@ -8,6 +8,7 @@ use App\MyCloudflareAI;
 use DeepL\Translator;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -134,14 +135,53 @@ class FlickrPhotoController extends Controller
         $this->publish();
 
         if (now()->format('H:i:s') >= self::LOAD_TIME) {
-                $models = $this->loadPhotos();
+            $models = $this->loadPhotos();
         }
 
         if (empty($models)) {
-            $models = FlickrPhoto::query()->where('status', FlickrPhotoStatus::CREATED);
+            $models = FlickrPhoto::query()->where('status', FlickrPhotoStatus::CREATED)->get();
         }
 
         $this->processCreatedPhotos($models);
+
+        $this->deletePhotoFiles();
+    }
+
+    /**
+     * @return void
+     */
+    public function deletePhotoFiles(): void
+    {
+        /** @var FlickrPhoto[] $models */
+        $models = FlickrPhoto::query()
+            ->where('status', FlickrPhotoStatus::PUBLISHED)
+            ->whereNotNull('filename')
+            ->where('published_at', '<', now()->subDays(2)->toDateTimeString())
+            ->get();
+
+        foreach ($models as $model) {
+            $model->deleteFile();
+
+            if ($model->message_id) {
+                Request::deleteMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                ]);
+            }
+        }
+
+        $models = FlickrPhoto::query()
+            ->whereIn('status', [
+                FlickrPhotoStatus::REJECTED_BY_TAG,
+                FlickrPhotoStatus::REJECTED_BY_CLASSIFICATION,
+                FlickrPhotoStatus::REJECTED_MANUALLY,
+            ])
+            ->whereNotNull('filename')
+            ->get();
+
+        foreach ($models as $model) {
+            $model->deleteFile();
+        }
     }
 
     /**
@@ -211,7 +251,7 @@ class FlickrPhotoController extends Controller
      *
      * @return void
      */
-    private function processCreatedPhotos(array|Builder $models): void
+    private function processCreatedPhotos(array|Collection $models): void
     {
         foreach ($models as $model) {
             if (empty($model->tags)) {

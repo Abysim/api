@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 
@@ -123,6 +124,7 @@ class FlickrPhoto extends Model
     {
         if (!empty($this->getFilePath())) {
             if (File::isFile($this->getFilePath())) {
+                Log::info($this->id . ': Deleting file: ' . $this->filename);
                 File::delete($this->getFilePath());
             }
 
