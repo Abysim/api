@@ -38,11 +38,14 @@ class GenericmessageCommand extends SystemCommand
             return Request::emptyResponse();
         }
 
-        [$botHandle, $action, $id, $value] = explode(' ', $text, 4);
+        [$botHandle, $action, $id, $value] = array_pad(explode(' ', $text, 4), 4, null);
         if (trim($botHandle, '@') != $this->telegram->getBotUsername()) {
             return Request::emptyResponse();
         }
 
+        if (empty($id)) {
+            return Request::emptyResponse();
+        }
         /** @var FlickrPhoto $model */
         $model = FlickrPhoto::query()->find($id);
         if (empty($model)) {
