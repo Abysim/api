@@ -31,12 +31,13 @@ class GenericmessageCommand extends SystemCommand
      */
     public function execute(): ServerResponse
     {
-        if (!$this->telegram->isAdmin()) {
+        $message = $this->getMessage();
+        $text = $message->getText(true);
+
+        if (!empty($message) || empty($text) || !$this->telegram->isAdmin()) {
             return Request::emptyResponse();
         }
 
-        $message = $this->getMessage();
-        $text = $message->getText(true);
         [$botHandle, $action, $id, $value] = explode(' ', $text, 4);
         if (trim($botHandle, '@') != $this->telegram->getBotUsername()) {
             return Request::emptyResponse();
