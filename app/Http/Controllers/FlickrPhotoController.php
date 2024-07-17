@@ -163,9 +163,10 @@ class FlickrPhotoController extends Controller
             $model->deleteFile();
 
             if ($model->message_id) {
-                Request::deleteMessage([
+                Request::editMessageCaption([
                     'chat_id' => explode(',', config('telegram.admins'))[0],
                     'message_id' => $model->message_id,
+                    'caption' => '',
                 ]);
             }
         }
@@ -247,7 +248,7 @@ class FlickrPhotoController extends Controller
     }
 
     /**
-     * @param FlickrPhoto[] $models
+     * @param FlickrPhoto[]|Builder[]|Collection $models
      *
      * @return void
      */
@@ -432,14 +433,14 @@ class FlickrPhotoController extends Controller
                     'image' => array_values(unpack('C*', File::get($model->getFilePath()))),
                 ],  'microsoft/resnet-50');
 
-                Log::info('Image classification: ' . json_encode($classificationResponse));
+                Log::info($model->id . ': Classification result: ' . json_encode($classificationResponse));
 
                 if (!empty($classificationResponse['result'])) {
                     $model->classification = $classificationResponse['result'];
                     $model->save();
                 }
             } catch (Exception $e) {
-                Log::error('Image classification fail: ' . $e->getMessage());
+                Log::error($model->id . ': Image classification fail: ' . $e->getMessage());
             }
 
             // Http requests to CloudflareAI remain in memory, so we need to trigger GC manually
@@ -466,9 +467,7 @@ class FlickrPhotoController extends Controller
             'chat_id' => explode(',', config('telegram.admins'))[0],
             'caption' => implode(' ', $model->tags),
             'photo' => $model->getFileUrl(),
-            'reply_markup' => new InlineKeyboard([
-                ['text' => '❌Delete', 'callback_data' => 'delete'],
-            ]),
+            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
         ]);
 
         $model->deleteFile();
@@ -489,7 +488,7 @@ class FlickrPhotoController extends Controller
             );
             $model->save();
         } catch (Exception $e) {
-            Log::error('Translation of ' . $model->title .  ' failed: ' . $e->getMessage());
+            Log::error($model->id . ': Translation of ' . $model->title .  ' failed: ' . $e->getMessage());
         }
     }
 
