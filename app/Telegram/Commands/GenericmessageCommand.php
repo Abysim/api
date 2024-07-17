@@ -34,7 +34,7 @@ class GenericmessageCommand extends SystemCommand
         $message = $this->getMessage();
         $text = $message->getText(true);
 
-        if (!empty($message) || empty($text) || !$this->telegram->isAdmin()) {
+        if (empty($message->getFrom()) || empty($text) || !$this->telegram->isAdmin()) {
             return Request::emptyResponse();
         }
 
