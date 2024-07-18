@@ -118,6 +118,7 @@ class FlickrPhotoController extends Controller
         'scout',
         'ubisoft',
         'ai',
+        'sculpture',
     ];
 
     private const LOAD_TIME = '16:00:00';
