@@ -488,7 +488,6 @@ class FlickrPhotoController extends Controller
             ]);
 
             $models[] = $model;
-            Log::info($model->id . ': Loaded photo data: ' . json_encode($photo));
         }
 
         return $models;
@@ -546,7 +545,7 @@ class FlickrPhotoController extends Controller
                     $source = $size['source'];
                 }
 
-                if ($size['width'] < 1000 && $size['height'] < 1000 && empty($classification)) {
+                if ($size['width'] < 500 && $size['height'] < 500 && empty($classification)) {
                     $classification = $size['source'];
 
                     break;
