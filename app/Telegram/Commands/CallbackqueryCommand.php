@@ -57,51 +57,59 @@ class CallbackqueryCommand extends SystemCommand
             $model = FlickrPhoto::query()->find($id);
 
             if ($model) {
-                if ($action == 'flickr_approve') {
-                    $model->status = FlickrPhotoStatus::APPROVED;
-                    $model->save();
+                switch ($action) {
+                    case 'flickr_approve':
+                        $model->status = FlickrPhotoStatus::APPROVED;
+                        $model->save();
 
-                    if ($message) {
-                        Request::editMessageReplyMarkup([
-                            'chat_id' => $message->getChat()->getId(),
-                            'message_id' => $message->getMessageId(),
-                            'reply_markup' => new InlineKeyboard([
-                                ['text' => '❌Cancel Approval', 'callback_data' => 'flickr_cancel ' . $model->id],
-                            ]),
+                        if ($message) {
+                            Request::editMessageReplyMarkup([
+                                'chat_id' => $message->getChat()->getId(),
+                                'message_id' => $message->getMessageId(),
+                                'reply_markup' => new InlineKeyboard([
+                                    ['text' => '❌Cancel Approval', 'callback_data' => 'flickr_cancel ' . $model->id],
+                                ]),
+                            ]);
+                        }
+
+                        $controller = new FlickrPhotoController();
+                        $controller->publish();
+
+                        break;
+                    case 'flickr_decline':
+                        $model->status = FlickrPhotoStatus::REJECTED_MANUALLY;
+                        $model->save();
+                    case 'flickr_delete':
+                        $model->deleteFile();
+
+                        if ($message) {
+                            Request::deleteMessage([
+                                'chat_id' => $message->getChat()->getId(),
+                                'message_id' => $message->getMessageId(),
+                            ]);
+                        }
+
+                        break;
+                    case 'flickr_cancel':
+                        $model->status = FlickrPhotoStatus::PENDING_REVIEW;
+                        $model->save();
+
+                        if ($message) {
+                            Request::editMessageReplyMarkup([
+                                'chat_id' => $message->getChat()->getId(),
+                                'message_id' => $message->getMessageId(),
+                                'reply_markup' => $model->getInlineKeyboard(),
+                            ]);
+                        }
+
+                        break;
+                    case 'flickr_original':
+                        return $callbackQuery->answer([
+                            'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),
+                            'show_alert' => true,
                         ]);
-                    }
-
-                    $controller = new FlickrPhotoController();
-                    $controller->publish();
-                } elseif ($action == 'flickr_decline') {
-                    $model->status = FlickrPhotoStatus::REJECTED_MANUALLY;
-                    $model->save();
-                    $model->deleteFile();
-
-                    if ($message) {
-                        Request::deleteMessage([
-                            'chat_id' => $message->getChat()->getId(),
-                            'message_id' => $message->getMessageId(),
-                        ]);
-                    }
-                } elseif ($action == 'flickr_cancel') {
-                    $model->status = FlickrPhotoStatus::PENDING_REVIEW;
-                    $model->save();
-
-                    if ($message) {
-                        Request::editMessageReplyMarkup([
-                            'chat_id' => $message->getChat()->getId(),
-                            'message_id' => $message->getMessageId(),
-                            'reply_markup' => $model->getInlineKeyboard(),
-                        ]);
-                    }
-                } elseif ($action == 'flickr_original') {
-                    return $callbackQuery->answer([
-                        'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),
-                        'show_alert' => true,
-                    ]);
-                } else {
-                    return $callbackQuery->answer(['text' => 'Unknown action!', 'show_alert' => true]);
+                    default:
+                        return $callbackQuery->answer(['text' => 'Unknown action!', 'show_alert' => true]);
                 }
             } else {
                 return $callbackQuery->answer(['text' => 'Photo not found!', 'show_alert' => true]);

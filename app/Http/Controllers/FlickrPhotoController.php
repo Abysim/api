@@ -119,6 +119,7 @@ class FlickrPhotoController extends Controller
         'ubisoft',
         'ai',
         'sculpture',
+        'tigerlily',
     ];
 
     private const LOAD_TIME = '16:00:00';
@@ -271,7 +272,11 @@ class FlickrPhotoController extends Controller
             }
 
             $model->refresh();
-            if (empty($model->status) || $model->status == FlickrPhotoStatus::CREATED) {
+            if (
+                empty($model->status)
+                || $model->status == FlickrPhotoStatus::CREATED
+                || $model->status == FlickrPhotoStatus::PENDING_REVIEW
+            ) {
                 if (empty($model->filename)) {
                     $this->loadPhotoFile($model);
                 }
@@ -292,7 +297,7 @@ class FlickrPhotoController extends Controller
                         }
                     }
 
-                    if ($rejected) {
+                    if ($rejected && $model->status != FlickrPhotoStatus::PENDING_REVIEW) {
                         $this->rejectPhotoByClassification($model);
                     } else {
                         if (empty($model->publish_title)) {
@@ -305,7 +310,11 @@ class FlickrPhotoController extends Controller
                     }
 
                     $model->refresh();
-                    if (empty($model->status) || $model->status == FlickrPhotoStatus::CREATED) {
+                    if (
+                        empty($model->status)
+                        || $model->status == FlickrPhotoStatus::CREATED
+                        || $model->status == FlickrPhotoStatus::PENDING_REVIEW && empty($model->message_id)
+                    ) {
                         $this->sendPhotoToReview($model);
                     }
                 }
@@ -466,12 +475,13 @@ class FlickrPhotoController extends Controller
 
         Request::sendPhoto([
             'chat_id' => explode(',', config('telegram.admins'))[0],
-            'caption' => implode(' ', $model->tags),
+            'caption' => $model->title . "\n" . implode(' ', $model->tags),
             'photo' => $model->getFileUrl(),
-            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            'reply_markup' => new InlineKeyboard([
+                ['text' => '✅Review', 'callback_data' => 'flickr_cancel ' . $model->id],
+                ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id]
+            ]),
         ]);
-
-        $model->deleteFile();
     }
 
     /**
