@@ -103,6 +103,14 @@ class CallbackqueryCommand extends SystemCommand
                         }
 
                         break;
+                    case 'flickr_review':
+                        $model->status = FlickrPhotoStatus::PENDING_REVIEW;
+                        $model->save();
+
+                        $controller = new FlickrPhotoController();
+                        $controller->processCreatedPhotos([$model]);
+
+                        break;
                     case 'flickr_original':
                         return $callbackQuery->answer([
                             'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),

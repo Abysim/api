@@ -254,7 +254,7 @@ class FlickrPhotoController extends Controller
      *
      * @return void
      */
-    private function processCreatedPhotos(array|Collection $models): void
+    public function processCreatedPhotos(array|Collection $models): void
     {
         foreach ($models as $model) {
             if (empty($model->tags)) {
@@ -478,7 +478,7 @@ class FlickrPhotoController extends Controller
             'caption' => $model->title . "\n" . implode(' ', $model->tags),
             'photo' => $model->getFileUrl(),
             'reply_markup' => new InlineKeyboard([
-                ['text' => '✅Review', 'callback_data' => 'flickr_cancel ' . $model->id],
+                ['text' => '✅Review', 'callback_data' => 'flickr_review ' . $model->id],
                 ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id]
             ]),
         ]);
