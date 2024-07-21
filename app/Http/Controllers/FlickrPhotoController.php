@@ -7,8 +7,6 @@ use App\Models\FlickrPhoto;
 use App\MyCloudflareAI;
 use DeepL\Translator;
 use Exception;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -26,20 +24,14 @@ use Longman\TelegramBot\Request;
  */
 class FlickrPhotoController extends Controller
 {
+    private const TEXT_TAGS_COUNT = 12;
+
     private const TAGS = [
         'lion' => '#лев',
-        'lioness' => '#лев',
-        'whitelion' => '#лев #білийлев',
         'tiger' => '#тигр',
-        'tigress' => '#тигр',
-        'whitetiger' => '#тигр #білийтигр',
         'panther' => '#пантера',
-        'snowleopard' => '#ірбіс',
-        'blackleopard' => '#пантера #леопард',
         'leopard' => '#леопард',
-        'leopardess' => '#леопард',
         'jaguar' => '#ягуар',
-        'blackjaguar' => '#пантера #ягуар',
         'cheetah' => '#гепард',
         'ocelot' => '#оцелот',
         'lynx' => '#рись',
@@ -47,6 +39,14 @@ class FlickrPhotoController extends Controller
         'cougar' => '#пума',
         'caracal' => '#каракал',
         'serval' => '#сервал',
+        'lioness' => '#лев',
+        'whitelion' => '#лев #білийлев',
+        'tigress' => '#тигр',
+        'whitetiger' => '#тигр #білийтигр',
+        'snowleopard' => '#ірбіс',
+        'blackleopard' => '#пантера #леопард',
+        'leopardess' => '#леопард',
+        'blackjaguar' => '#пантера #ягуар',
 
         'snep' => '#ірбіс',
         'schneeleopard' => '#ірбіс',
@@ -88,22 +88,22 @@ class FlickrPhotoController extends Controller
         'lynxcub' => '#рись',
         'kingcheetah' => '#гепард #королівськийгепард',
         'pumacub' => '#пума',
+        'cloudedleopard' => '#димчастапантера',
     ];
 
     private const EXCLUDED_TAGS = [
-        'car',
-        'art',
+        'cars',
+        'artwork',
+        'arts',
         'auto',
         'train',
         'corporation',
         'coach',
         'mural',
         'publicart',
-        'transformers',
-        'cars',
+        'transformer',
         'vehicle',
-        'pawprints',
-        'pawprint',
+        'print',
         'fursuit',
         'disneyland',
         'bird',
@@ -116,15 +116,74 @@ class FlickrPhotoController extends Controller
         'sculture',
         'monkey',
         'slug',
-        'scouts',
         'scout',
         'ubisoft',
-        'ai',
+        'artificial',
         'sculpture',
         'tigerlily',
+        'bus',
+        'coin',
+        'painting',
+        'textile',
+        'fly',
+        'drawing',
+        'sea',
+        'football',
+        'boeing',
+        'plane',
+        'turtle',
+        'flies',
+        'robocup',
+        'bee',
+        'moth',
+        'braves',
+        'reed',
+        'frog',
+        'tortoise',
+        'orchid',
+        'shrimp',
+        'basketball',
+        'engine',
+        'referee',
+        'mk4',
+        'thunderbird',
+        'island',
+        'arlington',
+        'spreadwing',
+        'grouper',
+        'ferrari',
+        'submarine',
+        'aircraft',
+        'spider',
+        'rot',
+        'helicopter',
+        'chopper',
+        'milf',
+        'airline',
+        'woman',
+        'mercury',
+        'defcon',
+        'secondlife',
+        'whiptail',
+        'septentrional',
+        'flower',
+        'library',
+        'championship',
+        'faux',
+        'religion',
+        'scan',
+        'sports',
+        'universitario',
+        'ucuenca',
+        'symbol',
+        'campeonato',
+        'stone',
+        'hotel',
+        'leyland',
+        'greatcouncilstatepark',
     ];
 
-    private const LOAD_TIME = '16:00:00';
+    private const LOAD_TIME = '15:00:00';
 
     private const PUBLISH_INTERVAL_MINUTES = 1404;
 
@@ -138,15 +197,21 @@ class FlickrPhotoController extends Controller
         Log::info('Processing Flickr photos');
         $this->publish();
 
+        $models = [];
         if (now()->format('H:i:s') >= self::LOAD_TIME) {
-            $models = $this->loadPhotos();
+            $queueSize = FlickrPhoto::query()->whereIn('status', [
+                FlickrPhotoStatus::APPROVED,
+                FlickrPhotoStatus::PENDING_REVIEW,
+            ])->count();
+
+            $models = $this->loadPhotos($queueSize <= self::MAX_DAILY_PUBLISH_COUNT);
         }
 
-        if (empty($models)) {
-            $models = FlickrPhoto::query()->whereIn('status', [
-                FlickrPhotoStatus::CREATED,
-                FlickrPhotoStatus::PENDING_REVIEW,
-            ])->get();
+        foreach (FlickrPhoto::query()->whereIn('status', [
+            FlickrPhotoStatus::CREATED,
+            FlickrPhotoStatus::PENDING_REVIEW,
+        ])->get() as $model) {
+            $models[] = $model;
         }
 
         $this->processCreatedPhotos($models);
@@ -157,7 +222,7 @@ class FlickrPhotoController extends Controller
     /**
      * @return void
      */
-    public function deletePhotoFiles(): void
+    private function deletePhotoFiles(): void
     {
         /** @var FlickrPhoto[] $models */
         $models = FlickrPhoto::query()
@@ -195,7 +260,7 @@ class FlickrPhotoController extends Controller
     /**
      * @return void
      */
-    public function publish(): void
+    private function publish(): void
     {
         /** @var FlickrPhoto $lastPublishedPhoto */
         $lastPublishedPhoto = FlickrPhoto::query()->latest('published_at')->first();
@@ -255,32 +320,19 @@ class FlickrPhotoController extends Controller
     }
 
     /**
-     * @param FlickrPhoto[]|Builder[]|Collection $models
+     * @param FlickrPhoto[] $models
      *
      * @return void
      */
-    public function processCreatedPhotos(array|Collection $models): void
+    private function processCreatedPhotos(array $models): void
     {
         foreach ($models as $model) {
-            if (empty($model->tags)) {
-                $this->loadPhotoTags($model);
+            if (empty($model->url)) {
+                $this->loadPhotoInfo($model);
             }
 
-            foreach ($model->tags as $tag) {
-                if (in_array($tag, self::EXCLUDED_TAGS)) {
-                    $model->status = FlickrPhotoStatus::REJECTED_BY_TAG;
-                    $model->save();
-                    $model->deleteFile();
-
-                    if ($model->message_id) {
-                        Request::deleteMessage([
-                            'chat_id' => explode(',', config('telegram.admins'))[0],
-                            'message_id' => $model->message_id,
-                        ]);
-                    }
-
-                    break;
-                }
+            if (empty($model->status) || $model->status == FlickrPhotoStatus::CREATED) {
+                $this->excludeByTags($model);
             }
 
             $model->refresh();
@@ -289,11 +341,14 @@ class FlickrPhotoController extends Controller
                 || $model->status == FlickrPhotoStatus::CREATED
                 || $model->status == FlickrPhotoStatus::PENDING_REVIEW
             ) {
-                if (empty($model->filename)) {
+                if (empty($model->filename) || empty($model->classification)) {
                     $this->loadPhotoFile($model);
                 }
 
-                if (empty($model->classification) && !empty($model->filename)) {
+                if (
+                    (empty($model->classification) || !empty($model->classification['filename']))
+                    && !empty($model->filename)
+                ) {
                     $this->classifyPhoto($model);
                 }
 
@@ -335,27 +390,87 @@ class FlickrPhotoController extends Controller
     }
 
     /**
+     * @param FlickrPhoto $model
+     *
+     * @return void
+     */
+    private function excludeByTags(FlickrPhoto $model): void
+    {
+        if (!empty($model->tags)) {
+            foreach ($model->tags as $tag) {
+                foreach (self::EXCLUDED_TAGS as $excludedTag) {
+                    if (Str::contains($tag, $excludedTag, true)) {
+                        Log::info($model->id . ': Rejected by tag! ' . $excludedTag);
+                        $this->rejectByTag($model);
+
+                        break;
+                    }
+                }
+            }
+        } else {
+           foreach (self::EXCLUDED_TAGS as $excludedTag) {
+               if (
+                   Str::contains($model->title, $excludedTag, true)
+                   || Str::contains($model->description, $excludedTag, true)
+               ) {
+                   Log::info($model->id . ': Rejected by title ot description! ' . $excludedTag);
+                   $this->rejectByTag($model);
+
+                   break;
+               }
+           }
+        }
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return void
+     */
+    private function rejectByTag(FlickrPhoto $model): void
+    {
+        $model->status = FlickrPhotoStatus::REJECTED_BY_TAG;
+        $model->save();
+        $model->deleteFile();
+
+        if ($model->message_id) {
+            Request::deleteMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'message_id' => $model->message_id,
+            ]);
+        }
+    }
+
+    /**
      * @return FlickrPhoto[]
      */
-    private function loadPhotos(): array
+    private function loadPhotos(bool $byText = false): array
     {
-        Log::info('Loading today Flick photos');
+        Log::info('Loading today Flick photos, byText: ' . json_encode($byText));
         $photos = [];
-        for ($i = 0; $i < 8; $i++) {
-            // Flickr limits search request by 20 tags
-            $tags = array_keys(array_slice(self::TAGS, $i * 20, 20));
-            if (empty($tags)) {
-                break;
-            }
-
-            $response = FlickrLaravelFacade::request('flickr.photos.search', [
-                'tags' => implode(',', $tags),
+        for ($i = 0; $i < self::TEXT_TAGS_COUNT; $i++) {
+            $searchData = [
                 'min_upload_date' => now()->subDays(2)->timestamp,
                 'sort' => 'interestingness-desc',
                 'content_types' => '0',
                 'license' => '1,2,3,4,5,6,7,9,10',
                 'per_page' => 500,
-            ]);
+            ];
+
+            if ($byText) {
+                $searchData['text'] = key(array_slice(self::TAGS, $i, 1));
+                $searchData['min_upload_date'] = now()->subDays(8)->timestamp;
+            } else {
+                // Flickr limits search request by 20 tags
+                $tags = array_keys(array_slice(self::TAGS, $i * 20, 20));
+                if (empty($tags)) {
+                    break;
+                }
+
+                $searchData['tags'] = implode(',', $tags);
+            }
+
+            $response = FlickrLaravelFacade::request('flickr.photos.search', $searchData);
 
             if ($response->getStatus() == 'ok') {
                 $photos = array_merge($photos, array_column($response->photos['photo'], null, 'id'));
@@ -384,7 +499,7 @@ class FlickrPhotoController extends Controller
      *
      * @return void
      */
-    private function loadPhotoTags(FlickrPhoto $model): void
+    private function loadPhotoInfo(FlickrPhoto $model): void
     {
         $infoResponse = FlickrLaravelFacade::request('flickr.photos.getInfo', [
             'photo_id' => $model->id,
@@ -416,6 +531,9 @@ class FlickrPhotoController extends Controller
      */
     private function loadPhotoFile(FlickrPhoto $model): void
     {
+        $source = null;
+        $classification = null;
+
         $sizesResponse = FlickrLaravelFacade::request('flickr.photos.getSizes', [
             'photo_id' => $model->id,
         ]);
@@ -424,25 +542,43 @@ class FlickrPhotoController extends Controller
             for ($i = count($sizesResponse->sizes['size']) - 1; $i >= 0; $i--) {
                 $size = $sizesResponse->sizes['size'][$i];
 
-                if ($size['width'] < 1800 && $size['height'] < 1800) {
+                if ($size['width'] < 2000 && $size['height'] < 2000 && empty($source)) {
                     $source = $size['source'];
+                }
+
+                if ($size['width'] < 1000 && $size['height'] < 1000 && empty($classification)) {
+                    $classification = $size['source'];
 
                     break;
                 }
             }
 
-            if (!empty($source)) {
-                $sourceParts = explode('/', $source);
-                $fileName = end($sourceParts);
-                $path = Storage::putFileAs('public/flickr', $source, $fileName);
-                if ($path) {
-                    $model->filename = $fileName;
-                    $model->save();
-                }
-            }
+
+            $model->filename = $this->processFileSouce($source);
+            $model->classification = ['filename' => $this->processFileSouce($classification)];
+            $model->save();
 
             Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));
         }
+    }
+
+    /**
+     * @param $source
+     *
+     * @return false|string|null
+     */
+    private function processFileSouce($source)
+    {
+        if (!empty($source)) {
+            $sourceParts = explode('/', $source);
+            $fileName = end($sourceParts);
+            $path = Storage::putFileAs('public/flickr', $source, $fileName);
+            if ($path) {
+                return $fileName;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -452,11 +588,20 @@ class FlickrPhotoController extends Controller
      */
     private function classifyPhoto(FlickrPhoto $model): void
     {
+        if (empty($model->classification['filename'])) {
+            $image = array_values(unpack('C*', File::get($model->getFilePath())));
+        } else {
+            $filepath = storage_path('app/public/flickr/' . $model->classification['filename']);
+            $image = array_values(unpack('C*', File::get($filepath)));
+            $model->classification = [];
+            File::delete($filepath);
+        }
+
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info($model->id . ': Classification: ' . $model->url);
                 $classificationResponse = MyCloudflareAI::runModel([
-                    'image' => array_values(unpack('C*', File::get($model->getFilePath()))),
+                    'image' => $image,
                 ],  'microsoft/resnet-50');
 
                 Log::info($model->id . ': Classification result: ' . json_encode($classificationResponse));
@@ -501,16 +646,26 @@ class FlickrPhotoController extends Controller
     }
 
     /**
-     * @param $model
+     * @param FlickrPhoto $model
      *
      * @return void
      */
-    private function preparePublishTitle($model): void
+    private function preparePublishTitle(FlickrPhoto $model): void
     {
+        $title = $model->title;
+        if (
+            empty($title)
+            || Str::wordCount($title) == 1 && (
+                Str::contains($title, ['img', 'dsc', '_mg', 'dji', 'photo'], true) || Str::charAt($title,0) == 'P'
+            )
+        ) {
+            $title = $model->description;
+        }
+
         try {
             $translator = new Translator(config('deepl.key'));
             $model->publish_title = trim(
-                (string)$translator->translateText($model->title, null, 'uk'),
+                (string)$translator->translateText($title, null, 'uk'),
                 ".\n\r\t\v\0"
             );
             $model->save();
@@ -530,6 +685,23 @@ class FlickrPhotoController extends Controller
         foreach ($model->tags as $tag) {
             if (isset(self::TAGS[$tag])) {
                 $tags[] = self::TAGS[$tag];
+            }
+        }
+        if (empty($model->tags)) {
+            $i = 0;
+            foreach (self::TAGS as $tag => $tagValue) {
+                if ($i == self::TEXT_TAGS_COUNT) {
+                    break;
+                }
+
+                if (
+                    Str::contains($model->title, $tag, true)
+                    || Str::contains($model->description, $tag, true)
+                ) {
+                    $tags[] = $tagValue;
+                }
+
+                $i++;
             }
         }
         foreach ($model->classification as $classification) {
@@ -663,12 +835,13 @@ class FlickrPhotoController extends Controller
     {
         $model->status = FlickrPhotoStatus::PENDING_REVIEW;
         $model->save();
-        $this->processCreatedPhotos([$model]);
 
         Request::deleteMessage([
             'chat_id' => $message->getChat()->getId(),
             'message_id' => $message->getMessageId(),
         ]);
+
+        $this->processCreatedPhotos([$model]);
     }
 
     /**
@@ -679,7 +852,11 @@ class FlickrPhotoController extends Controller
     public function original(FlickrPhoto $model): array
     {
         return [
-            'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),
+            'text' => Str::substr(
+                $model->title . "\n" . implode(' ', $model->tags) . "\n" . $model->description,
+                0,
+                200
+            ),
             'show_alert' => true,
         ];
     }

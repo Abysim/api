@@ -102,7 +102,7 @@ class FlickrPhoto extends Model
             return null;
         }
 
-        return  storage_path('app/public/flickr/' . $this->filename);
+        return storage_path('app/public/flickr/' . $this->filename);
     }
 
     /**
