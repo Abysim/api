@@ -397,9 +397,14 @@ class FlickrPhotoController extends Controller
     private function excludeByTags(FlickrPhoto $model): void
     {
         if (!empty($model->tags)) {
+            $hasTag = !empty(array_intersect_key(self::TAGS, array_flip($model->tags)));
+
             foreach ($model->tags as $tag) {
                 foreach (self::EXCLUDED_TAGS as $excludedTag) {
-                    if (Str::contains($tag, $excludedTag, true)) {
+                    if (
+                        (!$hasTag && Str::contains($tag, $excludedTag, true))
+                        || ($hasTag && isset($model->tags[$excludedTag]))
+                    ) {
                         Log::info($model->id . ': Rejected by tag! ' . $excludedTag);
                         $this->rejectByTag($model);
 
@@ -581,7 +586,7 @@ class FlickrPhotoController extends Controller
     }
 
     /**
-     * @param $model
+     * @param FlickrPhoto $model
      *
      * @return void
      */
