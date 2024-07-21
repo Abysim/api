@@ -14,8 +14,10 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use JeroenG\Flickr\FlickrLaravelFacade;
 use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Request;
 
 /**
@@ -575,5 +577,107 @@ class FlickrPhotoController extends Controller
             $model->status = FlickrPhotoStatus::PENDING_REVIEW;
             $model->save();
         }
+    }
+
+    /**
+     * @param $model
+     *
+     * @return void
+     */
+    public function approve(FlickrPhoto $model, Message $message): void
+    {
+        $model->status = FlickrPhotoStatus::APPROVED;
+        $model->save();
+
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => new InlineKeyboard([
+                ['text' => '❌Cancel Approval', 'callback_data' => 'flickr_cancel ' . $model->id],
+            ]),
+        ]);
+
+        $this->publish();
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function decline(FlickrPhoto $model, Message $message): void
+    {
+        $model->status = FlickrPhotoStatus::REJECTED_MANUALLY;
+        $model->save();
+
+        $this->delete($model, $message);
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function delete(FlickrPhoto $model, Message $message): void
+    {
+        $model->deleteFile();
+
+        Request::deleteMessage([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+        ]);
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function cancel(FlickrPhoto $model, Message $message): void
+    {
+        $model->status = FlickrPhotoStatus::PENDING_REVIEW;
+        $model->save();
+
+        if ($message) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+        }
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function review(FlickrPhoto $model, Message $message): void
+    {
+        $model->status = FlickrPhotoStatus::PENDING_REVIEW;
+        $model->save();
+        $this->processCreatedPhotos([$model]);
+
+        Request::deleteMessage([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+        ]);
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return array
+     */
+    public function original(FlickrPhoto $model): array
+    {
+        return [
+            'text' => Str::substr($model->title . "\n" . implode(' ', $model->tags), 0, 200),
+            'show_alert' => true,
+        ];
     }
 }
