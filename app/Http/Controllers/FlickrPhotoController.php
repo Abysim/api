@@ -373,6 +373,7 @@ class FlickrPhotoController extends Controller
             ]);
 
             $models[] = $model;
+            Log::info($model->id . ': Loaded photo data: ' . json_encode($photo));
         }
 
         return $models;
@@ -404,6 +405,7 @@ class FlickrPhotoController extends Controller
             $model->taken_at = Carbon::parse($infoResponse->photo['dates']['taken']);
 
             $model->save();
+            Log::info($model->id . ': Loaded photo info: ' . json_encode($infoResponse->photo));
         }
     }
 
@@ -438,6 +440,8 @@ class FlickrPhotoController extends Controller
                     $model->save();
                 }
             }
+
+            Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));
         }
     }
 
@@ -580,7 +584,8 @@ class FlickrPhotoController extends Controller
     }
 
     /**
-     * @param $model
+     * @param FlickrPhoto $model
+     * @param Message $message
      *
      * @return void
      */
@@ -641,13 +646,11 @@ class FlickrPhotoController extends Controller
         $model->status = FlickrPhotoStatus::PENDING_REVIEW;
         $model->save();
 
-        if ($message) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-        }
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => $model->getInlineKeyboard(),
+        ]);
     }
 
     /**
