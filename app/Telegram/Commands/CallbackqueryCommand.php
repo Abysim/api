@@ -5,7 +5,7 @@ namespace App\Telegram\Commands;
 use App\Enums\FlickrPhotoStatus;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Models\FlickrPhoto;
-use Illuminate\Support\Facades\File;
+use Exception;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -33,7 +33,7 @@ class CallbackqueryCommand extends SystemCommand
      * Main command execution
      *
      * @return ServerResponse
-     * @throws \Exception
+     * @throws Exception
      */
     public function execute(): ServerResponse
     {

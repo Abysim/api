@@ -141,7 +141,10 @@ class FlickrPhotoController extends Controller
         }
 
         if (empty($models)) {
-            $models = FlickrPhoto::query()->where('status', FlickrPhotoStatus::CREATED)->get();
+            $models = FlickrPhoto::query()->whereIn('status', [
+                FlickrPhotoStatus::CREATED,
+                FlickrPhotoStatus::PENDING_REVIEW,
+            ])->get();
         }
 
         $this->processCreatedPhotos($models);
@@ -266,6 +269,13 @@ class FlickrPhotoController extends Controller
                     $model->status = FlickrPhotoStatus::REJECTED_BY_TAG;
                     $model->save();
                     $model->deleteFile();
+
+                    if ($model->message_id) {
+                        Request::deleteMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'message_id' => $model->message_id,
+                        ]);
+                    }
 
                     break;
                 }
