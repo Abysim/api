@@ -5,6 +5,7 @@ namespace App\Telegram\Commands;
 use App\Models\FlickrPhoto;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
+use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 
 class GenericmessageCommand extends SystemCommand
@@ -28,6 +29,7 @@ class GenericmessageCommand extends SystemCommand
      * Main command execution
      *
      * @return ServerResponse
+     * @throws TelegramException
      */
     public function execute(): ServerResponse
     {
@@ -41,6 +43,10 @@ class GenericmessageCommand extends SystemCommand
         [$botHandle, $action, $id, $value] = array_pad(explode(' ', $text, 4), 4, null);
         if (trim($botHandle, '@') != $this->telegram->getBotUsername()) {
             return Request::emptyResponse();
+        }
+
+        if (in_array($action, ['excludetag', 'deleteexcludedtag'])) {
+            return $this->getTelegram()->executeCommand($action);
         }
 
         if (empty($id)) {

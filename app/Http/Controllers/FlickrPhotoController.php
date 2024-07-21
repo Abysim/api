@@ -570,6 +570,7 @@ class FlickrPhotoController extends Controller
             'photo' => $model->getFileUrl(),
             'reply_markup' => new InlineKeyboard([
                 ['text' => '✅Review', 'callback_data' => 'flickr_review ' . $model->id],
+                ['text' => 'Exclude Tag', 'switch_inline_query_current_chat' => 'excludetag '],
                 ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id]
             ]),
         ]);

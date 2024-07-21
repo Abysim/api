@@ -14,7 +14,7 @@ return new class extends Migration
     {
         Schema::create('excluded_tags', function (Blueprint $table) {
             $table->id();
-            $table->string('name', 32);
+            $table->string('name', 32)->unique();
             $table->timestamp('created_at')->useCurrent();
         });
 
