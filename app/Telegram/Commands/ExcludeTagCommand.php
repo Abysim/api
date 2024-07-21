@@ -11,6 +11,7 @@ namespace App\Telegram\Commands;
 
 use App\Models\ExcludedTag;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Longman\TelegramBot\Commands\AdminCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Request;
@@ -51,7 +52,7 @@ class ExcludeTagCommand extends AdminCommand
                 continue;
             }
 
-            $data[] = ['name' => $tag];
+            $data[] = ['name' => Str::lower($tag)];
         }
 
         if (!empty($data)) {

@@ -11,6 +11,7 @@ namespace App\Telegram\Commands;
 
 use App\Models\ExcludedTag;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Longman\TelegramBot\Commands\AdminCommand;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\ServerResponse;
@@ -53,7 +54,7 @@ class DeleteExcludedTagCommand extends AdminCommand
                 continue;
             }
 
-            ExcludedTag::query()->where('name', $tag)->delete();
+            ExcludedTag::query()->where('name', Str::lower($tag))->delete();
             Log::info('Excluded tag deleted: ' . $tag);
 
             break;
