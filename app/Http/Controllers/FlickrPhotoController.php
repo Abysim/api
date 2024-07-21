@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\FlickrPhotoStatus;
+use App\Models\ExcludedTag;
 use App\Models\FlickrPhoto;
 use App\MyCloudflareAI;
 use DeepL\Translator;
@@ -91,103 +92,28 @@ class FlickrPhotoController extends Controller
         'cloudedleopard' => '#димчастапантера',
     ];
 
-    private const EXCLUDED_TAGS = [
-        'cars',
-        'artwork',
-        'arts',
-        'auto',
-        'train',
-        'corporation',
-        'coach',
-        'mural',
-        'publicart',
-        'transformer',
-        'vehicle',
-        'print',
-        'fursuit',
-        'disneyland',
-        'bird',
-        'museum',
-        'ford',
-        'liquor',
-        'statue',
-        'cabriolet',
-        'city',
-        'sculture',
-        'monkey',
-        'slug',
-        'scout',
-        'ubisoft',
-        'artificial',
-        'sculpture',
-        'tigerlily',
-        'bus',
-        'coin',
-        'painting',
-        'textile',
-        'fly',
-        'drawing',
-        'sea',
-        'football',
-        'boeing',
-        'plane',
-        'turtle',
-        'flies',
-        'robocup',
-        'bee',
-        'moth',
-        'braves',
-        'reed',
-        'frog',
-        'tortoise',
-        'orchid',
-        'shrimp',
-        'basketball',
-        'engine',
-        'referee',
-        'mk4',
-        'thunderbird',
-        'island',
-        'arlington',
-        'spreadwing',
-        'grouper',
-        'ferrari',
-        'submarine',
-        'aircraft',
-        'spider',
-        'rot',
-        'helicopter',
-        'chopper',
-        'milf',
-        'airline',
-        'woman',
-        'mercury',
-        'defcon',
-        'secondlife',
-        'whiptail',
-        'septentrional',
-        'flower',
-        'library',
-        'championship',
-        'faux',
-        'religion',
-        'scan',
-        'sports',
-        'universitario',
-        'ucuenca',
-        'symbol',
-        'campeonato',
-        'stone',
-        'hotel',
-        'leyland',
-        'greatcouncilstatepark',
-    ];
-
     private const LOAD_TIME = '15:00:00';
 
     private const PUBLISH_INTERVAL_MINUTES = 1404;
 
     private const MAX_DAILY_PUBLISH_COUNT = 4;
+
+    /**
+     * @var string[];
+     */
+    private array $excludedTags = [];
+
+    /**
+     * @return string[]
+     */
+    private function getExcludedTags(): array
+    {
+        if (empty($this->excludedTags)) {
+            $this->excludedTags = ExcludedTag::query()->pluck('name')->all();
+        }
+
+        return $this->excludedTags;
+    }
 
     /**
      * @return void
@@ -400,7 +326,7 @@ class FlickrPhotoController extends Controller
             $hasTag = !empty(array_intersect_key(self::TAGS, array_flip($model->tags)));
 
             foreach ($model->tags as $tag) {
-                foreach (self::EXCLUDED_TAGS as $excludedTag) {
+                foreach ($this->getExcludedTags() as $excludedTag) {
                     if (
                         (!$hasTag && Str::contains($tag, $excludedTag, true))
                         || ($hasTag && $tag == $excludedTag)
@@ -413,7 +339,7 @@ class FlickrPhotoController extends Controller
                 }
             }
         } else {
-           foreach (self::EXCLUDED_TAGS as $excludedTag) {
+           foreach ($this->getExcludedTags() as $excludedTag) {
                if (
                    Str::contains($model->title, $excludedTag, true)
                    || Str::contains($model->description, $excludedTag, true)
