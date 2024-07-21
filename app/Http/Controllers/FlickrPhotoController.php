@@ -403,7 +403,7 @@ class FlickrPhotoController extends Controller
                 foreach (self::EXCLUDED_TAGS as $excludedTag) {
                     if (
                         (!$hasTag && Str::contains($tag, $excludedTag, true))
-                        || ($hasTag && isset($model->tags[$excludedTag]))
+                        || ($hasTag && $tag == $excludedTag)
                     ) {
                         Log::info($model->id . ': Rejected by tag! ' . $excludedTag);
                         $this->rejectByTag($model);
