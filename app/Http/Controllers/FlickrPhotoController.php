@@ -172,7 +172,6 @@ class FlickrPhotoController extends Controller
         $models = FlickrPhoto::query()
             ->whereIn('status', [
                 FlickrPhotoStatus::REJECTED_BY_TAG,
-                FlickrPhotoStatus::REJECTED_BY_CLASSIFICATION,
                 FlickrPhotoStatus::REJECTED_MANUALLY,
             ])
             ->whereNotNull('filename')
