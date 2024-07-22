@@ -92,7 +92,7 @@ class FlickrPhotoController extends Controller
         'cloudedleopard' => '#димчастапантера',
     ];
 
-    private const LOAD_TIME = '15:00:00';
+    private const LOAD_TIME = '16:00:00';
 
     private const PUBLISH_INTERVAL_MINUTES = 1404;
 
