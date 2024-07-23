@@ -8,15 +8,13 @@ namespace App;
 
 use App\Models\BlueskyConnection;
 use App\Models\Post;
-use App\Models\PostForward;
-use Aws\Comprehend\ComprehendClient;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use JsonException;
+use Intervention\Image\Laravel\Facades\Image;
 use Exception;
 use STS\JWT\ParsedToken;
 
@@ -25,7 +23,7 @@ class Bluesky extends Social
     const MAX_TEXT_LENGTH = 300;
     const MAX_MEDIA_COUNT = 4;
     const MAX_LINK_LENGTH = 24;
-
+    const MAX_IMAGE_SIZE = 1000000;
 
     /**
      * @var BlueskyConnection
@@ -332,6 +330,16 @@ class Bluesky extends Social
             Log::info('Unsupported image type!');
 
             throw new Exception('Unsupported image type!');
+        }
+
+        if (strlen($body) >= static::MAX_IMAGE_SIZE) {
+            $body = (string) Image::read($body)->encodeByMediaType(quality: 80);
+        }
+        if (strlen($body) >= static::MAX_IMAGE_SIZE) {
+            $body = (string) Image::read($body)->toJpeg(80);
+        }
+        if (strlen($body) >= static::MAX_IMAGE_SIZE) {
+            $body = (string) Image::read($body)->scaleDown(2000, 2000)->toJpeg(80);
         }
 
         $response = $this->request('POST', 'com.atproto.repo.uploadBlob', [], $body, $type);
