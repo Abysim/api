@@ -337,6 +337,7 @@ class Bluesky extends Social
         }
         if (strlen($body) >= static::MAX_IMAGE_SIZE && !in_array($type, ['image/jpeg', 'image/jpg'])) {
             $body = (string) Image::read($body)->toJpeg(80);
+            $type = 'image/jpeg';
         }
         if (strlen($body) >= static::MAX_IMAGE_SIZE) {
             $body = (string) Image::read($body)->scaleDown(2000, 2000)->toJpeg(80);
