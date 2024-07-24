@@ -140,7 +140,7 @@ class FlickrPhotoController extends Controller
             $models[] = $model;
         }
 
-        $this->processCreatedPhotos($models);
+        $this->processPhotos($models);
 
         $this->deletePhotoFiles();
     }
@@ -249,7 +249,7 @@ class FlickrPhotoController extends Controller
      *
      * @return void
      */
-    private function processCreatedPhotos(array $models): void
+    private function processPhotos(array $models): void
     {
         foreach ($models as $model) {
             if (empty($model->url)) {
@@ -368,6 +368,21 @@ class FlickrPhotoController extends Controller
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'message_id' => $model->message_id,
             ]);
+        }
+
+        try {
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'text' => implode(' ', $model->tags) . "\n" . $model->url,
+                'reply_markup' => new InlineKeyboard([
+                    ['text' => 'Remove Excluded Tag', 'switch_inline_query_current_chat' => 'deleteexcludedtag '],
+                ], [
+                    ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id],
+                    ['text' => '✅Review', 'callback_data' => 'flickr_review ' . $model->id],
+                ]),
+            ]);
+        } catch (Exception $e) {
+            Log::error($model->id . ': Reject by tag message fail! ' . $e->getMessage());
         }
     }
 
@@ -771,7 +786,7 @@ class FlickrPhotoController extends Controller
             'message_id' => $message->getMessageId(),
         ]);
 
-        $this->processCreatedPhotos([$model]);
+        $this->processPhotos([$model]);
     }
 
     /**
