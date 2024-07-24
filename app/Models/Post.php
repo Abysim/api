@@ -30,12 +30,12 @@ class Post extends Model
      *
      * @return BelongsToMany
      */
-    public function forwards(string $connection): BelongsToMany
+    public function forwards(string $connection, $reverse = false): BelongsToMany
     {
         return $this
             ->belongsToMany(Post::class, 'post_forwards', 'from_id', 'to_id')
             ->where('connection', $connection)
-            ->orderBy('post_id', 'DESC');
+            ->orderBy('post_id', $reverse ? 'ASC' : 'DESC');
     }
 
 

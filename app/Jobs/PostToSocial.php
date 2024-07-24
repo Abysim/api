@@ -125,7 +125,7 @@ class PostToSocial implements ShouldQueue
             }
             if (!empty($this->quote)) {
                 /** @var Post $quotePost */
-                $quotePost = $this->quote->forwards($this->forward->to_connection)->first();
+                $quotePost = $this->quote->forwards($this->forward->to_connection, true)->first();
                 if (!empty($quotePost)) {
                     if ($this->forward->to_connection == 'bluesky') {
                         $quote = json_decode($quotePost->post_id);
