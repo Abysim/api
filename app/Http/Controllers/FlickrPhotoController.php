@@ -333,7 +333,7 @@ class FlickrPhotoController extends Controller
                         Log::info($model->id . ': Rejected by tag! ' . $excludedTag);
                         $this->rejectByTag($model);
 
-                        break;
+                        break 2;
                     }
                 }
             }
