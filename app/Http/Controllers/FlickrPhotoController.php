@@ -136,8 +136,8 @@ class FlickrPhotoController extends Controller
         foreach (FlickrPhoto::query()->whereIn('status', [
             FlickrPhotoStatus::CREATED,
             FlickrPhotoStatus::PENDING_REVIEW,
-        ])->get() as $model) {
-            $models[] = $model;
+        ])->whereNotIn('id', array_keys($models))->get() as $model) {
+            $models[$model->id] = $model;
         }
 
         $this->processPhotos($models);
@@ -370,19 +370,25 @@ class FlickrPhotoController extends Controller
             ]);
         }
 
-        try {
-            Request::sendMessage([
-                'chat_id' => explode(',', config('telegram.admins'))[0],
-                'text' => implode(' ', $model->tags) . "\n" . $model->url,
-                'reply_markup' => new InlineKeyboard([
-                    ['text' => 'Remove Excluded Tag', 'switch_inline_query_current_chat' => 'deleteexcludedtag '],
-                ], [
-                    ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id],
-                    ['text' => '✅Review', 'callback_data' => 'flickr_review ' . $model->id],
-                ]),
-            ]);
-        } catch (Exception $e) {
-            Log::error($model->id . ': Reject by tag message fail! ' . $e->getMessage());
+        if (FlickrPhoto::where('owner', $model->owner)->whereIn('status', [
+            FlickrPhotoStatus::PENDING_REVIEW,
+            FlickrPhotoStatus::APPROVED,
+            FlickrPhotoStatus::PUBLISHED,
+        ])->exists()) {
+            try {
+                Request::sendMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'text' => implode(' ', $model->tags) . "\n" . $model->url,
+                    'reply_markup' => new InlineKeyboard([
+                        ['text' => 'Remove Excluded Tag', 'switch_inline_query_current_chat' => 'deleteexcludedtag '],
+                    ], [
+                        ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $model->id],
+                        ['text' => '✅Review', 'callback_data' => 'flickr_review ' . $model->id],
+                    ]),
+                ]);
+            } catch (Exception $e) {
+                Log::error($model->id . ': Reject by tag message fail! ' . $e->getMessage());
+            }
         }
     }
 
@@ -432,7 +438,7 @@ class FlickrPhotoController extends Controller
                 'title' => $photo['title'],
             ]);
 
-            $models[] = $model;
+            $models[$photo['id']] = $model;
         }
 
         return $models;
