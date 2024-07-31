@@ -564,7 +564,7 @@ class FlickrPhotoController extends Controller
         } else {
             $filepath = storage_path('app/public/flickr/' . $model->classification['filename']);
             $image = array_values(unpack('C*', File::get($filepath)));
-            $model->classification = [];
+            $model->classification = null;
             File::delete($filepath);
         }
 
@@ -582,6 +582,8 @@ class FlickrPhotoController extends Controller
                     $model->save();
                 }
             } catch (Exception $e) {
+                $model->classification = null;
+
                 Log::error($model->id . ': Image classification fail: ' . $e->getMessage());
             }
 
