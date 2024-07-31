@@ -90,6 +90,27 @@ class FlickrPhotoController extends Controller
         'kingcheetah' => '#гепард #королівськийгепард',
         'pumacub' => '#пума',
         'cloudedleopard' => '#димчастапантера',
+
+        'maleleopardathide' => '#леопард',
+        'kingcheetahs' => '#гепард #королівськийгепард',
+        'lioncubs' => '#лев',
+        'tigercubs' => '#тигр',
+        'jaguarcubs' => '#ягуар',
+        'cheetahcubs' => '#гепард',
+        'lynxcubs' => '#рись',
+        'cloudedleopards' => '#димчастапантера',
+        'malelion' => '#лев',
+        'maletiger' => '#тигр',
+        'malepanther' => '#пантера',
+        'maleleopard' => '#леопард',
+        'malejaguar' => '#ягуар',
+        'malecheetah' => '#гепард',
+        'femalelion' => '#лев',
+        'femaletiger' => '#тигр',
+        'femalepanther' => '#пантера',
+        'femaleleopard' => '#леопард',
+        'femalejaguar' => '#ягуар',
+        'femalecheetah' => '#гепард',
     ];
 
     private const LOAD_TIME = '16:00:00';
