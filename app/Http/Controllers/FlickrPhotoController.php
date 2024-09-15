@@ -234,7 +234,7 @@ class FlickrPhotoController extends Controller
                 usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) {
                     return $b->publishTagsScore() <=> $a->publishTagsScore()
                         ?: $b->classificationScore() <=> $a->classificationScore()
-                        ?: $a->published_at <=> $b->published_at;
+                        ?: $a->posted_at <=> $b->posted_at;
                 });
 
                 $photoToPublish = array_shift($photosToPublish);
