@@ -27,7 +27,7 @@ class FlickrPhotoController extends Controller
 {
     private const TEXT_TAGS_COUNT = 12;
 
-    private const TAGS = [
+    public const TAGS = [
         'lion' => '#лев',
         'tiger' => '#тигр',
         'panther' => '#пантера',
@@ -45,9 +45,9 @@ class FlickrPhotoController extends Controller
         'tigress' => '#тигр',
         'whitetiger' => '#тигр #білийтигр',
         'snowleopard' => '#ірбіс',
-        'blackleopard' => '#пантера #леопард',
+        'blackleopard' => '#леопард #пантера',
         'leopardess' => '#леопард',
-        'blackjaguar' => '#пантера #ягуар',
+        'blackjaguar' => '#ягуар #пантера',
 
         'snep' => '#ірбіс',
         'schneeleopard' => '#ірбіс',
@@ -61,11 +61,11 @@ class FlickrPhotoController extends Controller
         'whitetigers' => '#тигр #білийтигр',
         'panthers' => '#пантера',
         'snowleopards' => '#ірбіс',
-        'blackleopards' => '#пантера #леопард',
+        'blackleopards' => '#леопард #пантера',
         'leopards' => '#леопард',
         'leopardesses' => '#леопард',
         'jaguars' => '#ягуар',
-        'blackjaguars' => '#пантера #ягуар',
+        'blackjaguars' => '#ягуар #пантера',
         'cheetahs' => '#гепард',
         'ocelots' => '#оцелот',
         'lynxes' => '#рись',
@@ -226,6 +226,20 @@ class FlickrPhotoController extends Controller
                 ->oldest('updated_at')
                 ->first();
 
+            if (empty($photoToPublish)) {
+                $photosToPublish = FlickrPhoto::where('status', FlickrPhotoStatus::PENDING_REVIEW)
+                    ->get()
+                    ->all();
+
+                usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) {
+                    return $b->publishTagsScore() <=> $a->publishTagsScore()
+                        ?: $b->classificationScore() <=> $a->classificationScore()
+                        ?: $a->published_at <=> $b->published_at;
+                });
+
+                $photoToPublish = array_shift($photosToPublish);
+            }
+
             if (!empty($photoToPublish)) {
                 $this->publishPhoto($photoToPublish);
             }
@@ -313,12 +327,12 @@ class FlickrPhotoController extends Controller
                     if ($rejected && $model->status != FlickrPhotoStatus::PENDING_REVIEW) {
                         $this->rejectPhotoByClassification($model);
                     } else {
-                        if (empty($model->publish_title)) {
-                            $this->preparePublishTitle($model);
-                        }
-
                         if (empty($model->publish_tags)) {
                             $this->preparePublishTags($model);
+                        }
+
+                        if (empty($model->publish_title)) {
+                            $this->preparePublishTitle($model);
                         }
                     }
 
@@ -645,6 +659,11 @@ class FlickrPhotoController extends Controller
             $model->save();
         } catch (Exception $e) {
             Log::error($model->id . ': Translation of ' . $model->title .  ' failed: ' . $e->getMessage());
+        }
+
+        if (empty($model->publish_title)) {
+            $model->publish_title = Str::ucfirst(trim(explode(' ', $model->publish_tags)[0], '#'));
+            $model->save();
         }
     }
 

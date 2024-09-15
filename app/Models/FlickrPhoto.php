@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FlickrPhotoStatus;
+use App\Http\Controllers\FlickrPhotoController;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\AsArrayObject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -131,5 +132,54 @@ class FlickrPhoto extends Model
             $this->filename = null;
             $this->save();
         }
+    }
+
+    /**
+     * @return int
+     */
+    public function publishTagsScore(): int
+    {
+        if (empty($this->publish_tags)) {
+            return 0;
+        }
+
+        $tags = explode(' ', $this->publish_tags);
+        if (count($tags) > 2) {
+            return 1;
+        }
+
+        foreach (FlickrPhotoController::TAGS as $tag) {
+            if ($this->publish_tags == $tag) {
+                if (count($tags) == 1) {
+                    return 5;
+                } else {
+                    if (in_array('#пантера', $tags)) {
+                        return 3;
+                    } else {
+                        return 4;
+                    }
+                }
+            }
+        }
+
+        return 2;
+    }
+
+    /**
+     * @return float
+     */
+    public function classificationScore(): float
+    {
+        foreach ($this->classification as $classification) {
+            $tag = strtolower(str_replace(' ', '', $classification['label']));
+            if (
+                isset(FlickrPhotoController::TAGS[$tag])
+                && str_contains($this->publish_tags, FlickrPhotoController::TAGS[$tag])
+            ) {
+                return $classification['score'];
+            }
+        }
+
+        return 0;
     }
 }
