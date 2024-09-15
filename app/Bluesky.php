@@ -738,6 +738,12 @@ class Bluesky extends Social
                 'uri' => $result->uri,
                 'cid' => $result->cid,
             ]);
+            if (is_object($reply)) {
+                $reply = [
+                    'uri' => $reply->uri,
+                    'cid' => $reply->cid,
+                ];
+            }
 
             /** @var Post $post */
             $post = Post::query()->updateOrCreate([
