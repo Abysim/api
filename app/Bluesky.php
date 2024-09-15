@@ -734,13 +734,18 @@ class Bluesky extends Social
         $result = $this->request('POST', 'com.atproto.repo.createRecord', $args);
 
         if (!empty($result) && empty($result->error)) {
+            $postId = json_encode([
+                'uri' => $result->uri,
+                'cid' => $result->cid,
+            ]);
+
             /** @var Post $post */
             $post = Post::query()->updateOrCreate([
                 'connection' => 'bluesky',
                 'connection_id' => $this->connection->id,
-                'post_id' => json_encode($result),
-                'parent_post_id' => $reply ? json_encode($reply) : json_encode($result),
-                'root_post_id' => $root ? json_encode($root) : json_encode($result),
+                'post_id' => $postId,
+                'parent_post_id' => $reply ? json_encode($reply) : $postId,
+                'root_post_id' => $root ? json_encode($root) : $postId,
             ]);
             static::createPostForward($post->id, $textData['post_id'] ?? 0, array_column($media, 'post_id'));
         }
