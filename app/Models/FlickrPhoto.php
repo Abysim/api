@@ -139,7 +139,7 @@ class FlickrPhoto extends Model
      */
     public function publishTagsScore(): int
     {
-        if (empty($this->publish_tags)) {
+        if (empty($this->publish_tags) || $this->status == FlickrPhotoStatus::APPROVED) {
             return 0;
         }
 
@@ -170,6 +170,10 @@ class FlickrPhoto extends Model
      */
     public function classificationScore(): float
     {
+        if ($this->status == FlickrPhotoStatus::APPROVED) {
+            return 0;
+        }
+
         foreach ($this->classification as $classification) {
             $tag = strtolower(str_replace(' ', '', $classification['label']));
             if (
@@ -181,5 +185,32 @@ class FlickrPhoto extends Model
         }
 
         return 0;
+    }
+
+    /**
+     * @param FlickrPhoto|null $lastPublishedPhoto
+     *
+     * @return int
+     */
+    public function publishScore(?FlickrPhoto $lastPublishedPhoto): int
+    {
+        $score = 0;
+
+        if (empty($lastPublishedPhoto)) {
+            return $score;
+        }
+
+        if ($this->owner != $lastPublishedPhoto->owner) {
+            $score += 2;
+        }
+
+        if (empty(array_intersect(
+            explode(' ', $this->publish_tags),
+            explode(' ', $lastPublishedPhoto->publish_tags))
+        )) {
+            $score += 1;
+        }
+
+        return $score;
     }
 }
