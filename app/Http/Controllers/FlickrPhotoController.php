@@ -221,20 +221,17 @@ class FlickrPhotoController extends Controller
         ) {
             Log::info('Publishing Flickr photos');
             /** @var FlickrPhoto $photoToPublish */
-            $photosToPublish = FlickrPhoto::where('status', FlickrPhotoStatus::APPROVED)
-                ->get()
-                ->all();
-            if (empty($photosToPublish)) {
-                $photosToPublish = FlickrPhoto::where('status', FlickrPhotoStatus::PENDING_REVIEW)
-                    ->get()
-                    ->all();
-            }
+            $photosToPublish = FlickrPhoto::whereIn('status', [
+                FlickrPhotoStatus::APPROVED,
+                FlickrPhotoStatus::PENDING_REVIEW
+            ])->get()->all();
 
             usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) use ($lastPublishedPhoto) {
-                return $b->publishScore($lastPublishedPhoto) <=> $a->publishScore($lastPublishedPhoto)
-                    ?: $b->publishTagsScore() <=> $a->publishTagsScore()
-                        ?: $b->classificationScore() <=> $a->classificationScore()
-                            ?: $a->posted_at <=> $b->posted_at;
+                return $b->status <=> $a->status
+                    ?: $b->publishScore($lastPublishedPhoto) <=> $a->publishScore($lastPublishedPhoto)
+                        ?: $b->publishTagsScore() <=> $a->publishTagsScore()
+                            ?: $b->classificationScore() <=> $a->classificationScore()
+                                ?: $a->posted_at <=> $b->posted_at;
             });
 
             $photoToPublish = array_shift($photosToPublish);
