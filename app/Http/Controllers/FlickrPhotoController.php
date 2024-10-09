@@ -270,7 +270,9 @@ class FlickrPhotoController extends Controller
                 ]);
             }
         } else {
-            Log::error($model->id . ': Flickr photo not published!');
+            // TODO: Make wait and check that the photo is really not published
+
+            Log::error($model->id . ': Flickr photo not published! ' . $response->body());
         }
     }
 
