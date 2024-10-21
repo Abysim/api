@@ -3,6 +3,7 @@
 namespace App\Telegram\Commands;
 
 use App\Models\FlickrPhoto;
+use Illuminate\Support\Facades\Cache;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
@@ -83,6 +84,21 @@ class GenericmessageCommand extends SystemCommand
                 'caption' => $model->getCaption(),
                 'reply_markup' => $model->getInlineKeyboard(),
             ]);
+
+            $response = Request::sendMessage([
+                'chat_id' => $message->getChat()->getId(),
+                'reply_to_message_id' => $model->message_id,
+                'text' => 'Photo status updated according to the action ' . $action,
+            ]);
+
+            $telegramReplyMessageId = Cache::get('telegramReplyMessageId');
+            if ($telegramReplyMessageId) {
+                Request::deleteMessage([
+                    'chat_id' => $message->getChat()->getId(),
+                    'message_id' => $telegramReplyMessageId,
+                ]);
+            }
+            Cache::put('telegramReplyMessageId', $response->getResult()->getMessageId());
         }
 
         return Request::emptyResponse();

@@ -434,7 +434,7 @@ class FlickrPhotoController extends Controller
         for ($i = 0; $i < self::TEXT_TAGS_COUNT; $i++) {
             $searchData = [
                 'min_upload_date' => now()->subDays(2)->timestamp,
-                'sort' => 'interestingness-desc',
+                'sort' => 'date-posted-asc',
                 'content_types' => '0',
                 'license' => '1,2,3,4,5,6,7,9,10',
                 'per_page' => 500,
