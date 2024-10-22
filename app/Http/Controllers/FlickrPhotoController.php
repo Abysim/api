@@ -227,12 +227,24 @@ class FlickrPhotoController extends Controller
             ])->get()->all();
 
             usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) use ($lastPublishedPhoto) {
-                return $b->status <=> $a->status
+                return $b->status->value <=> $a->status->value
                     ?: $b->publishScore($lastPublishedPhoto) <=> $a->publishScore($lastPublishedPhoto)
                         ?: $b->publishTagsScore() <=> $a->publishTagsScore()
                             ?: $b->classificationScore() <=> $a->classificationScore()
                                 ?: $a->posted_at <=> $b->posted_at;
             });
+
+            Log::info('Publish queue ' . count($photosToPublish) . ': ' . json_encode(array_map(
+                fn(FlickrPhoto $photo) => [
+                    $photo->id,
+                    $photo->status,
+                    $photo->publishScore($lastPublishedPhoto),
+                    $photo->publishTagsScore(),
+                    $photo->classificationScore(),
+                    $photo->posted_at,
+                ],
+                $photosToPublish
+            )));
 
             $photoToPublish = array_shift($photosToPublish);
             if (!empty($photoToPublish)) {
