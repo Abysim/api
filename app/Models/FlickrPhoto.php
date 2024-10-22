@@ -139,7 +139,11 @@ class FlickrPhoto extends Model
      */
     public function publishTagsScore(): int
     {
-        if (empty($this->publish_tags) || $this->status == FlickrPhotoStatus::APPROVED) {
+        if ($this->status == FlickrPhotoStatus::APPROVED) {
+            return 6;
+        }
+
+        if (empty($this->publish_tags)) {
             return 0;
         }
 
@@ -171,7 +175,7 @@ class FlickrPhoto extends Model
     public function classificationScore(): float
     {
         if ($this->status == FlickrPhotoStatus::APPROVED) {
-            return 0;
+            return 1;
         }
 
         foreach ($this->classification as $classification) {
