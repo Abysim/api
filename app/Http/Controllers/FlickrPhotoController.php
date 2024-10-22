@@ -209,7 +209,7 @@ class FlickrPhotoController extends Controller
     private function publish(): void
     {
         /** @var FlickrPhoto $lastPublishedPhoto */
-        $lastPublishedPhoto = FlickrPhoto::query()->latest('published_at')->first();
+        $lastPublishedPhoto = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)->latest('published_at')->first();
 
         $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
         $dailyPublishCount = min(self::MAX_DAILY_PUBLISH_COUNT, max($pendingPublishSize - 1, 1));
@@ -241,7 +241,7 @@ class FlickrPhotoController extends Controller
                     $photo->publishScore($lastPublishedPhoto),
                     $photo->publishTagsScore(),
                     $photo->classificationScore(),
-                    $photo->posted_at,
+                    $photo->posted_at->toDateTimeString(),
                 ],
                 $photosToPublish
             )));
