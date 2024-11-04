@@ -230,28 +230,22 @@ class FlickrPhotoController extends Controller
                 FlickrPhotoStatus::PENDING_REVIEW
             ])->get()->all();
 
-            usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) use ($lastPublishedPhotos) {
-                return $b->status->value <=> $a->status->value
-                    ?: $b->publishScore($lastPublishedPhotos) <=> $a->publishScore($lastPublishedPhotos)
-                        ?: $b->publishTagsScore() <=> $a->publishTagsScore()
-                            ?: $b->classificationScore() <=> $a->classificationScore()
-                                ?: $a->posted_at <=> $b->posted_at;
-            });
+            Log::info('Publish queue size: ' . count($photosToPublish));
 
-            Log::info('Publish queue ' . count($photosToPublish) . ': ' . json_encode(array_map(
-                fn(FlickrPhoto $photo) => [
-                    $photo->id,
-                    $photo->status,
-                    $photo->publishScore($lastPublishedPhotos),
-                    $photo->publishTagsScore(),
-                    $photo->classificationScore(),
-                    $photo->posted_at->toDateTimeString(),
-                ],
-                $photosToPublish
-            )));
+            if (!empty($photosToPublish)) {
+                $photoToPublish = array_shift($photosToPublish);
+                foreach ($photosToPublish as $photo) {
+                    $comparison = $photo->status->value <=> $photoToPublish->status->value
+                        ?: $photo->publishScore($lastPublishedPhotos) <=> $photoToPublish->publishScore($lastPublishedPhotos)
+                            ?: $photo->publishTagsScore() <=> $photoToPublish->publishTagsScore()
+                                ?: $photo->classificationScore() <=> $photoToPublish->classificationScore()
+                                    ?: $photoToPublish->posted_at <=> $photo->posted_at;
 
-            $photoToPublish = array_shift($photosToPublish);
-            if (!empty($photoToPublish)) {
+                    if ($comparison > 0) {
+                        $photoToPublish = $photo;
+                    }
+                }
+
                 $this->publishPhoto($photoToPublish);
             }
         }
