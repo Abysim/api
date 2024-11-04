@@ -117,7 +117,7 @@ class FlickrPhotoController extends Controller
 
     private const PUBLISH_INTERVAL_MINUTES = 1404;
 
-    private const MAX_DAILY_PUBLISH_COUNT = 4;
+    public const MAX_DAILY_PUBLISH_COUNT = 4;
 
     /**
      * @var string[];
@@ -208,27 +208,31 @@ class FlickrPhotoController extends Controller
      */
     private function publish(): void
     {
-        /** @var FlickrPhoto $lastPublishedPhoto */
-        $lastPublishedPhoto = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)->latest('published_at')->first();
+        /** @var FlickrPhoto[] $lastPublishedPhotos */
+        $lastPublishedPhotos = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
+            ->latest('published_at')
+            ->limit(self::MAX_DAILY_PUBLISH_COUNT - 1)
+            ->get()
+            ->all();
 
         $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
         $dailyPublishCount = min(self::MAX_DAILY_PUBLISH_COUNT, max($pendingPublishSize - 1, 1));
         $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount);
 
         if (
-            empty($lastPublishedPhoto->published_at)
-            || now()->subMinutes($publishInterval)->gt($lastPublishedPhoto->published_at)
+            empty($lastPublishedPhotos[0]->published_at)
+            || now()->subMinutes($publishInterval)->gt($lastPublishedPhotos[0]->published_at)
         ) {
             Log::info('Publishing Flickr photos');
-            /** @var FlickrPhoto $photoToPublish */
+            /** @var FlickrPhoto[] $photosToPublish */
             $photosToPublish = FlickrPhoto::whereIn('status', [
                 FlickrPhotoStatus::APPROVED,
                 FlickrPhotoStatus::PENDING_REVIEW
             ])->get()->all();
 
-            usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) use ($lastPublishedPhoto) {
+            usort($photosToPublish, function (FlickrPhoto $a, FlickrPhoto $b) use ($lastPublishedPhotos) {
                 return $b->status->value <=> $a->status->value
-                    ?: $b->publishScore($lastPublishedPhoto) <=> $a->publishScore($lastPublishedPhoto)
+                    ?: $b->publishScore($lastPublishedPhotos) <=> $a->publishScore($lastPublishedPhotos)
                         ?: $b->publishTagsScore() <=> $a->publishTagsScore()
                             ?: $b->classificationScore() <=> $a->classificationScore()
                                 ?: $a->posted_at <=> $b->posted_at;
@@ -238,7 +242,7 @@ class FlickrPhotoController extends Controller
                 fn(FlickrPhoto $photo) => [
                     $photo->id,
                     $photo->status,
-                    $photo->publishScore($lastPublishedPhoto),
+                    $photo->publishScore($lastPublishedPhotos),
                     $photo->publishTagsScore(),
                     $photo->classificationScore(),
                     $photo->posted_at->toDateTimeString(),

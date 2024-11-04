@@ -192,27 +192,29 @@ class FlickrPhoto extends Model
     }
 
     /**
-     * @param FlickrPhoto|null $lastPublishedPhoto
+     * @param FlickrPhoto[]|null $lastPublishedPhotos
      *
      * @return int
      */
-    public function publishScore(?FlickrPhoto $lastPublishedPhoto): int
+    public function publishScore(?array $lastPublishedPhotos): int
     {
         $score = 0;
 
-        if (empty($lastPublishedPhoto)) {
+        if (empty($lastPublishedPhotos)) {
             return $score;
         }
 
-        if ($this->owner != $lastPublishedPhoto->owner) {
-            $score += 2;
-        }
+        foreach ($lastPublishedPhotos as $index => $lastPublishedPhoto) {
+            if ($this->owner == $lastPublishedPhoto->owner) {
+                $score -= pow(2, (FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - 1) * 2 - $index - 1);
+            }
 
-        if (empty(array_intersect(
-            explode(' ', $this->publish_tags),
-            explode(' ', $lastPublishedPhoto->publish_tags))
-        )) {
-            $score += 1;
+            if (!empty(array_intersect(
+                explode(' ', $this->publish_tags),
+                explode(' ', $lastPublishedPhoto->publish_tags))
+            )) {
+                $score -= pow(2, FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - $index - 2);
+            }
         }
 
         return $score;
