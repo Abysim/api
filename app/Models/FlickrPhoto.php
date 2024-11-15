@@ -206,7 +206,7 @@ class FlickrPhoto extends Model
 
         foreach ($lastPublishedPhotos as $index => $lastPublishedPhoto) {
             if ($this->owner == $lastPublishedPhoto->owner) {
-                $score -= pow(2, (FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - 1) * 2 - $index - 1);
+                $score -= pow(2, (FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - 1) * 2 - $index - 3);
             }
 
             if (!empty(array_intersect(
