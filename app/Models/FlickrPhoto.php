@@ -205,16 +205,20 @@ class FlickrPhoto extends Model
         }
 
         foreach ($lastPublishedPhotos as $index => $lastPublishedPhoto) {
+            $multiplier = 0;
+
             if ($this->owner == $lastPublishedPhoto->owner) {
-                $score -= pow(2, (FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - 1) * 2 - $index - 3);
+                $multiplier++;
             }
 
             if (!empty(array_intersect(
                 explode(' ', $this->publish_tags),
                 explode(' ', $lastPublishedPhoto->publish_tags))
             )) {
-                $score -= pow(2, FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - $index - 2);
+                $multiplier++;
             }
+
+            $score -= $multiplier * pow(2, FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - $index - 2);
         }
 
         return $score;
