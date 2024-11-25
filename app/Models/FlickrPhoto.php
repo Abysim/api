@@ -218,7 +218,7 @@ class FlickrPhoto extends Model
                 $multiplier++;
             }
 
-            $score -= $multiplier * pow(2, FlickrPhotoController::MAX_DAILY_PUBLISH_COUNT - $index - 2);
+            $score -= $multiplier * pow(2, count($lastPublishedPhotos) - $index - 1);
         }
 
         return $score;

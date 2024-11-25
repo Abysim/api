@@ -115,9 +115,9 @@ class FlickrPhotoController extends Controller
 
     private const LOAD_TIME = '16:00:00';
 
-    private const PUBLISH_INTERVAL_MINUTES = 1404;
+    private const PUBLISH_INTERVAL_MINUTES = 1416;
 
-    public const MAX_DAILY_PUBLISH_COUNT = 4;
+    public const DAILY_PUBLISH_COUNT_LIMIT = 4;
 
     /**
      * @var string[];
@@ -151,7 +151,7 @@ class FlickrPhotoController extends Controller
                 FlickrPhotoStatus::PENDING_REVIEW,
             ])->count();
 
-            $models = $this->loadPhotos($queueSize <= self::MAX_DAILY_PUBLISH_COUNT);
+            $models = $this->loadPhotos($queueSize <= self::DAILY_PUBLISH_COUNT_LIMIT);
         }
 
         foreach (FlickrPhoto::query()->whereIn('status', [
@@ -204,19 +204,30 @@ class FlickrPhotoController extends Controller
     }
 
     /**
+     * @return int
+     */
+    private function getDailyPublishCount(): int
+    {
+        $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
+
+        return $pendingPublishSize > self::DAILY_PUBLISH_COUNT_LIMIT * 30 ? (int) ceil(
+            24 / max(floor(self::PUBLISH_INTERVAL_MINUTES / ceil($pendingPublishSize / 30) / 60), 1)
+        ) : min(max($pendingPublishSize - 1, 1), self::DAILY_PUBLISH_COUNT_LIMIT);
+    }
+
+    /**
      * @return void
      */
     private function publish(): void
     {
+        $dailyPublishCount = $this->getDailyPublishCount();
+        Log::info('Current daily publish count: ' . $dailyPublishCount);
         /** @var FlickrPhoto[] $lastPublishedPhotos */
         $lastPublishedPhotos = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
             ->latest('published_at')
-            ->limit(self::MAX_DAILY_PUBLISH_COUNT - 1)
+            ->limit(max($dailyPublishCount - 1, 1))
             ->get()
             ->all();
-
-        $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
-        $dailyPublishCount = min(self::MAX_DAILY_PUBLISH_COUNT, max($pendingPublishSize - 1, 1));
         $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount);
 
         if (
