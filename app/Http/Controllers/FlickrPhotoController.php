@@ -269,6 +269,20 @@ class FlickrPhotoController extends Controller
      */
     private function publishPhoto(FlickrPhoto $model): void
     {
+        if (empty($model->filename)) {
+            $this->loadPhotoFile($model);
+
+            if (empty($model->filename)) {
+                Log::error($model->id . ': Photo file missing!');
+                $model->status = FlickrPhotoStatus::CREATED;
+                $model->save();
+
+                $this->publish();
+
+                return;
+            }
+        }
+
         Log::info($model->id . ': Publishing Flickr photo');
         $response = Http::post(
             'https://maker.ifttt.com/trigger/flickr_photo/with/key/' . config('services.ifttt.webhook_key'),
@@ -776,6 +790,10 @@ class FlickrPhotoController extends Controller
     {
         $model->status = FlickrPhotoStatus::APPROVED;
         $model->save();
+
+        if (empty($model->filename)) {
+            $this->loadPhotoFile($model);
+        }
 
         Request::editMessageReplyMarkup([
             'chat_id' => $message->getChat()->getId(),
