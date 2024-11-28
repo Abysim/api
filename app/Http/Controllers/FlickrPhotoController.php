@@ -115,7 +115,7 @@ class FlickrPhotoController extends Controller
 
     private const LOAD_TIME = '16:00:00';
 
-    private const PUBLISH_INTERVAL_MINUTES = 1440;
+    private const DAY_MINUTES = 1440;
 
     public const DAILY_PUBLISH_COUNT_LIMIT = 4;
 
@@ -211,7 +211,7 @@ class FlickrPhotoController extends Controller
         $pendingPublishSize = FlickrPhoto::query()->where('status', FlickrPhotoStatus::APPROVED)->count();
 
         return $pendingPublishSize > self::DAILY_PUBLISH_COUNT_LIMIT * 30 ? (int) ceil(
-            24 / max(floor(self::PUBLISH_INTERVAL_MINUTES / ceil($pendingPublishSize / 30) / 60), 1)
+            24 / max(floor(self::DAY_MINUTES / ceil($pendingPublishSize / 30) / 60), 1)
         ) : min(max($pendingPublishSize - 1, 1), self::DAILY_PUBLISH_COUNT_LIMIT);
     }
 
@@ -228,7 +228,7 @@ class FlickrPhotoController extends Controller
             ->limit(max($dailyPublishCount - 1, 1))
             ->get()
             ->all();
-        $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount) - 5;
+        $publishInterval = intdiv(self::DAY_MINUTES, $dailyPublishCount) - 5;
 
         if (
             empty($lastPublishedPhotos[0]->published_at)
