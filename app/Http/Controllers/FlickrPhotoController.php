@@ -115,7 +115,7 @@ class FlickrPhotoController extends Controller
 
     private const LOAD_TIME = '16:00:00';
 
-    private const PUBLISH_INTERVAL_MINUTES = 1416;
+    private const PUBLISH_INTERVAL_MINUTES = 1440;
 
     public const DAILY_PUBLISH_COUNT_LIMIT = 4;
 
@@ -228,7 +228,7 @@ class FlickrPhotoController extends Controller
             ->limit(max($dailyPublishCount - 1, 1))
             ->get()
             ->all();
-        $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount);
+        $publishInterval = intdiv(self::PUBLISH_INTERVAL_MINUTES, $dailyPublishCount) - 5;
 
         if (
             empty($lastPublishedPhotos[0]->published_at)
