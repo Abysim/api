@@ -11,4 +11,5 @@ enum FlickrPhotoStatus: int
     case REJECTED_MANUALLY = 4;
     case APPROVED = 5;
     case PUBLISHED = 6;
+    case REMOVED_BY_AUTHOR = 7;
 }

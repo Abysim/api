@@ -113,6 +113,18 @@ class FlickrPhotoController extends Controller
         'femalecheetah' => '#гепард',
     ];
 
+    private const LICENSES = [
+        1 => 'Attribution-NonCommercial-ShareAlike License',
+        2 => 'Attribution-NonCommercial License',
+        3 => 'Attribution-NonCommercial-NoDerivs License',
+        4 => 'Attribution License',
+        5 => 'Attribution-ShareAlike License',
+        6 => 'Attribution-NoDerivs License',
+        7 => 'No known copyright restrictions',
+        9 => 'Public Domain Dedication (CC0)',
+        10 => 'Public Domain Mark',
+    ];
+
     private const LOAD_TIME = '16:00:00';
 
     public const DAILY_PUBLISH_COUNT_LIMIT = 4;
@@ -263,22 +275,122 @@ class FlickrPhotoController extends Controller
     /**
      * @param FlickrPhoto $model
      *
-     * @return void
+     * @return string
      */
-    private function publishPhoto(FlickrPhoto $model): void
+    private function loadPhotoLicense(FlickrPhoto $model): string
     {
+        $result = '';
+        $licenseResponse = FlickrLaravelFacade::request('flickr.photos.licenses.getLicenseHistory', [
+            'photo_id' => $model->id,
+        ]);
+
+        $dateChange = 0;
+        if ($licenseResponse->getStatus() == 'ok') {
+            Log::info($model->id . ': License history: ' . json_encode($licenseResponse->license_history));
+
+            foreach ($licenseResponse->license_history as $license) {
+                if (empty($license['new_license'])) {
+                    $result = $license['old_license'];
+
+                    break;
+                } elseif ($license['date'] > $dateChange) {
+                    $result = $license['new_license'];
+                    $dateChange = $license['date'];
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return string|null
+     */
+    private function checkPhotoFile(FlickrPhoto $model): ?string
+    {
+        $errorMessage = null;
+
         if (empty($model->filename)) {
             $this->loadPhotoFile($model);
 
             if (empty($model->filename)) {
-                Log::error($model->id . ': Photo file missing!');
-                $model->status = FlickrPhotoStatus::CREATED;
+                $errorMessage = 'Photo file missing!';
+                $model->status = FlickrPhotoStatus::PENDING_REVIEW;
                 $model->save();
-
-                $this->publish();
-
-                return;
             }
+        }
+
+        return $errorMessage;
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return string|null
+     */
+    private function checkLicense(FlickrPhoto $model): ?string
+    {
+        $errorMessage = null;
+
+        if (!in_array($this->loadPhotoLicense($model), self::LICENSES)) {
+            $errorMessage = 'The author removed the photo from the publication!';
+            $model->status = FlickrPhotoStatus::REMOVED_BY_AUTHOR;
+            $model->save();
+        }
+
+        return $errorMessage;
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return bool
+     */
+    private function isPublishingAllowed(FlickrPhoto $model): bool
+    {
+        $errorMessage = $this->checkPhotoFile($model);
+
+        if (is_null($errorMessage)) {
+            $errorMessage = $this->checkLicense($model);
+        }
+
+        if (!empty($errorMessage)) {
+            Log::error($model->id . ': ' . $errorMessage);
+            try {
+                Request::editMessageReplyMarkup([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                    'reply_markup' => $model->getInlineKeyboard(),
+                ]);
+                Request::sendMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'reply_to_message_id' => $model->message_id,
+                    'text' => $errorMessage,
+                    'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                ]);
+            } catch (Exception $e) {
+                Log::error($model->id . ': Error sending error message: ' . $e->getMessage());
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param FlickrPhoto $model
+     *
+     * @return void
+     */
+    private function publishPhoto(FlickrPhoto $model): void
+    {
+        if (!$this->isPublishingAllowed($model)) {
+            $this->publish();
+
+            return;
         }
 
         Log::info($model->id . ': Publishing Flickr photo');
@@ -469,7 +581,7 @@ class FlickrPhotoController extends Controller
                 'min_upload_date' => now()->subDays(2)->timestamp,
                 'sort' => 'date-posted-asc',
                 'content_types' => '0',
-                'license' => '1,2,3,4,5,6,7,9,10',
+                'license' => implode(',', array_keys(self::LICENSES)),
                 'per_page' => 500,
             ];
 
