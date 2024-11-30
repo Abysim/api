@@ -226,7 +226,7 @@ class FlickrPhotoController extends Controller
             ->limit(max($dailyPublishCount - 1, 1))
             ->get()
             ->all();
-        $publishInterval = intdiv(1440, $dailyPublishCount) - 5;
+        $publishInterval = intdiv(1440, $dailyPublishCount) - 30;
 
         if (
             empty($lastPublishedPhotos[0]->published_at)
