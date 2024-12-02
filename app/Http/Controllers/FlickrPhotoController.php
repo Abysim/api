@@ -912,8 +912,6 @@ class FlickrPhotoController extends Controller
                 ['text' => '❌Cancel Approval', 'callback_data' => 'flickr_cancel ' . $model->id],
             ]),
         ]);
-
-        $this->publish();
     }
 
     /**
