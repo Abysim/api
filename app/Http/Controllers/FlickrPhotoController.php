@@ -786,7 +786,9 @@ class FlickrPhotoController extends Controller
         if (
             empty($title)
             || Str::wordCount($title) == 1 && (
-                Str::contains($title, ['img', 'dsc', '_mg', 'dji', 'photo'], true) || Str::charAt($title,0) == 'P'
+                Str::contains($title, ['img', 'dsc', '_mg', 'dji', 'photo'], true)
+                || Str::charAt($title,0) == 'P'
+                || is_numeric(Str::charAt($title,0))
             )
         ) {
             $title = $model->description;
