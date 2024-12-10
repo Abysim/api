@@ -20,4 +20,4 @@ Helper services for a non-commercial [Ukrainian informational project about big 
 The service posts photos of big cats from Flickr to IFTTT after manual review and approval in Telegram. The photos are ordered by author, species, and post time, preventing the posting of similar photos in a row. The frequency of posting varies by posting queue size. Only photos with the appropriate license are posted. Initially, photos are searched by tag or description, filtered out by excluded tags, and titles translated into Ukrainian.
 
 ### News
-It gets Ukrainian news about big cats and posts it to the website's [news section](https://bigcats.org.ua/news) after approval in Telegram. The data is retrieved using the [NewsCatcher News API](https://newscatcherapi.com/).
+It gets Ukrainian news about big cats and posts it to the website's [news section](https://bigcats.org.ua/news) after approval in Telegram. The data is retrieved using the [NewsCatcher News API](https://www.newscatcherapi.com/).
