@@ -229,12 +229,14 @@ class FlickrPhotoController extends Controller
             24 / max(floor(24 / ceil($pendingPublishSize / $targetPublishRate)), 1)
         ) : min(max($pendingPublishSize - 1, 1), self::DAILY_PUBLISH_COUNT_LIMIT);
 
-        Log::info(
-            'Pending publish size: ' . $pendingPublishSize .
-            '; published last month: ' . $publishedLastMonth .
-            '; target publish rate: ' . $targetPublishRate .
-            '; daily publish count: ' . $dailyPublishCount
-        );
+        Log::info(sprintf(
+            'Pending publish: %d; last month: %d; target rate: %0.2f; daily rate: %0.2f; daily count: %d',
+            $pendingPublishSize,
+            $publishedLastMonth,
+            $targetPublishRate,
+            $pendingPublishSize / $targetPublishRate,
+            $dailyPublishCount
+        ));
 
         return $dailyPublishCount;
     }
