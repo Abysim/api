@@ -225,9 +225,18 @@ class FlickrPhotoController extends Controller
             ->count();
         $targetPublishRate = self::DAILY_PUBLISH_COUNT_LIMIT *  30 * 30 / max($publishedLastMonth, 1);
 
-        return $pendingPublishSize  > self::DAILY_PUBLISH_COUNT_LIMIT * $targetPublishRate ? (int) ceil(
+        $dailyPublishCount = $pendingPublishSize  > self::DAILY_PUBLISH_COUNT_LIMIT * $targetPublishRate ? (int) ceil(
             24 / max(floor(24 / ceil($pendingPublishSize / $targetPublishRate)), 1)
         ) : min(max($pendingPublishSize - 1, 1), self::DAILY_PUBLISH_COUNT_LIMIT);
+
+        Log::info(
+            'Pending publish size: ' . $pendingPublishSize .
+            '; published last month: ' . $publishedLastMonth .
+            '; target publish rate: ' . $targetPublishRate .
+            '; daily publish count: ' . $dailyPublishCount
+        );
+
+        return $dailyPublishCount;
     }
 
     /**
@@ -236,7 +245,6 @@ class FlickrPhotoController extends Controller
     private function publish(): void
     {
         $dailyPublishCount = $this->getDailyPublishCount();
-        Log::info('Current daily publish count: ' . $dailyPublishCount);
         /** @var FlickrPhoto[] $lastPublishedPhotos */
         $lastPublishedPhotos = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
             ->latest('published_at')
