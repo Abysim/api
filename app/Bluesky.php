@@ -537,7 +537,17 @@ class Bluesky extends Social
                                     'description' => '',
                                 ];
 
-                                $content = $this->getUrl($url);
+                                $content = '';
+                                for ($i = 0; $i <= 4; $i++) {
+                                    try {
+                                        $content = $this->getUrl($url);
+                                        break;
+                                    } catch (Exception $e) {
+                                        if ($i == 4) {
+                                            throw $e;
+                                        }
+                                    }
+                                }
                                 Log::info('Content length: ' . strlen($content));
 
                                 $dom = new DOMDocument();
