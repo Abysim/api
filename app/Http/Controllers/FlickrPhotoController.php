@@ -226,7 +226,7 @@ class FlickrPhotoController extends Controller
         $targetPublishRate = self::DAILY_PUBLISH_COUNT_LIMIT *  30 * 30 / max($publishedLastMonth, 1);
 
         $dailyPublishCount = $pendingPublishSize  > self::DAILY_PUBLISH_COUNT_LIMIT * $targetPublishRate ? (int) ceil(
-            24 / max(floor(24 / ceil($pendingPublishSize / $targetPublishRate)), 1)
+            24 / max(floor(24 / ceil($pendingPublishSize / $targetPublishRate)), 3)
         ) : min(max($pendingPublishSize - 1, 1), self::DAILY_PUBLISH_COUNT_LIMIT);
 
         Log::info(sprintf(
