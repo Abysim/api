@@ -689,36 +689,38 @@ class FlickrPhotoController extends Controller
      */
     private function loadPhotoFile(FlickrPhoto $model): void
     {
-        $sizesResponse = FlickrLaravelFacade::request('flickr.photos.getSizes', [
-            'photo_id' => $model->id,
-        ]);
+        if (empty($model->source_url) || empty($model->classification)) {
+            $sizesResponse = FlickrLaravelFacade::request('flickr.photos.getSizes', [
+                'photo_id' => $model->id,
+            ]);
 
-        if ($sizesResponse->getStatus() == 'ok') {
-            for ($i = count($sizesResponse->sizes['size']) - 1; $i >= 0; $i--) {
-                $size = $sizesResponse->sizes['size'][$i];
+            if ($sizesResponse->getStatus() == 'ok') {
+                for ($i = count($sizesResponse->sizes['size']) - 1; $i >= 0; $i--) {
+                    $size = $sizesResponse->sizes['size'][$i];
 
-                if ($size['width'] < 2000 && $size['height'] < 2000 && empty($model->source_url)) {
-                    $model->source_url = $size['source'];
+                    if ($size['width'] < 2000 && $size['height'] < 2000 && empty($model->source_url)) {
+                        $model->source_url = $size['source'];
 
-                    if (!empty($model->classification)) {
+                        if (!empty($model->classification)) {
+                            break;
+                        }
+                    }
+
+                    if ($size['width'] < 500 && $size['height'] < 500 && empty($model->classification)) {
+                        $model->classification = ['filename' => $this->processFileSouce($size['source'])];
+
                         break;
                     }
                 }
 
-                if ($size['width'] < 500 && $size['height'] < 500 && empty($model->classification)) {
-                    $model->classification = ['filename' => $this->processFileSouce($size['source'])];
-
-                    break;
-                }
+                Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));
             }
-
-            if (empty($model->filename) && !empty($model->source_url)) {
-                $model->filename = $this->processFileSouce($model->source_url);
-            }
-            $model->save();
-
-            Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));
         }
+
+        if (empty($model->filename) && !empty($model->source_url)) {
+            $model->filename = $this->processFileSouce($model->source_url);
+        }
+        $model->save();
     }
 
     /**
