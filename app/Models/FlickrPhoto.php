@@ -28,6 +28,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
  * @property string $description
  * @property string[] $tags
  * @property string $url
+ * @property string $source_url
  * @property string $filename
  * @property FlickrPhotoStatus $status
  * @property array $classification

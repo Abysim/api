@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
+use App\Models\BlueskyConnection;
 use App\Models\ExcludedTag;
 use App\Models\FlickrPhoto;
 use App\MyCloudflareAI;
@@ -408,12 +410,16 @@ class FlickrPhotoController extends Controller
             return;
         }
 
+        if (empty($model->source_url)) {
+            $this->loadPhotoFile($model);
+        }
+
         Log::info($model->id . ': Publishing Flickr photo');
         $response = Http::post(
             'https://maker.ifttt.com/trigger/flickr_photo/with/key/' . config('services.ifttt.webhook_key'),
             [
                 'value1' => $model->getCaption(),
-                'value2' => $model->getFileUrl(),
+                'value2' => $model->source_url ?? $model->getFileUrl(),
             ]
         );
 
@@ -428,6 +434,16 @@ class FlickrPhotoController extends Controller
                     'message_id' => $model->message_id,
                     'reply_markup' => new InlineKeyboard([]),
                 ]);
+            }
+
+            $connection = BlueskyConnection::where('handle', config('services.bluesky.handle'))->first();
+            if ($connection) {
+                try {
+                    $bluesky = new Bluesky($connection);
+                    $bluesky->post(['text' => $model->getCaption()], [['path' => $model->getFilePath()]]);
+                } catch (Exception $e) {
+                    Log::error($model->id . ': Bluesky post error: ' . $e->getMessage());
+                }
             }
         } else {
             // TODO: Make wait and check that the photo is really not published
@@ -673,9 +689,6 @@ class FlickrPhotoController extends Controller
      */
     private function loadPhotoFile(FlickrPhoto $model): void
     {
-        $source = null;
-        $classification = null;
-
         $sizesResponse = FlickrLaravelFacade::request('flickr.photos.getSizes', [
             'photo_id' => $model->id,
         ]);
@@ -684,20 +697,24 @@ class FlickrPhotoController extends Controller
             for ($i = count($sizesResponse->sizes['size']) - 1; $i >= 0; $i--) {
                 $size = $sizesResponse->sizes['size'][$i];
 
-                if ($size['width'] < 2000 && $size['height'] < 2000 && empty($source)) {
-                    $source = $size['source'];
+                if ($size['width'] < 2000 && $size['height'] < 2000 && empty($model->source_url)) {
+                    $model->source_url = $size['source'];
+
+                    if (!empty($model->classification)) {
+                        break;
+                    }
                 }
 
-                if ($size['width'] < 500 && $size['height'] < 500 && empty($classification)) {
-                    $classification = $size['source'];
+                if ($size['width'] < 500 && $size['height'] < 500 && empty($model->classification)) {
+                    $model->classification = ['filename' => $this->processFileSouce($size['source'])];
 
                     break;
                 }
             }
 
-
-            $model->filename = $this->processFileSouce($source);
-            $model->classification = ['filename' => $this->processFileSouce($classification)];
+            if (empty($model->filename) && !empty($model->source_url)) {
+                $model->filename = $this->processFileSouce($model->source_url);
+            }
             $model->save();
 
             Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));
