@@ -60,6 +60,12 @@ class ProcessTelegramChannelPost implements ShouldQueue
     public function handle(): void
     {
         $channelPost = $this->channelPost;
+
+        $forwardedChat = $channelPost->getForwardFromChat();
+        if ($forwardedChat && $forwardedChat->getId() != $channelPost->getChat()->getId()) {
+            return;
+        }
+
         $messageId = $channelPost->getMessageId();
         $replyToPost = $channelPost->getReplyToMessage();
         if ($replyToPost) {
