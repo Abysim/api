@@ -299,7 +299,7 @@ class Bluesky extends Social
      * @return object|null
      * @throws Exception
      */
-    private function uploadImage(string $image): ?object
+    private function  uploadImage(string $image): ?object
     {
         $body = '';
         for ($i = 0; $i <= 4; $i++) {
@@ -411,14 +411,6 @@ class Bluesky extends Social
     ): array|null|object {
         $text = $textData['text'];
 
-        if (!empty($quote) && !empty($media)) {
-            $parts = explode('/', $quote->uri);
-            $link = 'https://bsky.app/profile/' . $this->connection->handle . '/post/' . end($parts);
-            $text = $link . "\n" . $text;
-            $optionalQuote = $quote;
-            $quote = null;
-        }
-
         if (!Str::contains($text, '#фільм', true) && !empty($media)) {
             $text = Str::replaceFirst(' фільм', ' #фільм', $text);
         }
@@ -430,23 +422,6 @@ class Bluesky extends Social
         $posts = $this->splitPost($text, $media);
         if (!empty($posts)) {
             $results = [];
-
-            if (!empty($optionalQuote)) {
-                $firstPostParts = explode("\n",  $posts[0]['text']);
-                $link = array_shift($firstPostParts);
-
-                if (empty($posts[count($posts) - 1]['media'])) {
-                    $quote = $optionalQuote;
-                    for ($i = count($posts) - 1; $i > 0; $i--) {
-                        $posts[$i]['media'] = $posts[$i - 1]['media'];
-                    }
-                    $posts[0]['media'] = [];
-                } else {
-                    $firstPostParts[] = $link;
-                }
-
-                $posts[0]['text'] = implode("\n", $firstPostParts);
-            }
 
             foreach ($posts as $post) {
                 if (!empty($result)) {
@@ -465,13 +440,6 @@ class Bluesky extends Social
                 $results[] = $result;
             }
             return $results;
-        }
-
-        if (!empty($optionalQuote)) {
-            $firstPostParts = explode("\n",  $text);
-            $link = array_shift($firstPostParts);
-            $firstPostParts[] = $link;
-            $text = implode("\n", $firstPostParts);
         }
 
         Log::info('posting: ' . $text);
@@ -514,11 +482,19 @@ class Bluesky extends Social
         $args = $this->addUrls($args, $urls);
         $args = $this->addImages($args, $media);
 
-        if (empty($args['record']['embed']) && !empty($quote)) {
-            $args['record']['embed'] = [
+        if (!empty($quote)) {
+            $record = [
                 '$type' => 'app.bsky.embed.record',
                 'record' => $quote,
             ];
+            if (empty($args['record']['embed'])) {
+                $args['record']['embed'] = $record;
+            } else {
+                $args['record']['embed']['media'] = $args['record']['embed'];
+                $args['record']['embed']['$type'] = 'app.bsky.embed.recordWithMedia';
+                $args['record']['embed']['record'] = $record;
+                unset($args['record']['embed']['images']);
+            }
         }
 
         if (empty($args['record']['embed']) && !empty($args['record']['facets'])) {
