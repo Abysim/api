@@ -497,7 +497,10 @@ class Bluesky extends Social
             }
         }
 
-        if (empty($args['record']['embed']) && !empty($args['record']['facets'])) {
+        if (
+            (empty($args['record']['embed']) || $args['record']['embed']['$type'] == 'app.bsky.embed.record')
+            && !empty($args['record']['facets'])
+        ) {
             foreach ($args['record']['facets'] as $index => $facet) {
                 if (
                     $facet['index']['byteEnd'] == strlen($args['record']['text'])
@@ -623,10 +626,17 @@ class Bluesky extends Social
                                     }
                                 }
 
-                                $args['record']['embed'] = [
+                                $external = [
                                     '$type' => 'app.bsky.embed.external',
                                     'external' => $card,
                                 ];
+                                if (empty($args['record']['embed'])) {
+                                    $args['record']['embed'] = $external;
+                                } else {
+                                    $args['record']['embed']['record'] = $args['record']['embed'];
+                                    $args['record']['embed']['$type'] = 'app.bsky.embed.recordWithMedia';
+                                    $args['record']['embed']['media'] = $external;
+                                }
 
                                 if ($facet['index']['byteEnd'] == strlen($args['record']['text'])) {
                                     $args['record']['text'] = trim(substr(
