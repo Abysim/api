@@ -284,10 +284,10 @@ class Bluesky extends Social
         }
 
         if (!empty($images)) {
-            $args['record']['embed'] = [
+            $args = $this->addEmbed($args, [
                 '$type' => 'app.bsky.embed.images',
                 'images' => $images,
-            ];
+            ]);
         }
 
         return $args;
@@ -479,23 +479,14 @@ class Bluesky extends Social
             }
         }
 
-        $args = $this->addUrls($args, $urls);
-        $args = $this->addImages($args, $media);
-
         if (!empty($quote)) {
-            $record = [
+            $args['record']['embed'] = [
                 '$type' => 'app.bsky.embed.record',
                 'record' => $quote,
             ];
-            if (empty($args['record']['embed'])) {
-                $args['record']['embed'] = $record;
-            } else {
-                $args['record']['embed']['media'] = $args['record']['embed'];
-                $args['record']['embed']['$type'] = 'app.bsky.embed.recordWithMedia';
-                $args['record']['embed']['record'] = $record;
-                unset($args['record']['embed']['images']);
-            }
         }
+        $args = $this->addUrls($args, $urls);
+        $args = $this->addImages($args, $media);
 
         if (
             (empty($args['record']['embed']) || $args['record']['embed']['$type'] == 'app.bsky.embed.record')
@@ -626,17 +617,10 @@ class Bluesky extends Social
                                     }
                                 }
 
-                                $external = [
+                                $args = $this->addEmbed($args, [
                                     '$type' => 'app.bsky.embed.external',
                                     'external' => $card,
-                                ];
-                                if (empty($args['record']['embed'])) {
-                                    $args['record']['embed'] = $external;
-                                } else {
-                                    $args['record']['embed']['record'] = $args['record']['embed'];
-                                    $args['record']['embed']['$type'] = 'app.bsky.embed.recordWithMedia';
-                                    $args['record']['embed']['media'] = $external;
-                                }
+                                ]);
 
                                 if ($facet['index']['byteEnd'] == strlen($args['record']['text'])) {
                                     $args['record']['text'] = trim(substr(
@@ -790,5 +774,24 @@ class Bluesky extends Social
         }
 
         return $request->send($type, $url, $args)->object();
+    }
+
+    /**
+     * @param array $args
+     * @param array $embed
+     *
+     * @return array
+     */
+    private function addEmbed(array $args, array $embed): array
+    {
+        if (empty($args['record']['embed'])) {
+            $args['record']['embed'] = $embed;
+        } else {
+            $args['record']['embed']['record'] = $args['record']['embed'];
+            $args['record']['embed']['$type'] = 'app.bsky.embed.recordWithMedia';
+            $args['record']['embed']['media'] = $embed;
+        }
+
+        return $args;
     }
 }
