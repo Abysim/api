@@ -249,6 +249,12 @@ class FlickrPhotoController extends Controller
     private function publish(): void
     {
         $dailyPublishCount = $this->getDailyPublishCount();
+        $now = now()->format('m-d H:i');
+        if (($now > '12-31 09:30' && $now <= '12-31 23:59') || ($now >= '01-01 00:00' && $now < '01-01 12:30')) {
+            $dailyPublishCount = 24;
+            Log::info('Happy New Year!');
+        }
+
         /** @var FlickrPhoto[] $lastPublishedPhotos */
         $lastPublishedPhotos = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
             ->latest('published_at')
