@@ -161,7 +161,8 @@ class FlickrPhotoController extends Controller
             $queueSize = FlickrPhoto::query()->whereIn('status', [
                 FlickrPhotoStatus::APPROVED,
                 FlickrPhotoStatus::PENDING_REVIEW,
-            ])->count();
+            ])->distinct('owner', 'publish_tags')->count();
+            Log::info('Queue size: ' . $queueSize);
 
             $models = $this->loadPhotos($queueSize <= self::DAILY_PUBLISH_COUNT_LIMIT);
         }
