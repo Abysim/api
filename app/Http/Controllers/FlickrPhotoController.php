@@ -10,6 +10,7 @@ use App\Models\FlickrPhoto;
 use App\MyCloudflareAI;
 use DeepL\Translator;
 use Exception;
+use GuzzleHttp\Exception\ServerException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -304,24 +305,30 @@ class FlickrPhotoController extends Controller
     private function loadPhotoLicense(FlickrPhoto $model): string
     {
         $result = '';
-        $licenseResponse = FlickrLaravelFacade::request('flickr.photos.licenses.getLicenseHistory', [
-            'photo_id' => $model->id,
-        ]);
+        try {
+            $licenseResponse = FlickrLaravelFacade::request('flickr.photos.licenses.getLicenseHistory', [
+                'photo_id' => $model->id,
+            ]);
 
-        $dateChange = 0;
-        if ($licenseResponse->getStatus() == 'ok') {
-            Log::info($model->id . ': License history: ' . json_encode($licenseResponse->license_history));
+            $dateChange = 0;
+            if ($licenseResponse->getStatus() == 'ok') {
+                Log::info($model->id . ': License history: ' . json_encode($licenseResponse->license_history));
 
-            foreach ($licenseResponse->license_history as $license) {
-                if (empty($license['new_license'])) {
-                    $result = $license['old_license'];
+                foreach ($licenseResponse->license_history as $license) {
+                    if (empty($license['new_license'])) {
+                        $result = $license['old_license'];
 
-                    break;
-                } elseif ($license['date'] > $dateChange) {
-                    $result = $license['new_license'];
-                    $dateChange = $license['date'];
+                        break;
+                    } elseif ($license['date'] > $dateChange) {
+                        $result = $license['new_license'];
+                        $dateChange = $license['date'];
+                    }
                 }
             }
+        } catch (ServerException $e) {
+            $result = self::LICENSES[1];
+
+            Log::error($model->id . ': License history error: ' . $e->getMessage());
         }
 
         return $result;
