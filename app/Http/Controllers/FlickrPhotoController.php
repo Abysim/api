@@ -343,14 +343,13 @@ class FlickrPhotoController extends Controller
     {
         $errorMessage = null;
 
-        if (empty($model->filename)) {
-            $this->loadPhotoFile($model);
+        $model->source_url = null;
+        $this->loadPhotoFile($model);
 
-            if (empty($model->filename)) {
-                $errorMessage = 'Photo file missing!';
-                $model->status = FlickrPhotoStatus::PENDING_REVIEW;
-                $model->save();
-            }
+        if (empty($model->filename)) {
+            $errorMessage = 'Photo file missing!';
+            $model->status = FlickrPhotoStatus::PENDING_REVIEW;
+            $model->save();
         }
 
         return $errorMessage;
