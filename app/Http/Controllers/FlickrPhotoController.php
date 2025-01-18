@@ -432,7 +432,7 @@ class FlickrPhotoController extends Controller
             'https://maker.ifttt.com/trigger/flickr_photo/with/key/' . config('services.ifttt.webhook_key'),
             [
                 'value1' => $model->getCaption(),
-                'value2' => $model->source_url,
+                'value2' => $model->source_url ?? 'https://ifttt.com/images/no_image_card.png',
                 'value3' => $model->getFileUrl(),
             ]
         );
