@@ -319,9 +319,9 @@ class FlickrPhotoController extends Controller
                         $result = $license['old_license'];
 
                         break;
-                    } elseif ($license['date'] > $dateChange) {
+                    } elseif ($license['date_change'] > $dateChange) {
                         $result = $license['new_license'];
-                        $dateChange = $license['date'];
+                        $dateChange = $license['date_change'];
                     }
                 }
             }
