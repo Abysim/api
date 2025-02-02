@@ -2,20 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\NewsStatus;
 use App\Models\News;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class NewsController extends Controller
 {
-    public const caseSymbols = [
-        '«',
-        '"',
-        "'",
-        '[',
-        '(',
-    ];
+    public const caseSymbols = ['«', '"', "'", '[', '('];
 
     public const SPECIES = [
         'lion' => [
@@ -252,6 +248,7 @@ class NewsController extends Controller
                 'Чорн',
                 'Біл',
                 'Рожев',
+                'Лігв',
             ],
         ],
         'irbis' => [
@@ -310,6 +307,7 @@ class NewsController extends Controller
                 'добровольч*',
                 'сицілійськ*',
                 'позивни*',
+                'астролог*',
             ],
             'excludeCase' => [
                 'Барс',
@@ -478,6 +476,8 @@ class NewsController extends Controller
         ],
     ];
 
+    const LOAD_TIME = '16:00:00';
+
     private NewsServiceInterface $service;
 
     public function __construct(NewsCatcherService $service)
@@ -487,6 +487,30 @@ class NewsController extends Controller
 
     public function process()
     {
+        Log::info('Processing news');
+        // TODO $this->publish();
+
+        $models = [];
+        if (now()->format('H:i:s') >= self::LOAD_TIME && now()->format('G') % 3 == 0) {
+            $models = $this->loadNews();
+        }
+
+        foreach (News::whereIn('status', [
+            NewsStatus::CREATED,
+            NewsStatus::PENDING_REVIEW,
+        ])->whereNotIn('id', array_keys($models))->get() as $model) {
+            $models[$model->id] = $model;
+        }
+
+        $this->processNews($models);
+
+        // TODO $this->deleteNewsFiles();
+    }
+
+    private function loadNews(): array
+    {
+        $models = [];
+
         $query = '';
         $specieses = [];
         $words = [];
@@ -515,8 +539,6 @@ class NewsController extends Controller
 
             if ($isSearch) {
                 $news = $this->service->getNews($currentQuery);
-
-                $models = [];
 
                 foreach ($news as $article) {
                     $model = News::updateOrCreate([
@@ -559,8 +581,6 @@ class NewsController extends Controller
                     $models[$model->id] = $model;
                 }
 
-                // TODO $this->processNews($models);
-
                 $specieses = [$species];
                 $words = $data['words'];
                 $exclude = $data['exclude'];
@@ -574,10 +594,51 @@ class NewsController extends Controller
                 $query = $currentQuery;
             }
         }
+
+        return $models;
     }
 
     private function processNews(array $models)
     {
+        foreach ($models as $model) {
+            if (empty($model->status) || $model->status == NewsStatus::CREATED) {
+                $this->excludeByTags($model);
+            }
+        }
+    }
 
+    private function excludeByTags($model)
+    {
+        $text = $model->title . '. ' . $model->content;
+
+        foreach ($model->species as $species) {
+            foreach (self::SPECIES[$species]['excludeCase'] ?? [] as $excludeCase) {
+                $lastPosition = 0;
+                while (($lastPosition = Str::position($text, $excludeCase, $lastPosition)) !== false) {
+                    if (
+                        $lastPosition > 1
+                        && Str::charAt($text, $lastPosition - 1) == ' '
+                        && !in_array(Str::charAt($text, $lastPosition - 2), ['.', '!', '?', '…'])
+                    ) {
+                        $model->status = NewsStatus::REJECTED_BY_KEYWORD;
+                        $model->save();
+
+                        return;
+                    }
+
+                    $lastPosition = $lastPosition + Str::length($excludeCase);
+                }
+
+                foreach (self::caseSymbols as $caseSymbol) {
+                    $excludeWord = $caseSymbol . $excludeCase;
+                    if (Str::contains($text, $excludeWord)) {
+                        $model->status = NewsStatus::REJECTED_BY_KEYWORD;
+                        $model->save();
+
+                        return;
+                    }
+                }
+            }
+        }
     }
 }

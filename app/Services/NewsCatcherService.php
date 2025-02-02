@@ -15,6 +15,8 @@ class NewsCatcherService implements NewsServiceInterface
 
     private const LANG = 'uk';
 
+    private const EXCLUDE_COUNTRIES = ['RU', 'KZ'];
+
     const EXCLUDE_DOMAINS = [
         'champion.com.ua',
         'sport.ua',
@@ -32,6 +34,7 @@ class NewsCatcherService implements NewsServiceInterface
         $result = $this->request->get(self::URL . 'search', [
             'q' => $query,
             'lang' => self::LANG,
+            'not_countries' => implode(',', self::EXCLUDE_COUNTRIES),
             'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
             'ranked_only' => 'False',
             'sort_by' => 'date',
