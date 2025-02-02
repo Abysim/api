@@ -42,4 +42,8 @@ return [
     'bluesky' => [
         'handle' => env('BLUESKY_HANDLE'),
     ],
+
+    'newscatcher' => [
+        'key' => env('NEWSCATCHER_KEY'),
+    ],
 ];

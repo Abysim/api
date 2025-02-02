@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\NewsStatus;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\AsArrayObject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -19,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $title
  * @property string $content
  * @property string[] $tags
+ * @property string[] $species
  * @property string $link
  * @property string $source
  * @property string $language
@@ -36,5 +39,33 @@ use Illuminate\Support\Carbon;
  */
 class News extends Model
 {
+    /**
+     * @var string[]
+     */
+    protected $fillable = [
+        'platform',
+        'external_id',
+        'date', 'author',
+        'title',
+        'content',
+        'link',
+        'source',
+        'language',
+        'media',
+        'posted_at'
+    ];
 
+    /**
+     * @var string[]
+     */
+    protected $casts = [
+        'tags' => 'array',
+        'species' => 'array',
+        'status' => NewsStatus::class,
+        'classification' => AsArrayObject::class,
+        'published_at' => 'datetime',
+        'posted_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
 }
