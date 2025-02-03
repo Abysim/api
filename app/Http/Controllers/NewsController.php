@@ -632,32 +632,57 @@ class NewsController extends Controller
                         ['role' => 'user', 'content' => '
 Strictly classify countries (ISO Alpha-2 codes) and wild cat species into JSON using these rules:
 1. Countries:
-- Core Relevance (directly tied to events/actions):
--- Explicit country name in the main narrative: 0.8-1.0 (e.g., "India’s tigers").
--- Unique regions/settlements/landmarks unambiguously mapped (e.g., "Chhattisgarh" → IN): 0.6-0.9.
-- Indirect/Decoupled Relevance (no causal link to events):
--- Geographic comparisons (e.g., "like Ukraine’s territory"): 0.1-0.3.
--- Supplemental sections (phrases like `раніше`, `також`, `нагадаємо`): 0.1-0.4, even if explicit.
-- Rejection Criteria: Regions (e.g., Europe), ambiguous landmarks.
+   - Core Relevance (directly tied to events/actions):
+     - Explicit country name in the main narrative: Score between 0.8-1.0 (e.g., "India’s tigers").
+     - Unique regions/settlements/landmarks with 1:1 country mapping: Score between 0.6-0.9 (e.g., `Chhattisgarh` → `IN`).
+   - Indirect/Decoupled Relevance (no causal link to events):
+     - Geographic comparisons (e.g., "like Ukraine’s territory"): Score between 0.1-0.3.
+     - Supplemental sections (phrases like `раніше`, `також`, `нагадаємо`): Score between 0.1-0.4, even if explicit.
+   - Rejection Criteria: Exclude regions (e.g., Europe), ambiguous landmarks, or cities/landmarks without a 1:1 country mapping unless unequivocally tied to a specific country.
 2. Species:
-- Allowed Species List (exact names): `lion`, `tiger`, `leopard`, `jaguar`, `cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`.
--- Map Translations and synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `clouded leopard` → `leopard`).
--- Never include species outside the allowed list.
-- Core Focus: Literal mentions in the main narrative (e.g., "India’s tigers"): 0.7-1.0.
-- Marginal/Statistical: Non-central mentions or comparisons (e.g., "jaguar attack stats", "similar to an ocelot"): 0.2-0.5.
-- Metaphors Take Precedence: If a species mentioned is metaphorical (e.g., "brave as a lion", "fighting like tigers", "leopard print swimsuit"), always apply 0.1–0.4 even in the main narrative.
-- Supplemental Section: All species mentioned: 0.1–0.4, regardless of context.
-- Exclusion: Set probability to 0 for unrelated terms (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armor vehicle).
+   - Allowed Species List (exact names and translations/synonyms): `lion`, `white lion`, `tiger`, `white tiger`, `leopard`, `jaguar`, `cheetah`, `king cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`, `neofelis`.
+     - Map Translations and synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `димчаста пантера` → `neofelis`).
+     - Map only melanistic wild cats that have black color of pelt to the term `panther`, do not map other cases to it.
+     - Never include species outside the allowed list.
+   - Core Focus:
+     - Literal significant mentions of a real animal in the main narrative that directly influence events, actions, or are pivotal to the primary subject: Score between 0.7-1.0 (e.g., "India’s tigers").
+     - Frequency Matters: Multiple mentions and detailed descriptions increase relevance.
+   - Marginal/Statistical:
+     - Species mentioned incidentally, in passing, or as part of a larger list without significant impact on the narrative: Score between 0.1-0.5 (e.g., "lynx attack stats", "similar to an ocelot", "tiger hunting").
+     - Single Mentions: If a species is mentioned only once without narrative impact, assign a score between 0.1-0.3.
+   - Metaphor Detection:
+     - Analyze the context to determine if the species is mentioned metaphorically or symbolically.
+     - Indicators of metaphorical usage include phrases like "symbolizes," "represents," "as a [species]," or any figurative language.
+     - Metaphorical Mentions:
+       - Always assign a score between 0.1–0.4, regardless of prominence in the narrative.
+       - Example: "The brand\'s mascot, a tiger, represents strength." → Score: 0.3
+     - Literal Mentions:
+       - Only assign higher scores (0.7–1.0) if the species is a real animal directly influencing the narrative.
+       - Example: "Conservation efforts for tigers in India have increased." → Score: 0.9
+   - Supplemental Section:
+     - All species mentioned in supplemental sections: Score between 0.1–0.4, regardless of context.
+   - Exclusion:
+     - Set probability to 0 for species unrelated to real animals (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armored vehicle, "Lion Symbol" from a coat of arms).
 3. Scoring System:
-- Scores span 0.1-1.0 (contiguous range, not buckets).
-Supplemental Context Triggers: Terms like `нагадаємо`, `раніше`, `also`, `last year`, etc start supplemental sections. All subsequent entities inherit 0.1–0.5.
-- Hybrid mentions: Retain the highest applicable score.
-- Metaphors override species scores to ≤0.4, even in the main narrative.
+   - Scores span 0.1-1.0 (contiguous range, not buckets).
+   - Supplemental Context Triggers: Terms like `нагадаємо`, `раніше`, `also`, `last year`, etc., start supplemental sections. All subsequent entities inherit a score between 0.1–0.5.
+   - Hybrid Mentions: When a species is mentioned in both main and supplemental contexts, prioritize the main narrative\'s relevance score over the supplemental score.
+   - Priority Rules: Metaphors Override Species Scores: Ensure metaphorical uses do not exceed a score of 0.4, regardless of their prominence in the narrative.
 4. Geographic Precision:
-- Reject cities/landmarks unless they have a 1:1 country mapping (e.g., Nagpur → IN accepted; Danube rejected).
-- Satellite references (e.g., "України" for area comparisons) ≤ 0.3.
-Required Output Format is JSON without any explanations and without code formatting: {"countries": {"[ISO]": [number], ...}, "species": {"[species]": [number], ...}}
-Never include non-ISO codes or invalid species outside the allowed species list.
+   - Reject cities/landmarks unless they have a 1:1 country mapping (e.g., `Nagpur` → `IN` accepted; Danube rejected).
+   - Satellite references (e.g., "України" for area comparisons): Score ≤ 0.3.
+5. Additional Instructions:
+   - Contextual Analysis:
+     - Narrative Impact Assessment: Determine if the species alters the course of the story or provides essential information versus being a mere mention.
+     - Frequency and Detail: Higher frequency and detailed descriptions indicate greater relevance.
+   - Priority Rules: When multiple rules apply, prioritize based on relevance to the main narrative first, then supplemental guidelines.
+   - Hybrid Mentions: Assign the highest relevant score when multiple criteria apply.
+   - Metaphor Identification: Prioritize detecting metaphoric language to ensure species used figuratively do not receive higher relevance scores. Use contextual clues to discern metaphoric usage.
+   - Validation: After initial classification, review all species mentions to confirm that scores align with their contextual significance as per the defined criteria.
+6. Required Output Format:
+   - Provide the classification as JSON without any explanations and without code formatting: {"countries": {"[ISO]": [number], ...}, "species": {"[species]": [number], ...}}
+7. Constraints:
+   - Never include non-ISO codes or invalid species outside the allowed species list.
                         '],
                         ['role' => 'user', 'content' => $model->title . '. ' . $model->content]
                     ],
