@@ -642,7 +642,7 @@ Strictly classify countries (ISO Alpha-2 codes) and wild cat species into JSON u
 2. Species:
    - Allowed Species List (exact names and translations/synonyms): `lion`, `white lion`, `tiger`, `white tiger`, `leopard`, `jaguar`, `cheetah`, `king cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`, `neofelis`.
      - Map Translations and synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `димчаста пантера` → `neofelis`).
-     - Map only melanistic wild cats that have black color of pelt to the term `panther`, do not map other cases to it.
+     - Map only melanistic wild cats that have the black color of pelt to the term `panther`.
      - Never include species outside the allowed list.
    - Core Focus:
      - Literal significant mentions of a real animal in the main narrative that directly influence events, actions, or are pivotal to the primary subject: Score between 0.7-1.0 (e.g., "India’s tigers").
@@ -653,16 +653,22 @@ Strictly classify countries (ISO Alpha-2 codes) and wild cat species into JSON u
    - Metaphor Detection:
      - Analyze the context to determine if the species is mentioned metaphorically or symbolically.
      - Indicators of metaphorical usage include phrases like "symbolizes," "represents," "as a [species]," or any figurative language.
-     - Metaphorical Mentions:
-       - Always assign a score between 0.1–0.4, regardless of prominence in the narrative.
-       - Example: "The brand\'s mascot, a tiger, represents strength." → Score: 0.3
-     - Literal Mentions:
-       - Only assign higher scores (0.7–1.0) if the species is a real animal directly influencing the narrative.
-       - Example: "Conservation efforts for tigers in India have increased." → Score: 0.9
+     - Enhanced Metaphor Detection:
+       - Additionally, exclude species names found within patterns, designs, or symbolic contexts (e.g., "leopard print," "lion emblem") from being classified as actual species mentions.
+       - Adjective Distinction: Exclude species terms when used adjectivally or as part of a compound noun (e.g., "leopard print" does not count as a "leopard" mention).
    - Supplemental Section:
      - All species mentioned in supplemental sections: Score between 0.1–0.4, regardless of context.
+   - Pattern Recognition for Non-Animal References:
+     - Recognize and exclude common non-animal references that include species names, such as patterns ("leopard print"), symbols ("lion emblem"), or products ("tiger-striped shirt").
+     - Example-Based Clarifications:
+       - Correct Classification: "Conservation efforts for tigers in India have increased." → `"tiger": 0.9`
+       - Incorrect Classification: "She wore a leopard print dress." → Do not classify "leopard" as a species.
+     - Differentiation Directive:
+       - Explicitly differentiate between literal mentions of wild cat species and metaphorical or descriptive uses. Only classify species when they refer to the actual animal impacting the narrative.
+     - Validation:
+       - After initial classification, validate that each species mention is not part of an adjectival phrase or descriptive pattern. If it is, exclude it from the final classification.
    - Exclusion:
-     - Set probability to 0 for species unrelated to real animals (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armored vehicle, "Lion Symbol" from a coat of arms).
+     - Set probability to 0 for cases unrelated to real animals (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armored vehicle, "Lion Symbol" from a coat of arms).
 3. Scoring System:
    - Scores span 0.1-1.0 (contiguous range, not buckets).
    - Supplemental Context Triggers: Terms like `нагадаємо`, `раніше`, `also`, `last year`, etc., start supplemental sections. All subsequent entities inherit a score between 0.1–0.5.
