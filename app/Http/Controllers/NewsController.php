@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Enums\NewsStatus;
 use App\Models\News;
+use App\MyCloudflareAI;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
+use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
@@ -603,6 +606,77 @@ class NewsController extends Controller
         foreach ($models as $model) {
             if (empty($model->status) || $model->status == NewsStatus::CREATED) {
                 $this->excludeByTags($model);
+            }
+
+            $model->refresh();
+            if (
+                empty($model->status)
+                || $model->status == NewsStatus::CREATED
+                || $model->status == NewsStatus::PENDING_REVIEW
+            ) {
+                if (empty($model->classification)) {
+                    $this->classifyNews($model);
+                }
+            }
+        }
+    }
+
+    private function classifyNews(News $model)
+    {
+        for ($i = 0; $i < 4; $i++) {
+            try {
+                Log::info($model->id . ': News classification');
+                $classificationResponse = OpenAI::chat()->create([
+                    'model' => 'o1-mini',
+                    'messages' => [
+                        ['role' => 'user', 'content' => '
+Strictly classify countries (ISO Alpha-2 codes) and wild cat species into JSON using these rules:
+1. Countries:
+- Core Relevance (directly tied to events/actions):
+-- Explicit country name in the main narrative: 0.8-1.0 (e.g., "India’s tigers").
+-- Unique regions/settlements/landmarks unambiguously mapped (e.g., "Chhattisgarh" → IN): 0.6-0.9.
+- Indirect/Decoupled Relevance (no causal link to events):
+-- Geographic comparisons (e.g., "like Ukraine’s territory"): 0.1-0.3.
+-- Supplemental sections (phrases like `раніше`, `також`, `нагадаємо`): 0.1-0.4, even if explicit.
+- Rejection Criteria: Regions (e.g., Europe), ambiguous landmarks.
+2. Species:
+- Allowed Species List (exact names): `lion`, `tiger`, `leopard`, `jaguar`, `cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`.
+-- Map Translations and synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `clouded leopard` → `leopard`).
+-- Never include species outside the allowed list.
+- Core Focus: Literal mentions in the main narrative (e.g., "India’s tigers"): 0.7-1.0.
+- Marginal/Statistical: Non-central mentions or comparisons (e.g., "jaguar attack stats", "similar to an ocelot"): 0.2-0.5.
+- Metaphors Take Precedence: If a species mentioned is metaphorical (e.g., "brave as a lion", "fighting like tigers", "leopard print swimsuit"), always apply 0.1–0.4 even in the main narrative.
+- Supplemental Section: All species mentioned: 0.1–0.4, regardless of context.
+- Exclusion: Set probability to 0 for unrelated terms (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armor vehicle).
+3. Scoring System:
+- Scores span 0.1-1.0 (contiguous range, not buckets).
+Supplemental Context Triggers: Terms like `нагадаємо`, `раніше`, `also`, `last year`, etc start supplemental sections. All subsequent entities inherit 0.1–0.5.
+- Hybrid mentions: Retain the highest applicable score.
+- Metaphors override species scores to ≤0.4, even in the main narrative.
+4. Geographic Precision:
+- Reject cities/landmarks unless they have a 1:1 country mapping (e.g., Nagpur → IN accepted; Danube rejected).
+- Satellite references (e.g., "України" for area comparisons) ≤ 0.3.
+Required Output Format is JSON without any explanations and without code formatting: {"countries": {"[ISO]": [number], ...}, "species": {"[species]": [number], ...}}
+Never include non-ISO codes or invalid species outside the allowed species list.
+                        '],
+                        ['role' => 'user', 'content' => $model->title . '. ' . $model->content]
+                    ],
+                ]);
+
+                Log::info($model->id . ': Classification result: ' . json_encode($classificationResponse));
+
+                if (!empty($classificationResponse->choices[0]->message->content)) {
+                    $model->classification = json_decode($classificationResponse->choices[0]->message->content);
+                    $model->save();
+                }
+            } catch (Exception $e) {
+                $model->classification = null;
+
+                Log::error($model->id . ': News classification fail: ' . $e->getMessage());
+            }
+
+            if (!empty($model->classification)) {
+                break;
             }
         }
     }
