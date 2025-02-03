@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c9b2804f19261808a6d9bc989b481fad",
+    "content-hash": "c8bf188cd5bc4f2c750f815da18da063",
     "packages": [
         {
             "name": "atymic/twitter",
@@ -370,6 +370,79 @@
                 }
             ],
             "time": "2023-12-11T17:09:12+00:00"
+        },
+        {
+            "name": "caseyamcl/guzzle_retry_middleware",
+            "version": "v2.12.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/caseyamcl/guzzle_retry_middleware.git",
+                "reference": "362bdd5e6d19e54e1f4c8c27757e7598201efa3c"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/caseyamcl/guzzle_retry_middleware/zipball/362bdd5e6d19e54e1f4c8c27757e7598201efa3c",
+                "reference": "362bdd5e6d19e54e1f4c8c27757e7598201efa3c",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^6.3|^7.0",
+                "php": "^7.1|^8.0"
+            },
+            "require-dev": {
+                "jaschilz/php-coverage-badger": "^2.0",
+                "nesbot/carbon": "^2.0|^3.0",
+                "phpstan/extension-installer": "^1.0",
+                "phpstan/phpstan": "^1.0",
+                "phpunit/phpunit": "^7.5|^8.0|^9.0",
+                "squizlabs/php_codesniffer": "^3.5",
+                "symfony/var-dumper": "^5.0|^6.0|^7.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "2.0-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "GuzzleRetry\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Casey McLaughlin",
+                    "email": "caseyamcl@gmail.com",
+                    "homepage": "https://caseymclaughlin.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Guzzle v6+ retry middleware that handles 429/503 status codes and connection timeouts",
+            "homepage": "https://github.com/caseyamcl/guzzle_retry_middleware",
+            "keywords": [
+                "Guzzle",
+                "back-off",
+                "caseyamcl",
+                "guzzle_retry_middleware",
+                "middleware",
+                "retry",
+                "retry-after"
+            ],
+            "support": {
+                "issues": "https://github.com/caseyamcl/guzzle_retry_middleware/issues",
+                "source": "https://github.com/caseyamcl/guzzle_retry_middleware/tree/v2.12.1"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/caseyamcl",
+                    "type": "github"
+                }
+            ],
+            "time": "2024-12-05T15:02:37+00:00"
         },
         {
             "name": "deeplcom/deepl-php",
@@ -2984,6 +3057,73 @@
                 }
             ],
             "time": "2023-05-27T15:36:06+00:00"
+        },
+        {
+            "name": "moe-mizrak/laravel-openrouter",
+            "version": "v1.0.9",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/moe-mizrak/laravel-openrouter.git",
+                "reference": "0d4efb29ca1166f270171ebe004efff5ee014e60"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/moe-mizrak/laravel-openrouter/zipball/0d4efb29ca1166f270171ebe004efff5ee014e60",
+                "reference": "0d4efb29ca1166f270171ebe004efff5ee014e60",
+                "shasum": ""
+            },
+            "require": {
+                "caseyamcl/guzzle_retry_middleware": "^2.9",
+                "ext-json": "*",
+                "guzzlehttp/guzzle": "^7.8",
+                "php": "^8.1",
+                "spatie/data-transfer-object": "^3.9.1"
+            },
+            "require-dev": {
+                "fakerphp/faker": "^1.12",
+                "mockery/mockery": "^1.0",
+                "orchestra/testbench": "^6.0",
+                "phpunit/phpunit": "^9.0"
+            },
+            "type": "package",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "LaravelOpenrouter": "MoeMizrak\\LaravelOpenrouter\\Facades\\LaravelOpenRouter"
+                    },
+                    "providers": [
+                        "MoeMizrak\\LaravelOpenrouter\\OpenRouterServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "MoeMizrak\\LaravelOpenrouter\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Moe Mizrak"
+                }
+            ],
+            "description": "Laravel package for OpenRouter (A unified interface for LLMs)",
+            "homepage": "https://github.com/moe-mizrak/laravel-openrouter",
+            "keywords": [
+                "Moe Mizrak",
+                "OpenRouter",
+                "ai",
+                "laravel",
+                "laravel-openrouter",
+                "llms"
+            ],
+            "support": {
+                "source": "https://github.com/moe-mizrak/laravel-openrouter/tree/v1.0.9"
+            },
+            "time": "2025-02-01T08:17:15+00:00"
         },
         {
             "name": "monolog/monolog",
@@ -5791,6 +5931,70 @@
                 }
             ],
             "time": "2024-06-11T12:45:25+00:00"
+        },
+        {
+            "name": "spatie/data-transfer-object",
+            "version": "3.9.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/spatie/data-transfer-object.git",
+                "reference": "1df0906c4e9e3aebd6c0506fd82c8b7d5548c1c8"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/spatie/data-transfer-object/zipball/1df0906c4e9e3aebd6c0506fd82c8b7d5548c1c8",
+                "reference": "1df0906c4e9e3aebd6c0506fd82c8b7d5548c1c8",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "illuminate/collections": "^8.36",
+                "jetbrains/phpstorm-attributes": "^1.0",
+                "larapack/dd": "^1.1",
+                "phpunit/phpunit": "^9.5.5"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Spatie\\DataTransferObject\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Brent Roose",
+                    "email": "brent@spatie.be",
+                    "homepage": "https://spatie.be",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Data transfer objects with batteries included",
+            "homepage": "https://github.com/spatie/data-transfer-object",
+            "keywords": [
+                "data-transfer-object",
+                "spatie"
+            ],
+            "support": {
+                "issues": "https://github.com/spatie/data-transfer-object/issues",
+                "source": "https://github.com/spatie/data-transfer-object/tree/3.9.1"
+            },
+            "funding": [
+                {
+                    "url": "https://spatie.be/open-source/support-us",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/spatie",
+                    "type": "github"
+                }
+            ],
+            "abandoned": "spatie/laravel-data",
+            "time": "2022-09-16T13:34:38+00:00"
         },
         {
             "name": "spatie/laravel-package-tools",
