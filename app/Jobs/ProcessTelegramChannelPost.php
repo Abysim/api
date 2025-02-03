@@ -22,6 +22,7 @@ use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use Longman\TelegramBot\Telegram;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class ProcessTelegramChannelPost implements ShouldQueue
 {
@@ -211,26 +212,25 @@ class ProcessTelegramChannelPost implements ShouldQueue
                 if (empty($item['text'])) {
                     for ($i = 0; $i < 4; $i++) {
                         try {
-                            $response = MyCloudflareAI::runModel([
-                                'image' => array_values(unpack('C*', File::get($item['path']))),
-                                'prompt' => 'Generate a caption for this image',
-                                'max_tokens' => 64,
-                            ], $i % 2 ? 'llava-hf/llava-1.5-7b-hf' : 'unum/uform-gen2-qwen-500m');
+                            $response = OpenAI::chat()->create(['model' => 'gpt-4o-mini', 'messages' => [
+                                ['role' => 'user', 'content' => [
+                                    [
+                                        'type' => 'text',
+                                        'text' => "Generate the image caption for visually impaired people, focusing solely on evident visual elements such as colours, shapes, objects, and any discernible text. Do not include additional descriptions, interpretations, or assumptions not explicitly visible in the image. Limit the output to 300 characters. Write the caption in the following language: $language"
+                                    ],
+                                    [
+                                        'type' => 'image_url',
+                                        'image_url' => [
+                                            'url' => 'data:image/jpeg;base64,' . base64_encode(File::get($item['path'])),
+                                        ]
+                                    ]
+                                ]]
+                            ]]);
 
-                            Log::info($messageId . ': image description : ' . json_encode($response));
+                            Log::info($messageId . ': image description : ' . json_encode($response, JSON_UNESCAPED_UNICODE));
 
-                            if (!empty($response['result']['description'])) {
-                                $item['text'] = $response['result']['description'];
-
-                                if ($language != 'en') {
-                                    try {
-                                        $translator = new Translator(config('deepl.key'));
-                                        $item['text'] =
-                                            (string) $translator->translateText($item['text'], 'en', $language);
-                                    } catch (Exception $e) {
-                                        Log::error($messageId . ': translation fail: ' . $e->getMessage());
-                                    }
-                                }
+                            if (!empty($response->choices[0]->message->content)) {
+                                $item['text'] = $response->choices[0]->message->content;
                             }
                         } catch (Exception $e) {
                             Log::error($messageId . ': image description fail: ' . $e->getMessage());
