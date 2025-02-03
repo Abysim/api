@@ -642,7 +642,8 @@ Strictly classify countries (ISO Alpha-2 codes) and wild cat species into JSON u
 2. Species:
    - Allowed Species List (exact names and translations/synonyms): `lion`, `white lion`, `tiger`, `white tiger`, `leopard`, `jaguar`, `cheetah`, `king cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`, `neofelis`.
      - Map Translations and synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `димчаста пантера` → `neofelis`).
-     - Map only melanistic wild cats that have the black color of pelt to the term `panther`.
+     - Map only melanistic wild cats that have a black pelt to the term `panther`.
+     - When context indicates a melanistic species (e.g., "black jaguar", "melanistic"), include mapping to `panther`.
      - Never include species outside the allowed list.
    - Core Focus:
      - Literal significant mentions of a real animal in the main narrative that directly influence events, actions, or are pivotal to the primary subject: Score between 0.7-1.0 (e.g., "India’s tigers").
