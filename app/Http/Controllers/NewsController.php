@@ -15,9 +15,9 @@ use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
-    public const caseSymbols = ['«', '"', "'", '[', '('];
+    private const caseSymbols = ['«', '"', "'", '[', '('];
 
-    public const SPECIES = [
+    private const SPECIES = [
         'lion' => [
             'words' => [
                 'лев',
@@ -480,7 +480,26 @@ class NewsController extends Controller
         ],
     ];
 
-    const LOAD_TIME = '16:00:00';
+    private const SPECIES_TAGS = [
+        'lion' => '#лев',
+        'white lion' => '#лев #білийлев',
+        'tiger' => '#тигр',
+        'white tiger' => '#тигр #білийтигр',
+        'leopard' => '#леопард',
+        'jaguar' => '#ягуар',
+        'cheetah' => '#гепард',
+        'king cheetah' => '#гепард #королівськийгепард',
+        'panther' => '#пантера',
+        'irbis' => '#ірбіс',
+        'puma' => '#пума',
+        'lynx' => '#рись',
+        'ocelot' => '#оцелот',
+        'caracal' => '#каракал',
+        'serval' => '#сервал',
+        'neofelis' => '#димчастапантера',
+    ];
+
+    private const LOAD_TIME = '16:00:00';
 
     private array $prompts = [];
 
@@ -617,8 +636,8 @@ class NewsController extends Controller
                 || $model->status == NewsStatus::CREATED
                 || $model->status == NewsStatus::PENDING_REVIEW
             ) {
-                if (empty($model->classification)) {
-                    $this->classifyNews($model);
+                if (!isset($model->classification['species'])) {
+                    $this->classifyNews($model, 'species');
                 }
             }
         }
@@ -644,32 +663,40 @@ class NewsController extends Controller
         return $this->prompts[$name];
     }
 
-    private function classifyNews(News $model)
+    private function classifyNews(News $model, string $term)
     {
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info($model->id . ': News classification');
+                Log::info("$model->id: News $term classification");
                 $classificationResponse = OpenAI::chat()->create([
-                    'model' => 'o1-mini',
+                    'model' => 'gpt-4o-mini',
                     'messages' => [
-                        ['role' => 'user', 'content' => $this->getPrompt('news')],
+                        ['role' => 'user', 'content' => $this->getPrompt($term)],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
                 ]);
 
-                Log::info($model->id . ': Classification result: ' . json_encode($classificationResponse));
+                Log::info("$model->id: News $term classification result: " . json_encode($classificationResponse));
 
                 if (!empty($classificationResponse->choices[0]->message->content)) {
-                    $model->classification = json_decode($classificationResponse->choices[0]->message->content);
+                    $classification = $model->classification ?? [];
+                    $classification[$term] = json_decode($classificationResponse->choices[0]->message->content, true);
+                    if (!empty($invalidTerms = array_diff_key($classification[$term], self::SPECIES_TAGS))) {
+                        throw new Exception('Invalid terms: ' . json_encode(array_keys($invalidTerms)));
+                    }
+
+                    $model->classification = $classification;
                     $model->save();
                 }
             } catch (Exception $e) {
-                $model->classification = null;
+                $classification = $model->classification ?? [];
+                unset($classification[$term]);
+                $model->classification = $classification;
 
-                Log::error($model->id . ': News classification fail: ' . $e->getMessage());
+                Log::error("$model->id: News $term classification fail: {$e->getMessage()}");
             }
 
-            if (!empty($model->classification)) {
+            if (isset($model->classification[$term])) {
                 break;
             }
         }
