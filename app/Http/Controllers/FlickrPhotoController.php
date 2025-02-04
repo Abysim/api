@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\Laravel\Facades\Image;
 use JeroenG\Flickr\FlickrLaravelFacade;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
@@ -774,7 +775,10 @@ class FlickrPhotoController extends Controller
         }
 
         if (empty($image)) {
-            $image = array_values(unpack('C*', File::get($model->getFilePath())));
+            $image = array_values(unpack(
+                'C*',
+                (string) Image::read(File::get($model->getFilePath()))->scaleDown(448, 448)->toJpeg(95)
+            ));
         }
 
         for ($i = 0; $i < 4; $i++) {
