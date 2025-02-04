@@ -625,12 +625,15 @@ class NewsController extends Controller
     }
 
     /**
+     * @param string $name
+     *
+     * @return string
      * @throws Exception
      */
-    private function getPrompt(string $name)
+    private function getPrompt(string $name): string
     {
         if (!isset($this->prompts[$name])) {
-            $path = storage_path('prompts/' . $name . '.md');
+            $path = resource_path('prompts/' . $name . '.md');
             if (File::exists($path)) {
                 $this->prompts[$name] = File::get($path);
             } else {
