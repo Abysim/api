@@ -763,9 +763,7 @@ class FlickrPhotoController extends Controller
      */
     private function classifyPhoto(FlickrPhoto $model): void
     {
-        if (empty($model->classification['filename'])) {
-            $image = array_values(unpack('C*', File::get($model->getFilePath())));
-        } else {
+        if (!empty($model->classification['filename'])) {
             $filepath = storage_path('app/public/flickr/' . $model->classification['filename']);
             if (File::exists($filepath)) {
                 $image = array_values(unpack('C*', File::get($filepath)));
@@ -773,6 +771,10 @@ class FlickrPhotoController extends Controller
             }
             $model->classification = null;
             $model->save();
+        }
+
+        if (empty($image)) {
+            $image = array_values(unpack('C*', File::get($model->getFilePath())));
         }
 
         for ($i = 0; $i < 4; $i++) {
