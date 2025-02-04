@@ -767,9 +767,12 @@ class FlickrPhotoController extends Controller
             $image = array_values(unpack('C*', File::get($model->getFilePath())));
         } else {
             $filepath = storage_path('app/public/flickr/' . $model->classification['filename']);
-            $image = array_values(unpack('C*', File::get($filepath)));
+            if (File::exists($filepath)) {
+                $image = array_values(unpack('C*', File::get($filepath)));
+                File::delete($filepath);
+            }
             $model->classification = null;
-            File::delete($filepath);
+            $model->save();
         }
 
         for ($i = 0; $i < 4; $i++) {
