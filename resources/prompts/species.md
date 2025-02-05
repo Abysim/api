@@ -84,5 +84,6 @@ Strictly classify wild cat species into JSON using the following rules:
     - Format:
         - Provide the classification as JSON.
         - Example: `{"[species]": [number], ...}`
+        - Only include species from the Allowed Species List in the JSON output.
     - Exclusion:
-        - Exclude all species not present in the Allowed Species List.
+        - Exclude any terms not present in the Allowed Species List, even if they appear in the text.

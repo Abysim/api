@@ -678,13 +678,23 @@ class NewsController extends Controller
                     'temperature' => 0,
                 ]);
 
-                Log::info("$model->id: News $term classification result: " . json_encode($classificationResponse));
+                Log::info(
+                    "$model->id: News $term classification result: "
+                    . json_encode($classificationResponse, JSON_UNESCAPED_UNICODE)
+                );
 
                 if (!empty($classificationResponse->choices[0]->message->content)) {
                     $classification = $model->classification ?? [];
                     $classification[$term] = json_decode($classificationResponse->choices[0]->message->content, true);
+
+                    if (!is_array($classification[$term])) {
+                        throw new Exception('Invalid classification');
+                    }
                     if (!empty($invalidTerms = array_diff_key($classification[$term], self::SPECIES_TAGS))) {
-                        Log::warning($model->id . ': Invalid terms: ' . json_encode(array_keys($invalidTerms)));
+                        Log::warning(
+                            $model->id . ': Invalid terms: '
+                            . json_encode(array_keys($invalidTerms), JSON_UNESCAPED_UNICODE)
+                        );
                     }
 
                     $model->classification = $classification;
