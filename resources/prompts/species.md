@@ -48,11 +48,15 @@ Strictly classify wild cat species into JSON using the following rules:
    - Score Range: 0.1 to 1.0 (contiguous range).
    - Main Subject Species (1.0):
        - Assign a score of 1.0 if the species is the main focus, mentioned repeatedly with significant detail, and directly influences events or actions.
+       - Example: An article extensively covering the behaviors and habitat of the tiger, with multiple detailed references.
    - Significant Mentions (0.7–0.9):
        - Assign scores between 0.7–0.9 for species that are important but not the central focus.
+       - Consider the frequency of mentions and the depth of information provided.
+       - Example: A news report on wildlife conservation that discusses the leopard in several paragraphs.
    - Incidental Mentions (0.1–0.6):
        - Assign scores between 0.1–0.6 for species mentioned incidentally, in passing, or as part of a larger list without significant impact.
-       - For single mentions without narrative impact, assign scores between 0.1–0.3.
+       - For single mentions without narrative impact, assign scores between 0.1–0.2.
+       - Example: An article about a city that briefly mentions the presence of the caracal among many other species.
    - Supplemental Sections (0.1–0.4):
        - Recognize supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`).
        - Assign scores between 0.1–0.4 for species mentioned in supplemental sections.

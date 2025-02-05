@@ -671,7 +671,7 @@ class NewsController extends Controller
                 $classificationResponse = OpenAI::chat()->create([
                     'model' => 'gpt-4o-mini',
                     'messages' => [
-                        ['role' => 'user', 'content' => $this->getPrompt($term)],
+                        ['role' => 'system', 'content' => $this->getPrompt($term)],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
                     'response_format' => ['type' => 'json_object'],
