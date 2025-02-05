@@ -674,6 +674,8 @@ class NewsController extends Controller
                         ['role' => 'user', 'content' => $this->getPrompt($term)],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
+                    'response_format' => ['type' => 'json_object'],
+                    'temperature' => 0,
                 ]);
 
                 Log::info("$model->id: News $term classification result: " . json_encode($classificationResponse));
@@ -682,7 +684,7 @@ class NewsController extends Controller
                     $classification = $model->classification ?? [];
                     $classification[$term] = json_decode($classificationResponse->choices[0]->message->content, true);
                     if (!empty($invalidTerms = array_diff_key($classification[$term], self::SPECIES_TAGS))) {
-                        throw new Exception('Invalid terms: ' . json_encode(array_keys($invalidTerms)));
+                        Log::warning($model->id . ': Invalid terms: ' . json_encode(array_keys($invalidTerms)));
                     }
 
                     $model->classification = $classification;

@@ -1,62 +1,88 @@
-Strictly classify wild cat species into JSON using these rules:
-1. Species:
-    - Allowed Species List: `lion`, `white lion`, `tiger`, `white tiger`, `leopard`, `jaguar`, `cheetah`, `king cheetah`, `panther`, `irbis`, `puma`, `lynx`, `ocelot`, `caracal`, `serval`, `neofelis`.
-        - Map translations, synonyms (e.g., `рись` → `lynx`, `барс` → `irbis`, `кугуар` → `puma`, `димчаста пантера` → `neofelis`), and unlisted subspecies or regional variants (`sumatran tiger` → `tiger`, `barbary lion`  → `lion`). Do not include unlisted subspecies or variants as separate entries in the classification.
-        - Do not exclude listed variants (e.g., `white tiger`, `king cheetah`) after the mapping. Ensure these are classified separately when mentioned in the text if they are in the Allowed Species List.
-        - Map only melanistic wild cats that have a black pelt to the term `panther`.
-        - When context indicates a melanistic species (e.g., "black jaguar", "melanistic"), include mapping to `panther`.
-        - Do not classify terms as species if they are part of a binomial nomenclature (e.g., `Panthera leo`, `Panthera pardus`) or appear alongside genus names. Ensure that only the species part is classified (e.g., classify `leo` as `lion` but not `panther`).
-        - Never include species outside the Allowed Species List as separate entries. If an unlisted subspecies or variant of an allowed species is mentioned, map it to the main species on the Allowed Species List. Do not classify unlisted species under any circumstances.
-    - Core Focus:
-        - If a species is the main subject of the article, is mentioned repeatedly with significant detail, and directly influences events or actions, assign a score of 1.0. For other literal significant mentions that are important but not the central focus, assign a score between 0.7-0.9.
-        - Frequency and Centrality Matter: When a species is mentioned multiple times and is central to the narrative, it should receive a higher score, up to 1.0. Use the maximum score for species that are the main focus and have significant impact on the story.
-    - Marginal/Statistical:
-        - Species mentioned incidentally, in passing, or as part of a larger list without significant impact on the narrative: Score between 0.1-0.5 (e.g., "lynx attack stats", "similar to an ocelot", "tiger hunting").
-        - Single Mentions: If a species is mentioned only once without narrative impact, assign a score between 0.1-0.3.
-    - Metaphor Detection:
-        - Analyze the context to determine if the species is mentioned metaphorically or symbolically.
-        - Indicators of metaphorical usage include phrases like "symbolizes," "represents," "as a [species]," or any figurative language.
-        - When species are mentioned as part of personality tests, spiritual guides, psychological analyses, dream interpretations, symbolic representations of personal traits, or similar contexts, exclude them from classification. Treat these mentions as metaphorical or symbolic, not as references to actual animals.
-        - Enhanced Metaphor Detection:
-            - Additionally, exclude species names found within patterns, designs, or symbolic contexts (e.g., "leopard print," "lion emblem") from being classified as actual species mentions.
-            - Adjective Distinction: Exclude species terms when used adjectivally or as part of a compound noun (e.g., "leopard print" does not count as a "leopard" mention).
-            - Identify and classify species references within personality assessments, spiritual guides, dream interpretations, or any context where animals symbolize human characteristics as metaphorical mentions.
-    - Supplemental Section:
-        - All species mentioned in supplemental sections (phrases like `раніше`, `також`, `нагадаємо`, etc.): Score between 0.1–0.4, regardless of context.
-    - Pattern Recognition for Non-Animal References:
-        - Recognize and exclude common non-animal references that include species names, such as patterns ("leopard print"), symbols ("lion emblem"), or products ("tiger-striped shirt").
-        - Exclude species terms when they are preceded by a capitalized genus name and are part of a two-word scientific name (e.g., `Panthera tigris`, `Panthera onca`). Detect patterns where the species name follows a genus name and exclude the genus from classification.
-        - Example-Based Clarifications:
-            - Correct Classification: "Conservation efforts for tigers in India have increased." → `"tiger": 0.9`
-            - Incorrect Classification: "She wore a leopard print dress." → Do not classify "leopard" as a species.
-            - Correct Classification: "Panthera leo is known as the lion." → `"lion": 0.8`
-            - Incorrect Classification: "Panthera leo is a species of Panthera." → Do not classify "Panthera" as `panther`.
-        - Differentiation Directive:
-            - Explicitly differentiate between literal mentions of wild cat species and metaphorical or descriptive uses. Only classify species when they refer to the actual animal impacting the narrative.
-        - Validation:
-            - After initial classification, validate that each species mention is not part of an adjectival phrase or descriptive pattern. If it is, exclude it from the final classification.
+Strictly classify wild cat species into JSON using the following rules:
+1. Allowed Species List:
+   - `lion`
+   - `white lion`
+   - `tiger`
+   - `white tiger`
+   - `leopard`
+   - `jaguar`
+   - `cheetah`
+   - `king cheetah`
+   - `panther`
+   - `irbis`
+   - `puma`
+   - `lynx`
+   - `ocelot`
+   - `caracal`
+   - `serval`
+   - `neofelis`
+2. Species Mapping:
+   - Translations and Synonyms:
+       - Map translations and synonyms to the allowed species.
+           - Examples:
+               - `рись` → `lynx`
+               - `барс` → `irbis`
+               - `кугуар` → `puma`
+               - `димчаста пантера` → `neofelis`
+   - Unlisted Subspecies or Variants:
+       - Map unlisted subspecies or regional variants to the main species.
+           - Examples:
+               - `sumatran tiger` → `tiger`
+               - `barbary lion` → `lion`
+       - Do not include unlisted subspecies or variants as separate entries.
+   - Listed Variants:
+       - Include all listed variants (e.g., `white tiger`, `king cheetah`) as separate entries if mentioned.
+3. Melanistic Species Mapping:
+   - Map any melanistic wild cat with a black pelt (e.g., "black jaguar", "black leopard") to `panther`.
+   - Use `panther` only for melanistic variants of allowed species.
+4. Binomial Nomenclature Handling:
+   - Exclude genus names when they appear as part of binomial nomenclature (e.g., `Panthera tigris`).
+   - Only classify the species part if it corresponds to an allowed species.
+       - Examples:
+           - `Panthera tigris` → `tiger`
+           - `Panthera uncia` → `irbis`
+   - Do not classify the genus as a species.
+       - Example:
+           - Do not classify `Panthera` as `panther` and exclude it from the classification.
+5. Scoring System:
+   - Score Range: 0.1 to 1.0 (contiguous range).
+   - Main Subject Species (1.0):
+       - Assign a score of 1.0 if the species is the main focus, mentioned repeatedly with significant detail, and directly influences events or actions.
+   - Significant Mentions (0.7–0.9):
+       - Assign scores between 0.7–0.9 for species that are important but not the central focus.
+   - Incidental Mentions (0.1–0.6):
+       - Assign scores between 0.1–0.6 for species mentioned incidentally, in passing, or as part of a larger list without significant impact.
+       - For single mentions without narrative impact, assign scores between 0.1–0.3.
+   - Supplemental Sections (0.1–0.4):
+       - Recognize supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`).
+       - Assign scores between 0.1–0.4 for species mentioned in supplemental sections.
+       - If a species appears in both main and supplemental contexts, use the higher score from the main context.
+6. Metaphor and Symbolic Usage Exclusion:
+   - Indicators of Metaphorical Usage:
+       - Phrases like "symbolizes", "represents", "as a [species]" or any figurative language.
+   - Exclusions:
+       - Exclude species names used in patterns, designs, or symbolic contexts (e.g., "leopard print", "lion emblem").
+       - Exclude species references in personality assessments, spiritual guides, dream interpretations, or symbolic narratives.
+       - Exclude species terms used adjectivally or as part of a compound noun (e.g., "tiger-striped").
+   - Priority:
+       - Exclude metaphorical and symbolic mentions regardless of their prominence in the narrative.
+7. Priority Rules:
+   - Relevance Priority:
+       - When multiple rules apply, prioritize relevance to the main narrative.
+   - Exclusion Priority:
+       - Exclusion rules for metaphorical and symbolic mentions take precedence over inclusion rules.
+8. Hybrid Mentions:
+   - If a species is mentioned in both main and supplemental contexts, assign the highest relevant score from the main context.
+9. Contextual Analysis:
+   - Literal Mentions:
+       - Focus on literal mentions of allowed wild cat species referring to the actual animals.
+   - Frequency and Detail:
+       - Consider the frequency and detail of mentions; higher frequency and detailed descriptions indicate greater relevance.
+   - Thorough Identification:
+       - Identify all mentions of species from the Allowed Species List.
+10. Required Output Format:
+    - Format:
+        - Provide the classification as JSON.
+        - Example: `{"[species]": [number], ...}`
     - Exclusion:
-        - Set probability to 0 for cases unrelated to real animals (e.g., “Team Panther” as a sports team name, "Tank Cheetah" as an armored vehicle, "Lion Symbol" from a coat of arms).
-        - Exclude species mentioned in contexts where they symbolize human characteristics, such as personality tests, spiritual analyses, dream interpretations, or symbolic narratives. Do not include these cases in the classification.
-2. Scoring System:
-    - Scores span 0.1-1.0 (contiguous range, not buckets).
-    - Increase the score when you are more confident that the text is about a real wild cat in a relevant way.
-    - Supplemental Context Triggers: Terms like `нагадаємо`, `раніше`, `also`, `last year`, etc., start supplemental sections. All subsequent entities inherit a score between 0.1–0.5.
-    - Hybrid Mentions: When a species is mentioned in both main and supplemental contexts, prioritize the main narrative's relevance score over the supplemental score.
-    - Priority Rules: Exclude Metaphorical and Symbolic Mentions: Ensure metaphorical or symbolic uses excluded, regardless of their prominence in the narrative. Do not include these species in the final classification.
-3. Additional Instructions:
-    - Contextual Analysis:
-      - Narrative Impact Assessment: Determine if the species alters the course of the story or provides essential information versus being a mere mention. Species used to symbolize personal qualities in narratives, such as in stories, myths, personality tests, spiritual analyses, or dream interpretations, should be excluded from classification.
-      - Frequency and Detail: Higher frequency and detailed descriptions indicate greater relevance.
-      - Be thorough in identifying all mentions of species from the Allowed Species List. Do not overlook any species that are explicitly mentioned and have relevance to the narrative, regardless of whether they are common species or specific variants.
-    - Priority Rules:
-      - When multiple rules apply, prioritize based on relevance to the main narrative first, then supplemental guidelines.
-      - Exclusion rules for genus and binomial nomenclature take precedence over all other classification rules.
-    - Hybrid Mentions: Assign the highest relevant score when multiple criteria apply.
-    - Metaphor Identification: Prioritize detecting metaphoric language to ensure species used figuratively do not receive higher relevance scores. Use contextual clues to discern metaphoric usage.
-    - Validation: After initial classification, review all species mentions to confirm that scores align with their contextual significance as per the defined criteria.
-4. Required Output Format:
-    - Provide the classification as JSON without any explanations and without code formatting: `{"[species]": [number], ...}`
-    - Ensure that all relevant species from the Allowed Species List, including specific variants like `white lion`, are included in the JSON output with appropriate scores based on their relevance.
-5. Constraints:
-    - Never include invalid species outside the Allowed Species List.
+        - Exclude all species not present in the Allowed Species List.
