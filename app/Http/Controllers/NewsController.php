@@ -638,8 +638,62 @@ class NewsController extends Controller
             ) {
                 if (!isset($model->classification['species'])) {
                     $this->classifyNews($model, 'species');
+                    $this->rejectNewsByClassification($model);
+
+                    if ($model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                        $classification = $model->classification;
+                        unset($classification['species']);
+                        $this->classifyNews($model, 'species', true);
+                        $this->rejectNewsByClassification($model);
+                    }
+
+                    if ($model->status === NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                        continue;
+                    }
+                }
+
+                if (!isset($model->classification['country'])) {
+                    $this->classifyNews($model, 'country');
+                }
+
+                if (empty($model->publish_tags)) {
+                    // TODO $this->preparePublishTags($model);
+                }
+
+                if (empty($model->publish_title)) {
+                    $model->publish_title = $model->title;
+                }
+
+                $model->refresh();
+                if (
+                    empty($model->status)
+                    || $model->status == NewsStatus::CREATED
+                    || $model->status == NewsStatus::PENDING_REVIEW && empty($model->message_id)
+                ) {
+                    // TODO $this->sendNewsToReview($model);
                 }
             }
+        }
+    }
+
+    private function rejectNewsByClassification(News $model): void
+    {
+        if (!isset($model->classification['species'])) {
+            return;
+        }
+
+        $rejected = true;
+        foreach ($model->classification['species'] as $key => $value) {
+            if (isset(self::SPECIES_TAGS[$key]) && $value >= 0.7) {
+                $rejected = false;
+
+                break;
+            }
+        }
+
+        if ($rejected) {
+            $model->status = NewsStatus::REJECTED_BY_CLASSIFICATION;
+            $model->save();
         }
     }
 
@@ -663,20 +717,23 @@ class NewsController extends Controller
         return $this->prompts[$name];
     }
 
-    private function classifyNews(News $model, string $term)
+    private function classifyNews(News $model, string $term, bool $isDeep = false): void
     {
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News $term classification");
-                $classificationResponse = OpenAI::chat()->create([
-                    'model' => 'gpt-4o-mini',
+                $params = [
+                    'model' => $isDeep ? 'o1-mini' : 'gpt-4o-mini',
                     'messages' => [
-                        ['role' => 'system', 'content' => $this->getPrompt($term)],
+                        ['role' => $isDeep ? 'user' : 'system', 'content' => $this->getPrompt($term)],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
-                    'response_format' => ['type' => 'json_object'],
-                    'temperature' => 0,
-                ]);
+                    'temperature' => $isDeep ? 1 : 0,
+                ];
+                if (!$isDeep) {
+                    $params['response_format'] = ['type' => 'json_object'];
+                }
+                $classificationResponse = OpenAI::chat()->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "
@@ -689,12 +746,6 @@ class NewsController extends Controller
 
                     if (!is_array($classification[$term])) {
                         throw new Exception('Invalid classification');
-                    }
-                    if (!empty($invalidTerms = array_diff_key($classification[$term], self::SPECIES_TAGS))) {
-                        Log::warning(
-                            $model->id . ': Invalid terms: '
-                            . json_encode(array_keys($invalidTerms), JSON_UNESCAPED_UNICODE)
-                        );
                     }
 
                     $model->classification = $classification;
