@@ -656,12 +656,21 @@ class NewsController extends Controller
                     $this->classifyNews($model, 'country');
                 }
 
+                if (
+                    isset($model->classification['country']['UA'])
+                    && $model->classification['country']['UA'] >= 0.7
+                    && !isset($model->classification['region'])
+                ) {
+                    $this->classifyNews($model, 'region');
+                }
+
                 if (empty($model->publish_tags)) {
                     // TODO $this->preparePublishTags($model);
                 }
 
                 if (empty($model->publish_title)) {
                     $model->publish_title = $model->title;
+                    $model->save();
                 }
 
                 $model->refresh();
