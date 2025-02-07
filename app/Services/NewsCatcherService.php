@@ -31,26 +31,38 @@ class NewsCatcherService implements NewsServiceInterface
 
     public function getNews($query): array
     {
-        $result = $this->request->get(self::URL . 'search', [
-            'q' => $query,
-            'lang' => self::LANG,
-            'not_countries' => implode(',', self::EXCLUDE_COUNTRIES),
-            'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
-            'ranked_only' => 'False',
-            'sort_by' => 'date',
-            'page_size' => 100,
-            'page' => 1,
-            'from' => now()->subDays(2)->format('Y/m/d'),
-        ]);
+        $result = [];
+        for ($page = 1; $page <= 10; $page++) {
+            Log::info('NewsCatcher search: page: ' . $page . '; query: ' . $query);
 
-        if ($result->status() >= 400) {
-            Log::error('NewsCatcher error: ' . $result->body());
-            return [];
+            $response = $this->request->get(self::URL . 'search', [
+                'q' => $query,
+                'lang' => self::LANG,
+                'not_countries' => implode(',', self::EXCLUDE_COUNTRIES),
+                'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
+                'ranked_only' => 'False',
+                'sort_by' => 'date',
+                'page_size' => 100,
+                'page' => $page,
+                'from' => now()->subDays(2)->format('Y/m/d'),
+            ]);
+
+            if ($response->status() >= 400) {
+                Log::error('NewsCatcher error: ' . $response->body());
+
+                return $result;
+            }
+
+            sleep(1);
+
+            $result = array_merge($result, array_reverse($response->json()['articles'] ?? []));
+
+            if ($page >= $response->json()['total_pages'] ?? 0) {
+                break;
+            }
         }
 
-        sleep(1);
-
-        return array_reverse($result->json()['articles'] ?? []);
+        return $result;
     }
 
     public function getSearchQueryLimit(): int

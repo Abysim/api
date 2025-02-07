@@ -3,513 +3,44 @@
 namespace App\Http\Controllers;
 
 use App\Enums\NewsStatus;
+use App\Helpers\FileHelper;
+use App\Models\FlickrPhoto;
 use App\Models\News;
-use App\MyCloudflareAI;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Entities\Message;
+use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
     private const caseSymbols = ['«', '"', "'", '[', '('];
 
-    private const SPECIES = [
-        'lion' => [
-            'words' => [
-                'лев',
-                'леві',
-                'левів',
-                'лева',
-                'левам',
-                'левами',
-                'левах',
-                'леви',
-                'левові',
-                'левом',
-                'леву',
-                'левиця',
-                'левиці',
-                'левицею',
-                'левиць',
-                'левицю',
-                'левицям',
-                'левицями',
-                'левицях',
-                'левеня',
-                'левеням',
-                'левенят',
-                'левеняті',
-                'левенята',
-                'левенятам',
-                'левенятами',
-                'левенятах',
-                'левеняти',
-            ],
-            'exclude' => [
-                'зодіак*',
-                'гороскоп*',
-                'баскетбол*',
-                'астролог*',
-                'каннськ*',
-                'хоке*',
-                'світськ*',
-                'бригад*',
-            ],
-            'excludeCase' => [
-                'Лев',
-            ]
-        ],
-        'tiger' => [
-            'words' => [
-                'тигр',
-                'тигра',
-                'тигрі',
-                'тигрів',
-                'тиграм',
-                'тиграми',
-                'тиграх',
-                'тигри',
-                'тигрові',
-                'тигром',
-                'тигру',
-                'тигриці',
-                'тигрицею',
-                'тигриць',
-                'тигрицю',
-                'тигриця',
-                'тигрицям',
-                'тигрицями',
-                'тигрицях',
-                'тигреня',
-                'тигреням',
-                'тигренят',
-                'тигреняті',
-                'тигренята',
-                'тигренятам',
-                'тигренятами',
-                'тигренятах',
-                'тигреняти',
-            ],
-            'exclude' => [
-                'гороскоп*',
-            ],
-            'excludeCase' => [
-                'Тигр',
-            ]
-        ],
-        'leopard' => [
-            'words' => [
-                'леопард',
-                'леопарда',
-                'леопарді',
-                'леопардів',
-                'леопардам',
-                'леопардами',
-                'леопардах',
-                'леопарди',
-                'леопардові',
-                'леопардом',
-                'леопарду',
-                'леопардиця',
-                'леопардиці',
-                'леопардицею',
-                'леопардиць',
-                'леопардицю',
-                'леопардицям',
-                'леопардицями',
-                'леопардицях',
-                'леопарденя',
-                'леопарденям',
-                'леопарденят',
-                'леопарденяті',
-                'леопарденята',
-                'леопарденятам',
-                'леопарденятами',
-                'леопарденятах',
-                'леопарденяти',
-            ],
-            'exclude' => [
-                'бригад*',
-                'танк*',
-                'механізован*',
-            ],
-            'excludeCase' => [
-                'Леопард',
-            ]
-        ],
-        'jaguar' => [
-            'words' => [
-                'ягуар',
-                'ягуара',
-                'ягуарі',
-                'ягуарів',
-                'ягуарам',
-                'ягуарами',
-                'ягуарах',
-                'ягуари',
-                'ягуарові',
-                'ягуаром',
-                'ягуару',
-                'ягуариця',
-                'ягуариці',
-                'ягуарицею',
-                'ягуариць',
-                'ягуарицю',
-                'ягуарицям',
-                'ягуарицями',
-                'ягуарицях',
-                'ягуареня',
-                'ягуареням',
-                'ягуаренят',
-                'ягуареняті',
-                'ягуаренята',
-                'ягуаренятам',
-                'ягуаренятами',
-                'ягуаренятах',
-                'ягуареняти',
-            ],
-            'exclude' => [],
-            'excludeCase' => [
-                'Ягуар',
-            ]
-        ],
-        'cheetah' => [
-            'words' => [
-                'гепард',
-                'гепарда',
-                'гепарді',
-                'гепардів',
-                'гепардам',
-                'гепардами',
-                'гепардах',
-                'гепарди',
-                'гепардові',
-                'гепардом',
-                'гепарду',
-                'гепардиця',
-                'гепардиці',
-                'гепардицею',
-                'гепардиць',
-                'гепардицю',
-                'гепардицям',
-                'гепардицями',
-                'гепардицях',
-                'гепарденя',
-                'гепарденям',
-                'гепарденят',
-                'гепарденяті',
-                'гепарденята',
-                'гепарденятам',
-                'гепарденятами',
-                'гепарденятах',
-                'гепарденяти',
-            ],
-            'exclude' => [
-                'установк*',
-                'танк*',
-                'підрозділ*',
-                'бригад*',
-                'ппо',
-            ],
-            'excludeCase' => [
-                'Гепард',
-            ]
-        ],
-        'panther' => [
-            'words' => [
-                'пантера',
-                'пантери',
-                'пантері',
-                'пантеру',
-                'пантерою',
-                'пантеро',
-                'пантер',
-                'пантерові',
-                'пантером',
-                'пантерам',
-                'пантерами',
-                'пантерах',
-                'пантерів',
-                'пантереня',
-                'пантереням',
-                'пантеренят',
-                'пантереняті',
-                'пантеренята',
-                'пантеренятам',
-                'пантеренятами',
-                'пантеренятах',
-                'пантереняти',
-            ],
-            'exclude' => [
-                'танк*',
-            ],
-            'excludeCase' => [
-                'Пантер',
-                'Чорн',
-                'Біл',
-                'Рожев',
-                'Лігв',
-            ],
-        ],
-        'irbis' => [
-            'words' => [
-                'ірбіс',
-                'ірбіса',
-                'ірбісі',
-                'ірбісів',
-                'ірбісам',
-                'ірбісами',
-                'ірбісах',
-                'ірбіси',
-                'ірбісові',
-                'ірбісом',
-                'ірбісу',
-                'ірбісеня',
-                'ірбісеням',
-                'ірбісенят',
-                'ірбісеняті',
-                'ірбісенята',
-                'ірбісенятам',
-                'ірбісенятами',
-                'ірбісенятах',
-                'ірбісеняти',
-                'барс',
-                'барса',
-                'барсі',
-                'барсів',
-                'барсам',
-                'барсами',
-                'барсах',
-                'барси',
-                'барсові',
-                'барсом',
-                'барсу',
-                'барсиця',
-                'барсиці',
-                'барсицею',
-                'барсиць',
-                'барсицю',
-                'барсицям',
-                'барсицями',
-                'барсицях',
-                'барсеня',
-                'барсеням',
-                'барсенят',
-                'барсеняті',
-                'барсенята',
-                'барсенятам',
-                'барсенятами',
-                'барсенятах',
-                'барсеняти',
-            ],
-            'exclude' => [
-                'барселон*',
-                'добровольч*',
-                'сицілійськ*',
-                'позивни*',
-                'астролог*',
-            ],
-            'excludeCase' => [
-                'Барс',
-                'БАРС',
-            ]
-        ],
-        'puma' => [
-            'words' => [
-                'пума',
-                'пуми',
-                'пумі',
-                'пуму',
-                'пумою',
-                'пумо',
-                'пум',
-                'пумам',
-                'пумами',
-                'пумах',
-                'пумах',
-                'пумі',
-                'пумів',
-                'пумів',
-                'пуменя',
-                'пуменям',
-                'пуменят',
-                'пуменяті',
-                'пуменята',
-                'пуменятам',
-                'пуменятами',
-                'пуменятах',
-                'пуменяти',
-                'кугуар',
-                'кугуара',
-                'кугуарі',
-                'кугуарів',
-                'кугуарам',
-                'кугуарами',
-                'кугуарах',
-                'кугуари',
-                'кугуарові',
-                'кугуаром',
-                'кугуару',
-                'кугуариця',
-                'кугуариці',
-                'кугуарицею',
-                'кугуариць',
-                'кугуарицю',
-                'кугуарицям',
-                'кугуарицями',
-                'кугуарицях',
-                'кугуареня',
-                'кугуареням',
-                'кугуаренят',
-                'кугуареняті',
-                'кугуаренята',
-                'кугуаренятам',
-                'кугуаренятами',
-                'кугуаренятах',
-                'кугуареняти',
-            ],
-            'exclude' => [],
-        ],
-        'lynx' => [
-            'words' => [
-                'рись',
-                'рисі',
-                'рися',
-                'рисем',
-                'рисю',
-                'рисе',
-                'рисів',
-                'рисям',
-                'рисями',
-                'рисях',
-                'рисеня',
-                'рисеням',
-                'рисенят',
-                'рисеняті',
-                'рисенята',
-                'рисенятам',
-                'рисенятами',
-                'рисенятах',
-                'рисеняти',
-            ],
-            'exclude' => [
-                'рис',
-                'рисом',
-                'рису',
-                'риса',
-            ],
-        ],
-        'ocelot' => [
-            'words' => [
-                'оцелот',
-                'оцелота',
-                'оцелоті',
-                'оцелотів',
-                'оцелотам',
-                'оцелотами',
-                'оцелотах',
-                'оцелоти',
-                'оцелотові',
-                'оцелотом',
-                'оцелоту',
-                'оцелотеня',
-                'оцелотеням',
-                'оцелотенят',
-                'оцелотеняті',
-                'оцелотенята',
-                'оцелотенятам',
-                'оцелотенятами',
-                'оцелотенятах',
-                'оцелотеняти',
-            ],
-            'exclude' => [],
-        ],
-        'caracal' => [
-            'words' => [
-                'каракал',
-                'каракала',
-                'каракалі',
-                'каракалів',
-                'каракалам',
-                'каракалами',
-                'каракалах',
-                'каракали',
-                'каракалові',
-                'каракалом',
-                'каракалу',
-                'каракаленя',
-                'каракаленям',
-                'каракаленят',
-                'каракаленяті',
-                'каракаленята',
-                'каракаленятам',
-                'каракаленятами',
-                'каракаленятах',
-                'каракаленяти',
-            ],
-            'exclude' => [],
-        ],
-        'serval' => [
-            'words' => [
-                'сервал',
-                'сервала',
-                'сервалі',
-                'сервалів',
-                'сервалам',
-                'сервалами',
-                'сервалах',
-                'сервали',
-                'сервалові',
-                'сервалом',
-                'сервалу',
-                'серваленя',
-                'серваленям',
-                'серваленят',
-                'серваленяті',
-                'серваленята',
-                'серваленятам',
-                'серваленятами',
-                'серваленятах',
-                'серваленяти',
-            ],
-            'exclude' => [],
-        ],
-    ];
-
-    private const SPECIES_TAGS = [
-        'lion' => '#лев',
-        'white lion' => '#лев #білийлев',
-        'tiger' => '#тигр',
-        'white tiger' => '#тигр #білийтигр',
-        'leopard' => '#леопард',
-        'jaguar' => '#ягуар',
-        'cheetah' => '#гепард',
-        'king cheetah' => '#гепард #королівськийгепард',
-        'panther' => '#пантера',
-        'irbis' => '#ірбіс',
-        'puma' => '#пума',
-        'lynx' => '#рись',
-        'ocelot' => '#оцелот',
-        'caracal' => '#каракал',
-        'serval' => '#сервал',
-        'neofelis' => '#димчастапантера',
-    ];
-
     private const LOAD_TIME = '16:00:00';
+
+    private array $species = [];
+
+    private array $tags = [];
 
     private array $prompts = [];
 
-    private NewsServiceInterface $service;
+    private NewsServiceInterface|null $service;
 
     public function __construct(NewsCatcherService $service)
     {
         $this->service = $service;
     }
 
+    /**
+     * @throws Exception
+     */
     public function process()
     {
         Log::info('Processing news');
@@ -532,6 +63,9 @@ class NewsController extends Controller
         // TODO $this->deleteNewsFiles();
     }
 
+    /**
+     * @throws Exception
+     */
     private function loadNews(): array
     {
         $models = [];
@@ -540,7 +74,7 @@ class NewsController extends Controller
         $specieses = [];
         $words = [];
         $exclude = [];
-        foreach (self::SPECIES as $species => $data) {
+        foreach ($this->getSpecies() as $species => $data) {
             $isSearch = false;
             $currentSpecieses = array_merge($specieses, [$species]);
             $currentWords = array_merge($words, $data['words']);
@@ -558,7 +92,7 @@ class NewsController extends Controller
                 $currentQuery = $query;
             }
 
-            if (array_key_last(self::SPECIES) == $species) {
+            if (array_key_last($this->getSpecies()) == $species) {
                 $isSearch = true;
             }
 
@@ -589,7 +123,7 @@ class NewsController extends Controller
                     ));
 
                     foreach ($currentSpecieses as $currentSpecies) {
-                        foreach (self::SPECIES[$currentSpecies]['words'] as $word) {
+                        foreach ($this->getSpecies($currentSpecies)['words'] as $word) {
                             foreach ($articleWords as $articleWord) {
                                 if ($word == Str::lower($articleWord)) {
                                     if (!in_array($currentSpecies, $model->species ?? [])) {
@@ -623,6 +157,9 @@ class NewsController extends Controller
         return $models;
     }
 
+    /**
+     * @throws Exception
+     */
     private function processNews(array $models)
     {
         foreach ($models as $model) {
@@ -664,14 +201,9 @@ class NewsController extends Controller
                     $this->classifyNews($model, 'region');
                 }
 
-                if (empty($model->publish_tags)) {
-                    // TODO $this->preparePublishTags($model);
-                }
+                $this->loadMediaFile($model);
 
-                if (empty($model->publish_title)) {
-                    $model->publish_title = $model->title;
-                    $model->save();
-                }
+                $this->preparePublish($model);
 
                 $model->refresh();
                 if (
@@ -679,12 +211,108 @@ class NewsController extends Controller
                     || $model->status == NewsStatus::CREATED
                     || $model->status == NewsStatus::PENDING_REVIEW && empty($model->message_id)
                 ) {
-                    // TODO $this->sendNewsToReview($model);
+                    $this->sendNewsToReview($model);
                 }
             }
         }
     }
 
+    private function sendNewsToReview(News $model)
+    {
+        $telegramResult = Request::sendPhoto([
+            'chat_id' => explode(',', config('telegram.admins'))[0],
+            'caption' => $model->getCaption(),
+            'photo' => $model->getFileUrl(),
+            'reply_markup' => $model->getInlineKeyboard(),
+        ]);
+
+        if ($telegramResult->isOk()) {
+            $model->message_id = $telegramResult->getResult()->getMessageId();
+            $model->status = NewsStatus::PENDING_REVIEW;
+            $model->save();
+        } else {
+            Log::error("$model->id: News not sent to review: " . $telegramResult->getDescription() . ' ' . $model->getFileUrl());
+        }
+
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function loadMediaFile(News $model): void
+    {
+        if (empty($model->filename) && !empty($model->media)) {
+            $file = FileHelper::getUrl($model->media, true);
+            if (empty($file)) {
+                Log::error("$model->id: News media file not found: $model->media");
+                return;
+            }
+            $path = storage_path('app/public/news/' . $model->id . '.jpg');
+            if (File::put($path, $file)) {
+                $model->filename = $model->id . '.jpg';
+                $model->save();
+            } else {
+                Log::error("$model->id: News media file not saved: $model->media");
+            }
+        }
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function preparePublish($model): void
+    {
+        if (empty($model->publish_tags)) {
+            $this->preparePublishTags($model);
+        }
+
+        if (empty($model->publish_title)) {
+            $model->publish_title = $model->title;
+        }
+
+        if (empty($model->publish_content)) {
+            $model->publish_content = preg_replace('/(?<!\n)\n(?!\n)/', "\n\n", $model->content);
+        }
+
+        $model->save();
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function preparePublishTags(News $model): void
+    {
+        if (!isset($model->classification['species']) || !isset($model->classification['country'])) {
+            return;
+        }
+
+        $tags = [];
+        foreach ($model->classification['species'] as $key => $value) {
+            if ($value >= 0.7 && isset($this->getTags('species')[$key])) {
+                $tags[] = $this->getTags('species')[$key];
+            }
+        }
+
+        foreach ($model->classification['country'] as $key => $value) {
+            if ($value >= 0.7 && isset($this->getTags('country')[$key])) {
+                $tags[] = $this->getTags('country')[$key];
+            }
+        }
+
+        if (isset($model->classification['region'])) {
+            foreach ($model->classification['region'] as $key => $value) {
+                if ($value >= 0.7 && isset($this->getTags('region')[$key])) {
+                    $tags[] = $this->getTags('region')[$key];
+                }
+            }
+        }
+
+        $model->publish_tags = implode(' ', array_unique(explode(' ', implode(' ', $tags))));
+    }
+
+    /**
+     * @throws Exception
+     */
     private function rejectNewsByClassification(News $model): void
     {
         if (!isset($model->classification['species'])) {
@@ -693,7 +321,7 @@ class NewsController extends Controller
 
         $rejected = true;
         foreach ($model->classification['species'] as $key => $value) {
-            if (isset(self::SPECIES_TAGS[$key]) && $value >= 0.7) {
+            if (isset($this->getTags('species')[$key]) && $value >= 0.7) {
                 $rejected = false;
 
                 break;
@@ -724,6 +352,43 @@ class NewsController extends Controller
         }
 
         return $this->prompts[$name];
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function getTags($name) {
+        if (!isset($this->tags[$name])) {
+            $path = resource_path('json/news/tags/' . $name . '.json');
+            if (File::exists($path)) {
+                $this->tags[$name] = json_decode(File::get($path), true);
+            } else {
+                throw new Exception('Tags not found: ' . $name);
+            }
+        }
+
+        return $this->tags[$name];
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function getSpecies(string $name = null): array
+    {
+        if (empty($this->species)) {
+            $path = resource_path('json/news/species.json');
+            if (File::exists($path)) {
+                $this->species = json_decode(File::get($path), true);
+            } else {
+                throw new Exception('Specieses not found!');
+            }
+        }
+
+        if ($name && !isset($this->species[$name])) {
+            throw new Exception('Species not found: ' . $name);
+        }
+
+        return $name ? $this->species[$name] : $this->species;
     }
 
     private function classifyNews(News $model, string $term, bool $isDeep = false): void
@@ -774,12 +439,15 @@ class NewsController extends Controller
         }
     }
 
+    /**
+     * @throws Exception
+     */
     private function excludeByTags($model)
     {
         $text = $model->title . '. ' . $model->content;
 
         foreach ($model->species as $species) {
-            foreach (self::SPECIES[$species]['excludeCase'] ?? [] as $excludeCase) {
+            foreach ($this->getSpecies($species)['excludeCase'] ?? [] as $excludeCase) {
                 $lastPosition = 0;
                 while (($lastPosition = Str::position($text, $excludeCase, $lastPosition)) !== false) {
                     if (
@@ -807,5 +475,77 @@ class NewsController extends Controller
                 }
             }
         }
+    }
+
+    /**
+     * @param News $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function approve(News $model, Message $message): void
+    {
+        $model->status = NewsStatus::APPROVED;
+        $model->save();
+
+        if (empty($model->filename)) {
+            $this->loadMediaFile($model);
+        }
+
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => new InlineKeyboard([
+                ['text' => '❌Cancel Approval', 'callback_data' => 'news_cancel ' . $model->id],
+            ]),
+        ]);
+    }
+
+    /**
+     * @param News $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function cancel(News $model, Message $message): void
+    {
+        $model->status = NewsStatus::PENDING_REVIEW;
+        $model->save();
+
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => $model->getInlineKeyboard(),
+        ]);
+    }
+
+    /**
+     * @param News $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function decline(News $model, Message $message): void
+    {
+        $model->status = NewsStatus::REJECTED_MANUALLY;
+        $model->save();
+
+        $this->delete($model, $message);
+    }
+
+    /**
+     * @param News $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function delete(News $model, Message $message): void
+    {
+        $model->deleteFile();
+
+        Request::deleteMessage([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+        ]);
     }
 }

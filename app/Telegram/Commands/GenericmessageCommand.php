@@ -2,7 +2,11 @@
 
 namespace App\Telegram\Commands;
 
+use App\Http\Controllers\FlickrPhotoController;
+use App\Http\Controllers\NewsController;
 use App\Models\FlickrPhoto;
+use App\Models\News;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
@@ -53,8 +57,23 @@ class GenericmessageCommand extends SystemCommand
         if (empty($id)) {
             return Request::emptyResponse();
         }
-        /** @var FlickrPhoto $model */
-        $model = FlickrPhoto::query()->find($id);
+
+        [$type, $action] = explode('_', $action, 2);
+        switch ($type) {
+            case 'flickr':
+                $modelClass = FlickrPhoto::class;
+                $name = 'Photo';
+                break;
+            case 'news':
+                $modelClass = News::class;
+                $name = 'News';
+                break;
+            default:
+                return  Request::emptyResponse();
+        }
+
+        /** @var Model $model */
+        $model = $modelClass::find($id);
         if (empty($model)) {
             return Request::emptyResponse();
         }
@@ -63,9 +82,9 @@ class GenericmessageCommand extends SystemCommand
             return Request::emptyResponse();
         }
 
-        if ($action == 'flickr_title') {
+        if ($action == 'title') {
             $model->publish_title = $value;
-        } elseif ($action == 'flickr_tags') {
+        } elseif ($action == 'tags') {
             $model->publish_tags = $value;
         } else {
             return Request::emptyResponse();
@@ -88,7 +107,7 @@ class GenericmessageCommand extends SystemCommand
             $response = Request::sendMessage([
                 'chat_id' => $message->getChat()->getId(),
                 'reply_to_message_id' => $model->message_id,
-                'text' => 'Photo status updated according to the action ' . $action,
+                'text' => $name . ' status updated according to the action ' . $action,
             ]);
 
             $telegramReplyMessageId = Cache::get('telegramReplyMessageId');

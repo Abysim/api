@@ -41,7 +41,7 @@ Strictly classify regions of Ukraine into a JSON format according to the followi
         - Assign scores based on context and relevance to the regions located in those areas.
         - Example: Mentioning the Black Sea coast increases scores for Odesa, Kherson, Mykolaiv, and Zaporizhzhia.
     - Supplemental Sections and Geographic Comparisons (Score: 0.1–0.4):
-        - Recognize supplemental triggers such as `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, etc.
+        - Recognize supplemental triggers such as `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`, etc.
         - Assign a score between 0.1 and 0.4 for regions mentioned only in supplemental sections or comparisons.
         - Example: "Similar practices in Vinnytsia" might receive a score of 0.2.
 4. Mentions of Institutions, Organizations, Landmarks, and Settlements:

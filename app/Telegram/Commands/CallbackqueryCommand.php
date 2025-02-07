@@ -4,8 +4,11 @@ namespace App\Telegram\Commands;
 
 use App\Enums\FlickrPhotoStatus;
 use App\Http\Controllers\FlickrPhotoController;
+use App\Http\Controllers\NewsController;
 use App\Models\FlickrPhoto;
+use App\Models\News;
 use Exception;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -53,24 +56,36 @@ class CallbackqueryCommand extends SystemCommand
 
         if ($callbackData) {
             [$action, $id] = explode(' ', $callbackData);
-            /** @var FlickrPhoto $model */
-            $model = FlickrPhoto::query()->find($id);
+            [$type, $method] = explode('_', $action);
+            switch ($type) {
+                case 'flickr':
+                    $modelClass = FlickrPhoto::class;
+                    $controllerClass = FlickrPhotoController::class;
+                    $name = 'Photo';
+                    break;
+                case 'news':
+                    $modelClass = News::class;
+                    $controllerClass = NewsController::class;
+                    $name = 'News';
+                    break;
+                default:
+                    return $callbackQuery->answer(['text' => 'Unknown type!', 'show_alert' => true]);
+            }
+
+            /** @var Model $model */
+            $model = $modelClass::find($id);
 
             if ($model) {
-                if (
-                    str_starts_with($action, 'flickr_')
-                    && ($method = str_replace('flickr_', '', $action))
-                    && method_exists(($controller = new FlickrPhotoController()), $method)
-                ) {
+                if (method_exists(($controller = app($controllerClass)), $method)) {
                     $answer = $controller->$method($model, $message);
                 } else {
                     return $callbackQuery->answer(['text' => 'Unknown action!', 'show_alert' => true]);
                 }
             } else {
-                return $callbackQuery->answer(['text' => 'Photo not found!', 'show_alert' => true]);
+                return $callbackQuery->answer(['text' => $name . ' not found!', 'show_alert' => true]);
             }
 
-            return $callbackQuery->answer($answer ?? ['text' => 'Photo status updated according to the action ' . $action]);
+            return $callbackQuery->answer($answer ?? ['text' => $name . ' status updated according to the action ' . $action]);
         }
 
         return $callbackQuery->answer(['text' => 'No callback data!', 'show_alert' => true]);

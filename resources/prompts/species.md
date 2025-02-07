@@ -58,7 +58,7 @@ Strictly classify wild cat species into JSON using the following rules:
         - For single mentions without narrative impact, assign scores between 0.1–0.2.
         - Example: An article about a city that briefly mentions the caracal among many other species.
     - Supplemental Sections (0.1–0.4):
-        - Recognize supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`).
+        - Recognize supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`).
         - Assign scores between 0.1–0.4 for species mentioned in supplemental sections.
         - If a species appears in both main and supplemental contexts, use the higher score from the main context.
 6. Metaphor and Symbolic Usage Exclusion:

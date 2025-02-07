@@ -12,7 +12,7 @@ Strictly classify countries (using ISO Alpha-2 codes) into a JSON format accordi
         - Assign a score between 0.1-0.6 for countries mentioned incidentally, in passing, or as part of a larger list without significant impact on the main narrative.
         - Example: A single mention without narrative impact.
     - Supplemental Sections and Geographic Comparisons (Score: 0.1-0.4):
-        - Recognize supplemental triggers such as `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, etc.
+        - Recognize supplemental triggers such as `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`, etc.
         - Assign a score between 0.1-0.4 for countries mentioned in supplemental sections or solely in geographic comparisons.
         - Example: "Like Ukraine's territory" or mentions in sections starting with "Let's recall."
 3. Rejection Criteria:

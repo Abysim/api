@@ -20,10 +20,10 @@ return new class extends Migration
             $table->string('title');
             $table->text('content');
             $table->json('tags')->nullable();
-            $table->string('link');
+            $table->string('link', 1024);
             $table->string('source', 32);
             $table->string('language', 5)->nullable();
-            $table->string('media')->nullable();
+            $table->string('media', 1024)->nullable();
             $table->string('filename')->nullable();
             $table->tinyInteger('status')->default(0);
             $table->json('classification')->nullable();
