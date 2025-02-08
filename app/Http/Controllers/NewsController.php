@@ -24,8 +24,6 @@ use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
-    private const caseSymbols = ['«', '"', "'", '[', '('];
-
     private const LOAD_TIME = '16:00:00';
 
     private array $species = [];
@@ -532,7 +530,7 @@ class NewsController extends Controller
      */
     private function excludeByTags($model)
     {
-        $text = $model->title . '. ' . $model->content;
+        $text = $model->title . "\n" . $model->content;
 
         foreach ($model->species as $species) {
             foreach ($this->getSpecies($species)['excludeCase'] ?? [] as $excludeCase) {
@@ -541,8 +539,16 @@ class NewsController extends Controller
                     if (
                         $lastPosition > 1
                         && Str::charAt($text, $lastPosition - 1) == ' '
-                        && !in_array(Str::charAt($text, $lastPosition - 2), ['.', '!', '?', '…'])
+                        && !in_array(Str::charAt($text, $lastPosition - 2), ["\n", '.', '!', '?', '…', '-', '–', '—', '―'])
+                        || $lastPosition > 2
+                        && in_array(Str::charAt($text, $lastPosition - 1), ['«', '"', "'", '[', '('])
+                        && Str::charAt($text, $lastPosition - 2)  == ' '
+                        && !in_array(Str::charAt($text, $lastPosition - 3), [':', '-', '–', '—', '―'])
                     ) {
+                        Log::info(
+                            "$model->id: News rejected by keyword: "
+                            . Str::substr($text, $lastPosition - 2, Str::length($excludeCase) + 2)
+                        );
                         $model->status = NewsStatus::REJECTED_BY_KEYWORD;
                         $model->save();
 
@@ -550,16 +556,6 @@ class NewsController extends Controller
                     }
 
                     $lastPosition = $lastPosition + Str::length($excludeCase);
-                }
-
-                foreach (self::caseSymbols as $caseSymbol) {
-                    $excludeWord = $caseSymbol . $excludeCase;
-                    if (Str::contains($text, $excludeWord)) {
-                        $model->status = NewsStatus::REJECTED_BY_KEYWORD;
-                        $model->save();
-
-                        return;
-                    }
                 }
             }
         }
