@@ -158,6 +158,13 @@ class FlickrPhotoController extends Controller
         Log::info('Processing Flickr photos');
         $this->publish();
 
+        try {
+            $newsController = app(NewsController::class);
+            $newsController->process();
+        } catch (Exception $e) {
+            Log::error('News processing error: ' . $e->getMessage());
+        }
+
         $models = [];
         if (now()->format('H:i:s') >= self::LOAD_TIME) {
             $queueSize = FlickrPhoto::query()->whereIn('status', [

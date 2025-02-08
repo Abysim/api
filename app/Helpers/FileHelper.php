@@ -49,4 +49,14 @@ class FileHelper
 
         return $res->body();
     }
+
+    public static function getMimeType(string $file): string
+    {
+        $fh = fopen('php://memory', 'w+b');
+        fwrite($fh, $file);
+        $result = mime_content_type($fh);
+        fclose($fh);
+
+        return $result;
+    }
 }

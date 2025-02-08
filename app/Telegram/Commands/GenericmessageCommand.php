@@ -2,11 +2,8 @@
 
 namespace App\Telegram\Commands;
 
-use App\Http\Controllers\FlickrPhotoController;
-use App\Http\Controllers\NewsController;
 use App\Models\FlickrPhoto;
 use App\Models\News;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Longman\TelegramBot\Commands\SystemCommand;
 use Longman\TelegramBot\Entities\ServerResponse;
@@ -72,7 +69,7 @@ class GenericmessageCommand extends SystemCommand
                 return  Request::emptyResponse();
         }
 
-        /** @var Model $model */
+        /** @var News|FlickrPhoto $model */
         $model = $modelClass::find($id);
         if (empty($model)) {
             return Request::emptyResponse();
@@ -86,6 +83,13 @@ class GenericmessageCommand extends SystemCommand
             $model->publish_title = $value;
         } elseif ($action == 'tags') {
             $model->publish_tags = $value;
+        } elseif ($action == 'content') {
+            [$i, $value] = explode(' ', $value, 2);
+            if (is_numeric($i)) {
+                $model->updatePublishContent($i, $value);
+            } else {
+                return Request::emptyResponse();
+            }
         } else {
             return Request::emptyResponse();
         }

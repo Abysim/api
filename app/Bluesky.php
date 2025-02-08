@@ -300,7 +300,7 @@ class Bluesky extends Social
      * @return object|null
      * @throws Exception
      */
-    private function  uploadImage(string $image): ?object
+    private function uploadImage(string $image): ?object
     {
         $body = '';
         for ($i = 0; $i <= 4; $i++) {
@@ -320,10 +320,7 @@ class Bluesky extends Social
         if (File::isFile($image)) {
             $type = File::mimeType($image);
         } else {
-            $fh = fopen('php://memory', 'w+b');
-            fwrite($fh, $body);
-            $type = mime_content_type($fh);
-            fclose($fh);
+            $type = FileHelper::getMimeType($body);
         }
 
         Log::info('Image Type: ' . $type);
@@ -573,7 +570,16 @@ class Bluesky extends Social
                                         $response = $this->uploadImage($imageUrl);
                                         $card['thumb'] = $response->blob;
                                     } catch (Exception $e) {
-                                        Log::error($e->getMessage());
+                                        if (isset($media[0]['thumb'])) {
+                                            try {
+                                                $response = $this->uploadImage($media[0]['thumb']);
+                                                $card['thumb'] = $response->blob;
+                                            } catch (Exception $e) {
+                                                Log::error($media[0]['thumb'] . ': ' . $e->getMessage());
+                                            }
+                                        }
+
+                                        Log::error($imageUrl . ': ' . $e->getMessage());
                                     }
                                 }
 

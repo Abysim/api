@@ -37,6 +37,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
  * @property string $publish_title
  * @property string $publish_content
  * @property string $publish_tags
+ * @property int $message_id
  * @property Carbon $published_at
  * @property Carbon $posted_at
  * @property Carbon $created_at
@@ -75,6 +76,14 @@ class News extends Model
         'updated_at' => 'datetime',
     ];
 
+    public function getShortCaption(): string
+    {
+        return $this->date->format('d.m.Y') . ': '
+            . $this->publish_title . "\n#новини "
+            . $this->publish_tags . "\n"
+            . $this->link;
+    }
+
     public function getCaption(): string
     {
         $header = $this->date->format('d.m.Y') . ': ' . $this->publish_title . "\n\n";
@@ -109,17 +118,25 @@ class News extends Model
      */
     public function getInlineKeyboard(): InlineKeyboard
     {
-        return new InlineKeyboard([
-            [
-                'text' => 'Fix Title',
-                'switch_inline_query_current_chat' => 'news_title ' . $this->id . ' ' . $this->publish_title,
-            ],
-            [
-                'text' => 'Fix Tags',
-                'switch_inline_query_current_chat' => 'news_tags ' . $this->id . ' ' . $this->publish_tags,
-            ],
-        ], [
+        $firstLine = [];
+        $firstLine[] = [
+            'text' => 'Fix Title',
+            'switch_inline_query_current_chat' => 'news_title ' . $this->id . ' ' . $this->publish_title,
+        ];
+        if (Str::length($this->publish_content) <= 4000) {
+            $firstLine[] = [
+                'text' => 'Fix Content',
+                'switch_inline_query_current_chat' => 'news_content ' . $this->id . ' 0 ',
+            ];
+        }
+        $firstLine[] = [
+            'text' => 'Fix Tags',
+            'switch_inline_query_current_chat' => 'news_tags ' . $this->id . ' ' . $this->publish_tags,
+        ];
+
+        return new InlineKeyboard($firstLine, [
             ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id],
+            ['text' => 'Content', 'callback_data' => 'news_content ' . $this->id],
             ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id],
         ]);
     }
@@ -151,5 +168,38 @@ class News extends Model
         }
 
         return storage_path('app/public/news/' . $this->filename);
+    }
+
+    public function updatePublishContent(int $i, string $value): void
+    {
+        if (Str::length($this->publish_content) <= 4000) {
+            $this->publish_content = trim($value);
+        } else {
+            $parts = explode("\n\n", $this->publish_content);
+            $parts[] = '';
+            $text = '';
+            $groups = [];
+            $group = [];
+            foreach ($parts as $key => $part) {
+                $newText = $text ? $text . "\n\n" . $part : $part;
+                if (Str::length($newText) > 4000 || $key == count($parts) - 1) {
+                    $groups[] = $group;
+                    $i++;
+                    $text = $part;
+                    $group = [$part];
+                } else {
+                    $text = $newText;
+                    $group[] = $part;
+                }
+            }
+            $groups[$i] = explode("\n\n", $value);
+
+            $result = '';
+            foreach ($groups as $group) {
+                $result .=  ($result ? "\n\n" : '') . implode("\n\n", $group);
+            }
+
+            $this->publish_content = trim($result);
+        }
     }
 }

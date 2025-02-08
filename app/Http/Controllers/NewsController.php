@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Bluesky;
+use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
 use App\Helpers\FileHelper;
+use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\NewsCatcherService;
@@ -12,10 +15,10 @@ use Exception;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
+use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
 
@@ -44,7 +47,7 @@ class NewsController extends Controller
     public function process()
     {
         Log::info('Processing news');
-        // TODO $this->publish();
+        $this->publish();
 
         $models = [];
         if (now()->format('H:i:s') >= self::LOAD_TIME && now()->format('G') % 3 == 0) {
@@ -61,6 +64,83 @@ class NewsController extends Controller
         $this->processNews($models);
 
         // TODO $this->deleteNewsFiles();
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function publish()
+    {
+        $lastPublishedPhotoTime = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
+            ->orderByDesc('published_at')
+            ->value('published_at');
+        $lastPublishedNewsTime = News::where('status', NewsStatus::PUBLISHED)
+            ->orderByDesc('published_at')
+            ->value('published_at');
+        $lastPublishedTime = max($lastPublishedPhotoTime, $lastPublishedNewsTime);
+        $publishInterval = 30;
+
+        if (empty($lastPublishedTime) || $lastPublishedTime->diffInMinutes(now()) >= $publishInterval) {
+            $news = News::where('status', NewsStatus::APPROVED)
+                ->orderBy('posted_at')
+                ->first();
+            if ($news) {
+                $this->publishNews($news);
+            }
+        }
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function publishNews(News $model)
+    {
+        if (empty($model->filename)) {
+            $this->loadMediaFile($model);
+        }
+
+        Log::info($model->id . ': Publishing News');
+        $response = Http::post(
+            'https://maker.ifttt.com/trigger/news/with/key/' . config('services.ifttt.webhook_key'),
+            [
+                'value1' => $model->getShortCaption(),
+                'value2' => $model->getFileUrl() ?? $model->media,
+                'value3' => $model->publish_content,
+            ]
+        );
+
+        if ($response->successful()) {
+            $model->status = NewsStatus::PUBLISHED;
+            $model->published_at = now();
+            $model->save();
+
+            if ($model->message_id) {
+                Request::editMessageReplyMarkup([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                    'reply_markup' => new InlineKeyboard([]),
+                ]);
+                Request::deleteMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                ]);
+            }
+
+            $connection = BlueskyConnection::where('handle', config('services.bluesky.handle'))->first();
+            if ($connection) {
+                try {
+                    $bluesky = new Bluesky($connection);
+                    $bluesky->post(['text' => $model->getShortCaption()], [['thumb' => $model->getFilePath()]]);
+                } catch (Exception $e) {
+                    Log::error($model->id . ': Bluesky post error: ' . $e->getMessage());
+                }
+            }
+        } else {
+            // TODO: Make wait and check that the news is really not published
+
+            Log::error($model->id . ': News not published! ' . $response->body());
+        }
+
     }
 
     /**
@@ -247,9 +327,17 @@ class NewsController extends Controller
                 Log::error("$model->id: News media file not found: $model->media");
                 return;
             }
-            $path = storage_path('app/public/news/' . $model->id . '.jpg');
+
+            $mime = FileHelper::getMimeType($file);
+            if (!Str::startsWith($mime, 'image/')) {
+                Log::error("$model->id: News media file is not an image: $model->media");
+                return;
+            }
+            $extension = Str::after($mime, 'image/') ?? 'jpg';
+
+            $path = storage_path('app/public/news/' . $model->id . '.' . $extension);
             if (File::put($path, $file)) {
-                $model->filename = $model->id . '.jpg';
+                $model->filename = $model->id . '.' . $extension;
                 $model->save();
             } else {
                 Log::error("$model->id: News media file not saved: $model->media");
@@ -482,6 +570,7 @@ class NewsController extends Controller
      * @param Message $message
      *
      * @return void
+     * @throws Exception
      */
     public function approve(News $model, Message $message): void
     {
@@ -547,5 +636,39 @@ class NewsController extends Controller
             'chat_id' => $message->getChat()->getId(),
             'message_id' => $message->getMessageId(),
         ]);
+    }
+
+    /**
+     * @throws TelegramException
+     */
+    public function content(News $model, Message $message): void
+    {
+        $parts = explode("\n\n", $model->publish_content);
+        $parts[] = '';
+        $text = '';
+        $i = 0;
+        foreach ($parts as $key => $part) {
+            $newText = $text ? $text . "\n\n" . $part : $part;
+            if (Str::length($newText) > 4000 || $key == count($parts) - 1) {
+                Request::sendMessage([
+                    'chat_id' => $message->getChat()->getId(),
+                    'reply_to_message_id' => $message->getMessageId(),
+                    'text' => "```\n$text\n```",
+                    'parse_mode' => 'Markdown',
+                    'reply_markup' => new InlineKeyboard([
+                        [
+                            'text' => 'Edit',
+                            'switch_inline_query_current_chat' => 'news_content ' . $model->id . ' ' . $i . ' '
+                        ],
+                        ['text' => '❌Delete', 'callback_data' => 'delete'],
+                    ]),
+                ]);
+
+                $i++;
+                $text = $part;
+            } else {
+                $text = $newText;
+            }
+        }
     }
 }
