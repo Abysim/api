@@ -197,7 +197,7 @@ class FlickrPhotoController extends Controller
         $models = FlickrPhoto::query()
             ->where('status', FlickrPhotoStatus::PUBLISHED)
             ->whereNotNull('filename')
-            ->where('published_at', '<', now()->subDays(2)->toDateTimeString())
+            ->where('published_at', '<', now()->subDay()->toDateTimeString())
             ->get();
 
         foreach ($models as $model) {
@@ -209,6 +209,15 @@ class FlickrPhotoController extends Controller
                     'message_id' => $model->message_id,
                     'caption' => '',
                 ]);
+
+                $response = Request::deleteMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                ]);
+                if ($response->isOk()) {
+                    $model->message_id = null;
+                    $model->save();
+                }
             }
         }
 

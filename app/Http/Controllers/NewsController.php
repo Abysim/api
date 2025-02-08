@@ -61,7 +61,48 @@ class NewsController extends Controller
 
         $this->processNews($models);
 
-        // TODO $this->deleteNewsFiles();
+        $this->deleteNewsFiles();
+    }
+
+    private function deleteNewsFiles()
+    {
+        $models = News::where('status', NewsStatus::PUBLISHED)
+            ->whereNotNull('filename')
+            ->where('published_at', '<', now()->subDay()->toDateTimeString())
+            ->get();
+
+        foreach ($models as $model) {
+            $model->deleteFile();
+
+            if ($model->message_id) {
+                Request::editMessageCaption([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                    'caption' => '',
+                ]);
+
+                $response = Request::deleteMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                ]);
+                if ($response->isOk()) {
+                    $model->message_id = null;
+                    $model->save();
+                }
+            }
+        }
+
+        $models = News::query()
+            ->whereIn('status', [
+                NewsStatus::REJECTED_BY_KEYWORD,
+                NewsStatus::REJECTED_MANUALLY,
+            ])
+            ->whereNotNull('filename')
+            ->get();
+
+        foreach ($models as $model) {
+            $model->deleteFile();
+        }
     }
 
     /**
@@ -117,10 +158,6 @@ class NewsController extends Controller
                     'chat_id' => explode(',', config('telegram.admins'))[0],
                     'message_id' => $model->message_id,
                     'reply_markup' => new InlineKeyboard([]),
-                ]);
-                Request::deleteMessage([
-                    'chat_id' => explode(',', config('telegram.admins'))[0],
-                    'message_id' => $model->message_id,
                 ]);
             }
 
