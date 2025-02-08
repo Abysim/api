@@ -464,99 +464,21 @@ class Bluesky extends Social
                                     'description' => '',
                                 ];
 
-                                $content = '';
-                                for ($i = 0; $i <= 4; $i++) {
-                                    try {
-                                        $content = FileHelper::getUrl($url);
-                                        break;
-                                    } catch (Exception $e) {
-                                        if ($i == 4) {
-                                            throw $e;
-                                        }
+                                try {
+                                    $data = Http::get('https://cardyb.bsky.app/v1/extract', ['url' => $url])->json();
+                                    // get text after ?url= using string function
+                                    if (!empty($data['image'])) {
+                                        $data['image'] = Str::after($data['image'], '?url=');
                                     }
+                                } catch (Exception $e) {
+                                    Log::error('Failed to get card data: ' . $e->getMessage());
                                 }
-                                Log::info('Content length: ' . strlen($content));
-
-                                $dom = new DOMDocument();
-                                libxml_use_internal_errors(true);
-                                $dom->loadHTML($content);
-                                $xpath = new DOMXPath($dom);
-                                $query = '//meta[@property="og:title"]/@content';
-                                foreach ($xpath->query($query) as $node) {
-                                    if (!empty($node->value)) {
-                                        $card['title'] = $node->value;
-                                        break;
-                                    }
+                                if (empty($data['title']) || empty($data['description']) || empty($data['image'])) {
+                                    [$title, $description, $imageUrl] = $this->parseCard($url);
                                 }
-                                if (empty($card['title'])) {
-                                    $query = '//title';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->textContent)) {
-                                            $card['title'] = $node->textContent;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (empty($card['title'])) {
-                                    $query = '//meta[@name="twitter:title"]/@content';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $card['title'] = $node->value;
-                                            break;
-                                        }
-                                    }
-                                }
-                                $query = '//meta[@property="og:description"]/@content';
-                                foreach ($xpath->query($query) as $node) {
-                                    if (!empty($node->value)) {
-                                        $card['description'] = $node->value;
-                                        break;
-                                    }
-                                }
-                                if (empty($card['description'])) {
-                                    $query = '//meta[@name="description"]/@content';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $card['description'] = $node->value;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (empty($card['description'])) {
-                                    $query = '//meta[@name="twitter:description"]/@content';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $card['description'] = $node->value;
-                                            break;
-                                        }
-                                    }
-                                }
-                                $imageUrl = null;
-                                $query = '//meta[@property="og:image"]/@content';
-                                foreach ($xpath->query($query) as $node) {
-                                    if (!empty($node->value)) {
-                                        $imageUrl = $node->value;
-                                        break;
-                                    }
-                                }
-                                if (empty($imageUrl)) {
-                                    $query = '//meta[@name="twitter:image"]/@content';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $imageUrl = $node->value;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (empty($imageUrl)) {
-                                    $query = '//img/@src';
-                                    foreach ($xpath->query($query) as $node) {
-                                        if (!empty($node->value)) {
-                                            $imageUrl = $node->value;
-                                            break;
-                                        }
-                                    }
-                                }
+                                $card['title'] = html_entity_decode(($data['title'] ?? '') ?: ($title ?? ''));
+                                $card['description'] = html_entity_decode(($data['description'] ?? '') ?: ($description ?? ''));
+                                $imageUrl = urldecode(($data['image'] ?? '') ?: ($imageUrl ?? ''));
 
                                 if (!empty($imageUrl)) {
                                     if (
@@ -759,5 +681,112 @@ class Bluesky extends Social
         }
 
         return $args;
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function parseCard($url): array
+    {
+        $title = null;
+        $description = null;
+        $imageUrl = null;
+
+        $content = '';
+        for ($i = 0; $i <= 4; $i++) {
+            try {
+                $content = FileHelper::getUrl($url);
+                break;
+            } catch (Exception $e) {
+                if ($i == 4) {
+                    throw $e;
+                }
+            }
+        }
+        Log::info('Content length: ' . strlen($content));
+
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML($content);
+        $xpath = new DOMXPath($dom);
+        $query = '//meta[@property="og:title"]/@content';
+        foreach ($xpath->query($query) as $node) {
+            if (!empty($node->value)) {
+                $title = $node->value;
+                break;
+            }
+        }
+        if (empty($title)) {
+            $query = '//title';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->textContent)) {
+                    $card['title'] = $node->textContent;
+                    break;
+                }
+            }
+        }
+        if (empty($title)) {
+            $query = '//meta[@name="twitter:title"]/@content';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->value)) {
+                    $title = $node->value;
+                    break;
+                }
+            }
+        }
+
+        $query = '//meta[@property="og:description"]/@content';
+        foreach ($xpath->query($query) as $node) {
+            if (!empty($node->value)) {
+                $description = $node->value;
+                break;
+            }
+        }
+        if (empty($description)) {
+            $query = '//meta[@name="description"]/@content';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->value)) {
+                    $description = $node->value;
+                    break;
+                }
+            }
+        }
+        if (empty($description)) {
+            $query = '//meta[@name="twitter:description"]/@content';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->value)) {
+                    $description = $node->value;
+                    break;
+                }
+            }
+        }
+
+        $query = '//meta[@property="og:image"]/@content';
+        foreach ($xpath->query($query) as $node) {
+            if (!empty($node->value)) {
+                $imageUrl = $node->value;
+                break;
+            }
+        }
+        if (empty($imageUrl)) {
+            $query = '//meta[@name="twitter:image"]/@content';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->value)) {
+                    $imageUrl = $node->value;
+                    break;
+                }
+            }
+        }
+        if (empty($imageUrl)) {
+            $query = '//img/@src';
+            foreach ($xpath->query($query) as $node) {
+                if (!empty($node->value)) {
+                    $imageUrl = $node->value;
+                    break;
+                }
+            }
+        }
+
+        return [$title, $description, $imageUrl];
     }
 }
