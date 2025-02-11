@@ -143,7 +143,7 @@ class NewsController extends Controller
             'https://maker.ifttt.com/trigger/news/with/key/' . config('services.ifttt.webhook_key'),
             [
                 'value1' => $model->getShortCaption(),
-                'value2' => $model->getFileUrl() ?? $model->media,
+                'value2' => $model->media ?: $model->getFileUrl(),
                 'value3' => $model->publish_content,
             ]
         );
