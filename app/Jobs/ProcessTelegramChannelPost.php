@@ -216,14 +216,14 @@ class ProcessTelegramChannelPost implements ShouldQueue
                                 ['role' => 'user', 'content' => [
                                     [
                                         'type' => 'text',
-                                        'text' => "Generate the image caption for visually impaired people, focusing solely on evident visual elements such as colours, shapes, objects, and any discernible text. Do not include additional descriptions, interpretations, or assumptions not explicitly visible in the image. Limit the output to 300 characters. Write the caption in the following language: $language"
+                                        'text' => "Generate the image caption for visually impaired people, focusing solely on evident visual elements such as colours, shapes, objects, and any discernible text without mentioning the image. Do not include additional descriptions, interpretations, what is missing, or assumptions not explicitly visible in the image. Limit the output to 300 characters. Write the caption in the following language: $language"
                                     ],
                                     [
                                         'type' => 'image_url',
                                         'image_url' => [
                                             'url' => 'data:image/jpeg;base64,' . base64_encode(File::get($item['path'])),
                                         ]
-                                    ]
+                                    ],
                                 ]]
                             ]]);
 
