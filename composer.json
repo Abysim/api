@@ -24,7 +24,8 @@
         "php-telegram-bot/laravel": "^2.1",
         "phrity/websocket": "^3.0",
         "stechstudio/laravel-jwt": "^2.3",
-        "steppinghat/emoji-detector": "^1.5"
+        "steppinghat/emoji-detector": "^1.5",
+        "ext-pdo": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
