@@ -299,6 +299,13 @@ class NewsController extends Controller
                         $this->rejectNewsByClassification($model);
                     }
 
+                    if ($model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                        $classification = $model->classification;
+                        unset($classification['species']);
+                        $this->classifyNews($model, 'species', true, true);
+                        $this->rejectNewsByClassification($model);
+                    }
+
                     if ($model->status === NewsStatus::REJECTED_BY_CLASSIFICATION) {
                         continue;
                     }
@@ -514,13 +521,14 @@ class NewsController extends Controller
         return $name ? $this->species[$name] : $this->species;
     }
 
-    private function classifyNews(News $model, string $term, bool $isDeep = false): void
+    private function classifyNews(News $model, string $term, bool $isDeep = false, bool $isSuperDeep = false): void
     {
+        $isDeep = $isDeep || $isSuperDeep;
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News $term classification");
                 $params = [
-                    'model' => $isDeep ? 'o1-mini' : 'gpt-4o-mini',
+                    'model' => $isSuperDeep ? 'o1-preview' : ($isDeep ? 'o1-mini' : 'gpt-4o-mini'),
                     'messages' => [
                         ['role' => $isDeep ? 'user' : 'system', 'content' => $this->getPrompt($term)],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]

@@ -24,6 +24,7 @@ Strictly classify wild cat species into JSON using the following rules:
                 - `барс` → `irbis`
                 - `кугуар` → `puma`
                 - `димчаста пантера` → `neofelis`
+                - `флоридська пантера` → `puma`
     - Unlisted Subspecies or Variants:
         - Map unlisted subspecies or regional variants to the main species.
             - Examples:
