@@ -299,7 +299,7 @@ class NewsController extends Controller
                         $this->rejectNewsByClassification($model);
                     }
 
-                    if ($model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                    if (config('openai.is_deepest') && $model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION) {
                         $classification = $model->classification;
                         unset($classification['species']);
                         $this->classifyNews($model, 'species', true, true);
@@ -521,22 +521,28 @@ class NewsController extends Controller
         return $name ? $this->species[$name] : $this->species;
     }
 
-    private function classifyNews(News $model, string $term, bool $isDeep = false, bool $isSuperDeep = false): void
+    private function classifyNews(News $model, string $term, bool $isDeep = false, bool $isDeepest = false): void
     {
-        $isDeep = $isDeep || $isSuperDeep;
+        $isDeep = $isDeep || $isDeepest;
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News $term classification");
                 $params = [
-                    'model' => $isSuperDeep ? 'o1-preview' : ($isDeep ? 'o1-mini' : 'gpt-4o-mini'),
+                    'model' => $isDeepest ? 'o1-preview' : ($isDeep ? 'o3-mini' : 'gpt-4o-mini'),
                     'messages' => [
-                        ['role' => $isDeep ? 'user' : 'system', 'content' => $this->getPrompt($term)],
+                        [
+                            'role' => $isDeepest ? 'user' : ($isDeep ? 'developer' : 'system'),
+                            'content' => $this->getPrompt($term)
+                        ],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
                     'temperature' => $isDeep ? 1 : 0,
                 ];
-                if (!$isDeep) {
+                if (!$isDeepest) {
                     $params['response_format'] = ['type' => 'json_object'];
+                    if  ($isDeep) {
+                        $params['reasoning_effort'] = 'high';
+                    }
                 }
                 $classificationResponse = OpenAI::chat()->create($params);
 
