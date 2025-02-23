@@ -9,6 +9,7 @@ use App\Helpers\FileHelper;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
+use App\Services\BigCatsService;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
@@ -135,8 +136,11 @@ class NewsController extends Controller
     private function publishNews(News $model)
     {
         if (empty($model->filename)) {
-            $this->loadMediaFile($model);
+            $model->loadMediaFile();
         }
+
+        $service = new BigCatsService();
+        $service->publishNews($model);
 
         Log::info($model->id . ': Publishing News');
         $response = Http::post(
@@ -323,7 +327,7 @@ class NewsController extends Controller
                     $this->classifyNews($model, 'region');
                 }
 
-                $this->loadMediaFile($model);
+                $model->loadMediaFile();
 
                 $this->preparePublish($model);
 
@@ -356,35 +360,6 @@ class NewsController extends Controller
             Log::error("$model->id: News not sent to review: " . $telegramResult->getDescription() . ' ' . $model->getFileUrl());
         }
 
-    }
-
-    /**
-     * @throws Exception
-     */
-    private function loadMediaFile(News $model): void
-    {
-        if (empty($model->filename) && !empty($model->media)) {
-            $file = FileHelper::getUrl($model->media, true);
-            if (empty($file)) {
-                Log::error("$model->id: News media file not found: $model->media");
-                return;
-            }
-
-            $mime = FileHelper::getMimeType($file);
-            if (!Str::startsWith($mime, 'image/')) {
-                Log::error("$model->id: News media file is not an image: $model->media");
-                return;
-            }
-            $extension = Str::after($mime, 'image/') ?? 'jpg';
-
-            $path = storage_path('app/public/news/' . $model->id . '.' . $extension);
-            if (File::put($path, $file)) {
-                $model->filename = $model->id . '.' . $extension;
-                $model->save();
-            } else {
-                Log::error("$model->id: News media file not saved: $model->media");
-            }
-        }
     }
 
     /**
@@ -625,7 +600,7 @@ class NewsController extends Controller
         $model->save();
 
         if (empty($model->filename)) {
-            $this->loadMediaFile($model);
+            $model->loadMediaFile();
         }
 
         Request::editMessageReplyMarkup([

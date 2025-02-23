@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\NewsStatus;
+use App\Helpers\FileHelper;
+use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\AsArrayObject;
 use Illuminate\Database\Eloquent\Model;
@@ -38,6 +40,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
  * @property string $publish_content
  * @property string $publish_tags
  * @property int $message_id
+ * @property string $published_url
  * @property Carbon $published_at
  * @property Carbon $posted_at
  * @property Carbon $created_at
@@ -200,6 +203,35 @@ class News extends Model
             }
 
             $this->publish_content = trim($result);
+        }
+    }
+
+    /**
+     * @throws Exception
+     */
+    public function loadMediaFile(): void
+    {
+        if (empty($this->filename) && !empty($this->media)) {
+            $file = FileHelper::getUrl($this->media, true);
+            if (empty($file)) {
+                Log::error("$this->id: News media file not found: $this->media");
+                return;
+            }
+
+            $mime = FileHelper::getMimeType($file);
+            if (!Str::startsWith($mime, 'image/')) {
+                Log::error("$this->id: News media file is not an image: $this->media");
+                return;
+            }
+            $extension = Str::after($mime, 'image/') ?? 'jpg';
+
+            $path = storage_path('app/public/news/' . $this->id . '.' . $extension);
+            if (File::put($path, $file)) {
+                $this->filename = $this->id . '.' . $extension;
+                $this->save();
+            } else {
+                Log::error("$this->id: News media file not saved: $this->media");
+            }
         }
     }
 }

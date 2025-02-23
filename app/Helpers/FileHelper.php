@@ -61,13 +61,13 @@ class FileHelper
         return $result;
     }
 
-    public static function generateImageCaption(string $imagePath, string $language): string
+    public static function generateImageCaption(string $imagePath, string $language, $isDeep = false): string
     {
         $result = '';
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                $response = OpenAI::chat()->create(['model' => 'gpt-4o-mini', 'messages' => [
+                $response = OpenAI::chat()->create(['model' => $isDeep ? 'gpt-4o' : 'gpt-4o-mini', 'messages' => [
                     ['role' => 'user', 'content' => [
                         [
                             'type' => 'text',
