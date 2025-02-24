@@ -341,6 +341,10 @@ class NewsController extends Controller
                         continue;
                     }
                 }
+                $this->rejectNewsByClassification($model);
+                if ($model->status === NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                    continue;
+                }
 
                 if (!isset($model->classification['country'])) {
                     $this->classifyNews($model, 'country');
