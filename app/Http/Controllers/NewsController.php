@@ -596,16 +596,16 @@ class NewsController extends Controller
 
             similar_text($model->title, $previousModel->title, $percent);
 
-            if ($percent >= 80) {
+            if ($percent >= 70) {
                 $previousModel->refresh();
                 if ($model->posted_at > $previousModel->posted_at && $model->status != NewsStatus::PUBLISHED) {
                     $this->rejectByDupTitle($model, $previousModel);
                 } else {
                     $this->rejectByDupTitle($previousModel, $model);
                 }
-            } elseif ($percent >= 60) {
+            } elseif ($percent >= 50) {
                 Log::warning(
-                    "$model->id: News title similarity: $percent%: $model->title vs $previousModel->title"
+                    "$model->id vs $previousModel->id: News title similarity: $percent%: $model->title vs $previousModel->title"
                 );
             }
         }
@@ -623,6 +623,7 @@ class NewsController extends Controller
             $previousModel->save();
         }
 
+        Log::info("$model->id: News rejected by dup title: $previousModel->id");
         $model->status = NewsStatus::REJECTED_BY_DUP_TITLE;
         $model->save();
     }
