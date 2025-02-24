@@ -221,23 +221,27 @@ class NewsController extends Controller
                 $news = $this->service->getNews($currentQuery, $lang);
 
                 foreach ($news as $article) {
-                    $model = News::updateOrCreate([
-                        'platform' => $this->service->getName(),
-                        'external_id' => $article['_id']
-                    ], [
-                        'date' => explode(' ', $article['published_date'])[0],
-                        'author' => $article['author'],
-                        'title' => $article['title'],
-                        'content' => $article['summary'],
-                        'link' => $article['link'],
-                        'source' => $article['rights'] ?? $article['clean_url'],
-                        'language' => $article['language'],
-                        'media' => $article['media'],
-                        'posted_at' => $article['published_date'],
-                    ]);
+                    try {
+                        $model = News::updateOrCreate([
+                            'platform' => $this->service->getName(),
+                            'external_id' => $article['_id']
+                        ], [
+                            'date' => explode(' ', $article['published_date'])[0],
+                            'author' => $article['author'],
+                            'title' => $article['title'],
+                            'content' => $article['summary'],
+                            'link' => $article['link'],
+                            'source' => $article['rights'] ?? $article['clean_url'],
+                            'language' => $article['language'],
+                            'media' => $article['media'],
+                            'posted_at' => $article['published_date'],
+                        ]);
 
-                    $this->mapSpecies($model, $currentSpecieses);
-                    $models[$model->id] = $model;
+                        $this->mapSpecies($model, $currentSpecieses);
+                        $models[$model->id] = $model;
+                    } catch (Exception $e) {
+                        Log::error('News load error: ' . $e->getMessage());
+                    }
                 }
 
                 $specieses = [$species];
@@ -607,7 +611,7 @@ class NewsController extends Controller
                             && $previousModel->posted_at->format('H:i:s') != '00:00:00'
                             || $model->posted_at->format('H:i:s') == '00:00:00'
                             && $previousModel->posted_at->format('H:i:s') == '00:00:00'
-                        ) 
+                        )
                         && $model->posted_at > $previousModel->posted_at
                         || ($model->posted_at == $previousModel->posted_at)
                         && Str::length($model->content) < Str::length($previousModel->content)

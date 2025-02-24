@@ -21,7 +21,7 @@ return new class extends Migration
             $table->text('content');
             $table->json('tags')->nullable();
             $table->string('link', 1024);
-            $table->string('source', 32);
+            $table->string('source');
             $table->string('language', 5)->nullable();
             $table->string('media', 1024)->nullable();
             $table->string('filename')->nullable();
