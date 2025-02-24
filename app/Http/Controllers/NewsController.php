@@ -602,9 +602,14 @@ class NewsController extends Controller
                     (
                         $model->posted_at->format('H:i:s') == '00:00:00'
                         && $previousModel->posted_at->format('H:i:s') != '00:00:00'
-                        || $model->posted_at->format('H:i:s') != '00:00:00'
+                        || (
+                            $model->posted_at->format('H:i:s') != '00:00:00'
+                            && $previousModel->posted_at->format('H:i:s') != '00:00:00'
+                            || $model->posted_at->format('H:i:s') == '00:00:00'
+                            && $previousModel->posted_at->format('H:i:s') == '00:00:00'
+                        ) 
                         && $model->posted_at > $previousModel->posted_at
-                        || $model->posted_at == $previousModel->posted_at
+                        || ($model->posted_at == $previousModel->posted_at)
                         && Str::length($model->content) < Str::length($previousModel->content)
                     )
                     && $model->status != NewsStatus::PUBLISHED
