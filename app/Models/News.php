@@ -204,13 +204,14 @@ class News extends Model
         }
     }
 
-    /**
-     * @throws Exception
-     */
     public function loadMediaFile(): void
     {
         if (empty($this->filename) && !empty($this->media)) {
-            $file = FileHelper::getUrl($this->media, true);
+            try {
+                $file = FileHelper::getUrl($this->media, true);
+            } catch (Exception $e) {
+                Log::error("$this->id: News media file error: " . $e->getMessage());
+            }
             if (empty($file)) {
                 Log::error("$this->id: News media file not found: $this->media");
                 return;

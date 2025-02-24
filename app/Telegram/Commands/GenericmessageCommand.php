@@ -97,7 +97,7 @@ class GenericmessageCommand extends SystemCommand
             $model->deleteFile();
             $model->loadMediaFile();
             if ($model->message_id) {
-                $response = Request::editMessageMedia([
+                Request::editMessageMedia([
                     'chat_id' => $message->getChat()->getId(),
                     'message_id' => $model->message_id,
                     'media' => new InputMediaPhoto([
@@ -105,7 +105,6 @@ class GenericmessageCommand extends SystemCommand
                         'media' => $model->getFileUrl(),
                     ]),
                 ]);
-                Log::info($model->getFileUrl() . ' ' . json_encode($response));
             }
         } else {
             return Request::emptyResponse();

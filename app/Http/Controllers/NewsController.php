@@ -13,7 +13,6 @@ use App\Services\BigCatsService;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -589,6 +588,7 @@ class NewsController extends Controller
                 ->get();
         }
 
+        /** @var News $previousModel */
         foreach ($this->previousWeekNews[$model->language] as $previousModel) {
             if ($model->id == $previousModel->id) {
                 continue;
@@ -598,8 +598,21 @@ class NewsController extends Controller
 
             if ($percent >= 70) {
                 $previousModel->refresh();
-                if ($model->posted_at > $previousModel->posted_at && $model->status != NewsStatus::PUBLISHED) {
+                if (
+                    (
+                        $model->posted_at->format('H:i:s') == '00:00:00'
+                        && $previousModel->posted_at->format('H:i:s') != '00:00:00'
+                        || $model->posted_at->format('H:i:s') != '00:00:00'
+                        && $model->posted_at > $previousModel->posted_at
+                        || $model->posted_at == $previousModel->posted_at
+                        && Str::length($model->content) < Str::length($previousModel->content)
+                    )
+                    && $model->status != NewsStatus::PUBLISHED
+                    && $model->status != NewsStatus::APPROVED
+                ) {
                     $this->rejectByDupTitle($model, $previousModel);
+
+                    return;
                 } else {
                     $this->rejectByDupTitle($previousModel, $model);
                 }
@@ -613,17 +626,30 @@ class NewsController extends Controller
 
     private function rejectByDupTitle(News $model, News $previousModel)
     {
-        if ($model->status != NewsStatus::CREATED && $previousModel->status == NewsStatus::CREATED) {
-            $previousModel->status = $model->status;
+        if (empty($previousModel->classification) && !empty($model->classification)) {
             $previousModel->classification = $model->classification;
-            $previousModel->publish_title = $model->publish_title;
-            $previousModel->publish_content = $model->publish_content;
-            $previousModel->publish_tags = $model->publish_tags;
-            $previousModel->message_id = $model->message_id;
             $previousModel->save();
         }
 
+        if (in_array($model->status, [
+            NewsStatus::REJECTED_BY_DUP_TITLE,
+            NewsStatus::PUBLISHED,
+            NewsStatus::APPROVED,
+        ])) {
+            return;
+        }
+
         Log::info("$model->id: News rejected by dup title: $previousModel->id");
+        $model->deleteFile();
+        if ($model->message_id) {
+            $response = Request::deleteMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'message_id' => $model->message_id,
+            ]);
+            if ($response->isOk()) {
+                $model->message_id = null;
+            }
+        }
         $model->status = NewsStatus::REJECTED_BY_DUP_TITLE;
         $model->save();
     }
