@@ -126,12 +126,10 @@ class News extends Model
             'text' => 'Fix Title',
             'switch_inline_query_current_chat' => 'news_title ' . $this->id . ' ' . $this->publish_title,
         ];
-        if (Str::length($this->publish_content) <= 4000) {
-            $firstLine[] = [
-                'text' => 'Fix Content',
-                'switch_inline_query_current_chat' => 'news_content ' . $this->id . ' 0 ',
-            ];
-        }
+        $firstLine[] = [
+            'text' => 'Fix Image',
+            'switch_inline_query_current_chat' => 'news_image ' . $this->id . ' ' . $this->media,
+        ];
         $firstLine[] = [
             'text' => 'Fix Tags',
             'switch_inline_query_current_chat' => 'news_tags ' . $this->id . ' ' . $this->publish_tags,
@@ -225,9 +223,10 @@ class News extends Model
             }
             $extension = Str::after($mime, 'image/') ?? 'jpg';
 
-            $path = storage_path('app/public/news/' . $this->id . '.' . $extension);
+            $hash = md5($file);
+            $path = storage_path('app/public/news/' . $this->id . $hash . '.' . $extension);
             if (File::put($path, $file)) {
-                $this->filename = $this->id . '.' . $extension;
+                $this->filename = $this->id . $hash . '.' . $extension;
                 $this->save();
             } else {
                 Log::error("$this->id: News media file not saved: $this->media");

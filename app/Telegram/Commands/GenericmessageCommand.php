@@ -5,7 +5,9 @@ namespace App\Telegram\Commands;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Longman\TelegramBot\Commands\SystemCommand;
+use Longman\TelegramBot\Entities\InputMedia\InputMediaPhoto;
 use Longman\TelegramBot\Entities\ServerResponse;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
@@ -89,6 +91,21 @@ class GenericmessageCommand extends SystemCommand
                 $model->updatePublishContent($i, $value);
             } else {
                 return Request::emptyResponse();
+            }
+        } elseif ($action == 'image') {
+            $model->media = $value;
+            $model->deleteFile();
+            $model->loadMediaFile();
+            if ($model->message_id) {
+                $response = Request::editMessageMedia([
+                    'chat_id' => $message->getChat()->getId(),
+                    'message_id' => $model->message_id,
+                    'media' => new InputMediaPhoto([
+                        'type' => 'photo',
+                        'media' => $model->getFileUrl(),
+                    ]),
+                ]);
+                Log::info($model->getFileUrl() . ' ' . json_encode($response));
             }
         } else {
             return Request::emptyResponse();
