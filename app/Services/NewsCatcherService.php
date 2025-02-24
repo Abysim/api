@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class NewsCatcherService implements NewsServiceInterface
 {
@@ -29,15 +30,15 @@ class NewsCatcherService implements NewsServiceInterface
         $this->request = Http::withHeader('x-api-key', config('services.newscatcher.key'));
     }
 
-    public function getNews($query): array
+    public function getNews(string $query, ?string $lang = null): array
     {
         $result = [];
-        for ($page = 1; $page <= 10; $page++) {
+        for ($page = 1; $page <= 100; $page++) {
             Log::info('NewsCatcher search: page: ' . $page . '; query: ' . $query);
 
             $response = $this->request->get(self::URL . 'search', [
                 'q' => $query,
-                'lang' => self::LANG,
+                'lang' => $lang ?? self::LANG,
                 'not_countries' => implode(',', self::EXCLUDE_COUNTRIES),
                 'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
                 'ranked_only' => 'False',
@@ -74,6 +75,9 @@ class NewsCatcherService implements NewsServiceInterface
     {
         $query = '(' . implode(' OR ', $words) . ')';
         foreach ($excludeWords as $exclude) {
+            if (Str::position($exclude, ' ') !== false) {
+                $exclude = '"' . $exclude . '"';
+            }
             $query .= ' !' . $exclude;
         }
 

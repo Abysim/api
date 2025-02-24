@@ -707,7 +707,7 @@ class FlickrPhotoController extends Controller
             $model->url = $infoResponse->photo['urls']['url'][0]['_content'];
             $model->posted_at = Carbon::createFromTimestamp($infoResponse->photo['dates']['posted']);
             $takenAt = Carbon::parse($infoResponse->photo['dates']['taken']);
-            $model->taken_at = $takenAt < '1970-01-01' ? '1970-01-01 00:00:00' : $takenAt;
+            $model->taken_at = $takenAt < '1970-01-01' ? '1970-01-01 01:01:01' : $takenAt;
 
             $model->save();
             Log::info($model->id . ': Loaded photo info: ' . json_encode($infoResponse->photo));

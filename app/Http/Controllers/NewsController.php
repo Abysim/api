@@ -13,6 +13,7 @@ use App\Services\BigCatsService;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -25,13 +26,15 @@ use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
-    private const LOAD_TIME = '16:00:00';
+    private const LOAD_TIME = '17:00:00';
 
     private array $species = [];
 
     private array $tags = [];
 
     private array $prompts = [];
+
+    private array $previousWeekNews = [];
 
     private NewsServiceInterface|null $service;
 
@@ -49,8 +52,8 @@ class NewsController extends Controller
         $this->publish();
 
         $models = [];
-        if (now()->format('H:i:s') >= self::LOAD_TIME && now()->format('G') % 3 == 0) {
-            $models = $this->loadNews();
+        if (now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1])) {
+            $models = $this->loadNews(now()->format('G') % 3 == 1 ? 'en' : 'uk');
         }
 
         foreach (News::whereIn('status', [
@@ -185,7 +188,7 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    private function loadNews(): array
+    private function loadNews(string $lang): array
     {
         $models = [];
 
@@ -193,7 +196,7 @@ class NewsController extends Controller
         $specieses = [];
         $words = [];
         $exclude = [];
-        foreach ($this->getSpecies() as $species => $data) {
+        foreach ($this->getSpecies($lang) as $species => $data) {
             $isSearch = false;
             $currentSpecieses = array_merge($specieses, [$species]);
             $currentWords = array_merge($words, $data['words']);
@@ -211,12 +214,12 @@ class NewsController extends Controller
                 $currentQuery = $query;
             }
 
-            if (array_key_last($this->getSpecies()) == $species) {
+            if (array_key_last($this->getSpecies($lang)) == $species) {
                 $isSearch = true;
             }
 
             if ($isSearch) {
-                $news = $this->service->getNews($currentQuery);
+                $news = $this->service->getNews($currentQuery, $lang);
 
                 foreach ($news as $article) {
                     $model = News::updateOrCreate([
@@ -234,28 +237,7 @@ class NewsController extends Controller
                         'posted_at' => $article['published_date'],
                     ]);
 
-                    // get array of all unique words in the article including multibyte ones
-                    $articleWords = array_unique(preg_split('/\s+/', preg_replace(
-                        '/[^\p{L}\p{N}\p{Zs}]/u',
-                        ' ',
-                        $article['title'] . ' ' . $article['summary'])
-                    ));
-
-                    foreach ($currentSpecieses as $currentSpecies) {
-                        foreach ($this->getSpecies($currentSpecies)['words'] as $word) {
-                            foreach ($articleWords as $articleWord) {
-                                if ($word == Str::lower($articleWord)) {
-                                    if (!in_array($currentSpecies, $model->species ?? [])) {
-                                        $model->species = array_merge($model->species ?? [], [$currentSpecies]);
-                                        $model->save();
-                                    }
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
+                    $this->mapSpecies($model, $currentSpecieses);
                     $models[$model->id] = $model;
                 }
 
@@ -279,11 +261,53 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
+    private function mapSpecies(News $model, $currentSpecieses = null)
+    {
+        $articleWords = array_unique(preg_split('/\s+/', preg_replace(
+                '/[^\p{L}\p{N}\p{Zs}]/u',
+                ' ',
+                $model->title . ' ' . $model->content)
+        ));
+
+        if (is_null($currentSpecieses)) {
+            $currentSpecieses = array_keys($this->getSpecies($model->language));
+        }
+
+        foreach ($currentSpecieses as $currentSpecies) {
+            foreach ($this->getSpecies($model->language, $currentSpecies)['words'] as $word) {
+                foreach ($articleWords as $articleWord) {
+                    $trimmed = trim($word, '*');
+                    if (
+                        $word == Str::lower($articleWord)
+                        || $trimmed != $word
+                        && Str::length($articleWord) >= Str::length($trimmed)
+                        && $trimmed == Str::substr(Str::lower($articleWord), 0, Str::length($trimmed))
+                    ) {
+                        if (!in_array($currentSpecies, $model->species ?? [])) {
+                            $model->species = array_merge($model->species ?? [], [$currentSpecies]);
+                            $model->save();
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @throws Exception
+     */
     private function processNews(array $models)
     {
         foreach ($models as $model) {
+            $model->refresh();
             if (empty($model->status) || $model->status == NewsStatus::CREATED) {
                 $this->excludeByTags($model);
+            }
+
+            if (empty($model->status) || $model->status == NewsStatus::CREATED) {
+                $this->excludeByDupTitle($model);
             }
 
             $model->refresh();
@@ -478,22 +502,22 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    private function getSpecies(string $name = null): array
+    private function getSpecies(string $lang, string $name = null): array
     {
-        if (empty($this->species)) {
-            $path = resource_path('json/news/species.json');
+        if (empty($this->species[$lang])) {
+            $path = resource_path('json/news/species/' . $lang . '.json');
             if (File::exists($path)) {
-                $this->species = json_decode(File::get($path), true);
+                $this->species[$lang] = json_decode(File::get($path), true);
             } else {
                 throw new Exception('Specieses not found!');
             }
         }
 
-        if ($name && !isset($this->species[$name])) {
+        if ($name && !isset($this->species[$lang][$name])) {
             throw new Exception('Species not found: ' . $name);
         }
 
-        return $name ? $this->species[$name] : $this->species;
+        return $name ? $this->species[$lang][$name] : $this->species[$lang];
     }
 
     private function classifyNews(News $model, string $term, bool $isDeep = false, bool $isDeepest = false): void
@@ -551,25 +575,79 @@ class NewsController extends Controller
         }
     }
 
+    private function excludeByDupTitle(News $model)
+    {
+        if (empty($this->previousWeekNews[$model->language])) {
+            $this->previousWeekNews[$model->language] = News::where('language', $model->language)
+                ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                ->get();
+        }
+
+        foreach ($this->previousWeekNews[$model->language] as $previousModel) {
+            if ($model->id == $previousModel->id) {
+                continue;
+            }
+
+            similar_text($model->title, $previousModel->title, $percent);
+
+            if ($percent >= 80) {
+                $previousModel->refresh();
+                if ($model->posted_at > $previousModel->posted_at && $model->status != NewsStatus::PUBLISHED) {
+                    $this->rejectByDupTitle($model, $previousModel);
+                } else {
+                    $this->rejectByDupTitle($previousModel, $model);
+                }
+            } elseif ($percent >= 60) {
+                Log::warning(
+                    "$model->id: News title similarity: $percent%: $model->title vs $previousModel->title"
+                );
+            }
+        }
+    }
+
+    private function rejectByDupTitle(News $model, News $previousModel)
+    {
+        if ($model->status != NewsStatus::CREATED && $previousModel->status == NewsStatus::CREATED) {
+            $previousModel->status = $model->status;
+            $previousModel->classification = $model->classification;
+            $previousModel->publish_title = $model->publish_title;
+            $previousModel->publish_content = $model->publish_content;
+            $previousModel->publish_tags = $model->publish_tags;
+            $previousModel->message_id = $model->message_id;
+            $previousModel->save();
+        }
+
+        $model->status = NewsStatus::REJECTED_BY_DUP_TITLE;
+        $model->save();
+    }
+
     /**
      * @throws Exception
      */
-    private function excludeByTags($model)
+    private function excludeByTags(News $model)
     {
-        $text = $model->title . "\n" . $model->content;
+        $text = $model->content;
+        if ($model->language != 'en') {
+            $text = $model->title . "\n\n" . $text;
+        }
 
         foreach ($model->species as $species) {
-            foreach ($this->getSpecies($species)['excludeCase'] ?? [] as $excludeCase) {
+            foreach ($this->getSpecies($model->language, $species)['excludeCase'] ?? [] as $excludeCase) {
                 $lastPosition = 0;
                 while (($lastPosition = Str::position($text, $excludeCase, $lastPosition)) !== false) {
                     if (
                         $lastPosition > 1
+                        && $model->language != 'en'
                         && Str::charAt($text, $lastPosition - 1) == ' '
                         && !in_array(Str::charAt($text, $lastPosition - 2), ["\n", '.', '!', '?', '…', '-', '–', '—', '―'])
                         || $lastPosition > 2
                         && in_array(Str::charAt($text, $lastPosition - 1), ['«', '"', "'", '[', '('])
                         && Str::charAt($text, $lastPosition - 2)  == ' '
                         && !in_array(Str::charAt($text, $lastPosition - 3), [':', '-', '–', '—', '―'])
+                        || $lastPosition > 1
+                        && Str::substr($text, $lastPosition - 2, 2) == 'A '
+                        || $lastPosition > 3
+                        && Str::substr($text, $lastPosition - 4, 4) == 'The '
                     ) {
                         Log::info(
                             "$model->id: News rejected by keyword: "

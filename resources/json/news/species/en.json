@@ -1,0 +1,204 @@
+{
+    "lion": {
+        "words": [
+            "lion",
+            "lions",
+            "lioness*"
+        ],
+        "exclude": [
+            "horoscop*",
+            "club*",
+            "the lion king",
+            "nfl*",
+            "sea lions",
+            "*ball*",
+            "championship*",
+            "cif",
+            "polo",
+            "golf*",
+            "points",
+            "sport*",
+            "coach*",
+            "tournament*",
+            "ncaa",
+            "acc",
+            "festival",
+            "hockey",
+            "judah",
+            "golden lion",
+            "tour",
+            "british lions",
+            "detroit",
+            "contest",
+            "tables",
+            "lion tamer",
+            "game*",
+            "food lion",
+            "electric",
+            "sculpture",
+            "lions gate",
+            "louisiana",
+            "red lion",
+            "chronotype",
+            "derby",
+            "inn",
+            "pub",
+            "nittany",
+            "lion-hearted",
+            "score*",
+            "lindenwood",
+            "victoria",
+            "triumph",
+            "final",
+            "wellington",
+            "lion danc*",
+            "statue*",
+            "clacton",
+            "cereal*",
+            "langley",
+            "captain",
+            "bridge*",
+            "lion city",
+            "cafe"
+        ],
+        "excludeCase": [
+            "Lion",
+            "White Lion",
+            "Irish Lion"
+        ]
+    },
+    "tiger": {
+        "words": [
+            "tiger*",
+            "tigr*"
+        ],
+        "exclude": [
+            "shark*",
+            "mlb",
+            "world series",
+            "pga",
+            "league*",
+            "airways",
+            "nrl",
+            "athlet*",
+            "rally",
+            "memphis tigers",
+            "matchup*",
+            "espn",
+            "*team*",
+            "tiger woods",
+            "detroit tigers",
+            "yankees",
+            "paper tiger"
+        ],
+        "excludeCase": [
+            "Tiger"
+        ]
+    },
+    "leopard": {
+        "words": [
+            "leopard*"
+        ],
+        "exclude": [
+        ],
+        "excludeCase": [
+            "Leopard",
+            "Snow Leopard"
+        ]
+    },
+    "jaguar": {
+        "words": [
+            "jaguar*"
+        ],
+        "exclude": [
+        ],
+        "excludeCase": [
+            "Jaguar"
+        ]
+    },
+    "cheetah": {
+        "words": [
+            "cheetah*"
+        ],
+        "exclude": [
+            "armor*"
+        ],
+        "excludeCase": [
+            "Cheetah",
+            "King Cheetah"
+        ]
+    },
+    "panther": {
+        "words": [
+            "panther*"
+        ],
+        "exclude": [
+            "armor*",
+            "ticket*",
+            "mcu",
+            "marvel",
+            "knoxville panther",
+            "arena",
+            "pink panther",
+            "panther civil",
+            "cathedral*",
+            "panther party"
+        ],
+        "excludeCase": [
+            "Black Panther",
+            "Panther"
+        ]
+    },
+    "puma": {
+        "words": [
+            "puma*",
+            "cougar*"
+        ],
+        "exclude": [
+            "houston cougars",
+            "sklenar"
+        ],
+        "excludeCase": [
+            "Puma",
+            "Cougar",
+            "Mountain Lion"
+        ]
+    },
+    "lynx": {
+        "words": [
+            "lynx*"
+        ],
+        "exclude": [
+        ],
+        "excludeCase": [
+            "Lynx"
+        ]
+    },
+    "ocelot": {
+        "words": [
+            "ocelot*"
+        ],
+        "exclude": [],
+        "excludeCase": [
+            "Ocelot"
+        ]
+    },
+    "caracal": {
+        "words": [
+            "caracal*"
+        ],
+        "exclude": [],
+        "excludeCase": [
+            "Caracal"
+        ]
+    },
+    "serval": {
+        "words": [
+            "serval*"
+        ],
+        "exclude": [],
+        "excludeCase": [
+            "Serval"
+        ]
+    }
+}
