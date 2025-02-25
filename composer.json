@@ -9,9 +9,11 @@
         "ext-dom": "*",
         "ext-fileinfo": "*",
         "ext-libxml": "*",
+        "ext-pdo": "*",
         "atymic/twitter": "^3.0",
         "aws/aws-sdk-php": "^3.312",
         "deeplcom/deepl-php": "^1.8",
+        "filament/filament": "^3.2",
         "guzzlehttp/guzzle": "^7.2",
         "intervention/image-laravel": "^1.3",
         "jeroen-g/flickr": "^2.2",
@@ -24,8 +26,7 @@
         "php-telegram-bot/laravel": "^2.1",
         "phrity/websocket": "^3.0",
         "stechstudio/laravel-jwt": "^2.3",
-        "steppinghat/emoji-detector": "^1.5",
-        "ext-pdo": "*"
+        "steppinghat/emoji-detector": "^1.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -51,7 +52,8 @@
     "scripts": {
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
