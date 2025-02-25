@@ -62,7 +62,7 @@ class TranslateNewsJob implements ShouldQueue
                 if (!empty($response->choices[0]->message->content)) {
                     [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
                     $model->is_translated = true;
-                    $model->publish_title = trim($title, '*');
+                    $model->publish_title = trim($title, '*#');
                     $model->publish_content = Str::replace('**', '', trim($content));
                     $model->save();
                 }

@@ -28,7 +28,7 @@ class NewsResource extends Resource
                     ->default(null),
                 Forms\Components\Textarea::make('publish_content')
                     ->disableGrammarly()
-                    ->autosize()
+                    ->rows(24)
                     ->columnSpanFull(),
                 Forms\Components\Section::make('Information')
                     ->columns(4)

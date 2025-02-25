@@ -30,6 +30,10 @@ class NewsController extends Controller
 {
     private const LOAD_TIME = '17:00:00';
 
+    private const PUBLISH_AFTER = '10:00:00';
+
+    private const PUBLISH_BEFORE = '22:00:00';
+
     private array $species = [];
 
     private array $tags = [];
@@ -116,6 +120,11 @@ class NewsController extends Controller
      */
     private function publish()
     {
+        $nowTime = now()->format('H:i:s');
+        if ($nowTime < self::PUBLISH_AFTER || $nowTime >= self::PUBLISH_BEFORE) {
+            return;
+        }
+
         $lastPublishedPhotoTime = FlickrPhoto::where('status', FlickrPhotoStatus::PUBLISHED)
             ->orderByDesc('published_at')
             ->value('published_at');

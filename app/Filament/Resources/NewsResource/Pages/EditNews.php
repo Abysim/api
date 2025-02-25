@@ -12,8 +12,11 @@ class EditNews extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [
-            Actions\DeleteAction::make(),
-        ];
+        return [];
+    }
+
+    public function getHeading(): string
+    {
+        return '';
     }
 }

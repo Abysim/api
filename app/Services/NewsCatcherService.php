@@ -45,7 +45,7 @@ class NewsCatcherService implements NewsServiceInterface
                 'sort_by' => 'date',
                 'page_size' => 100,
                 'page' => $page,
-                'from' => now()->subDays(2)->format('Y/m/d'),
+                'from' => now()->subDays((empty($lang) || $lang == self::LANG) ? 2 : 1)->format('Y/m/d'),
             ]);
 
             if ($response->status() >= 400) {
