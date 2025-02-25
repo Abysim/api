@@ -22,6 +22,14 @@ class NewsResource extends Resource
     {
         return $form
             ->schema([
+                Forms\Components\TextInput::make('publish_title')
+                    ->maxLength(255)
+                    ->columnSpanFull()
+                    ->default(null),
+                Forms\Components\Textarea::make('publish_content')
+                    ->disableGrammarly()
+                    ->autosize()
+                    ->columnSpanFull(),
                 Forms\Components\Section::make('Information')
                     ->columns(4)
                     ->collapsible()
@@ -38,13 +46,6 @@ class NewsResource extends Resource
                             ->default(null)
                             ->columnSpan(2),
                     ]),
-                Forms\Components\TextInput::make('publish_title')
-                    ->maxLength(255)
-                    ->columnSpanFull()
-                    ->default(null),
-                Forms\Components\Textarea::make('publish_content')
-                    ->autosize()
-                    ->columnSpanFull(),
             ])
             ->columns(1);
     }

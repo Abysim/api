@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\NewsStatus;
+use App\Filament\Resources\NewsResource;
 use App\Helpers\FileHelper;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Entities\InputMedia\InputMediaPhoto;
+use Longman\TelegramBot\Request;
 
 /**
  * Class News
@@ -137,7 +140,7 @@ class News extends Model
 
         return new InlineKeyboard($firstLine, [
             ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id],
-            ['text' => 'Content', 'callback_data' => 'news_content ' . $this->id],
+            ['text' => 'Fix Content', 'url' => NewsResource::getUrl('edit', ['record' => $this])],
             ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id],
         ]);
     }
@@ -171,39 +174,6 @@ class News extends Model
         return storage_path('app/public/news/' . $this->filename);
     }
 
-    public function updatePublishContent(int $i, string $value): void
-    {
-        if (Str::length($this->publish_content) <= 4000) {
-            $this->publish_content = trim($value);
-        } else {
-            $parts = explode("\n\n", $this->publish_content);
-            $parts[] = '';
-            $text = '';
-            $groups = [];
-            $group = [];
-            foreach ($parts as $key => $part) {
-                $newText = $text ? $text . "\n\n" . $part : $part;
-                if (Str::length($newText) > 4000 || $key == count($parts) - 1) {
-                    $groups[] = $group;
-                    $i++;
-                    $text = $part;
-                    $group = [$part];
-                } else {
-                    $text = $newText;
-                    $group[] = $part;
-                }
-            }
-            $groups[$i] = explode("\n\n", $value);
-
-            $result = '';
-            foreach ($groups as $group) {
-                $result .=  ($result ? "\n\n" : '') . implode("\n\n", $group);
-            }
-
-            $this->publish_content = trim($result);
-        }
-    }
-
     public function loadMediaFile(): void
     {
         if (empty($this->filename) && !empty($this->media)) {
@@ -233,5 +203,45 @@ class News extends Model
                 Log::error("$this->id: News media file not saved: $this->media");
             }
         }
+    }
+
+    protected static function booted(): void
+    {
+        static::unguard();
+
+        static::updated(function (News $model) {
+            if ($model->message_id && $model->status == NewsStatus::PENDING_REVIEW) {
+                if (
+                    $model->wasChanged('publish_title')
+                    || $model->wasChanged('publish_content')
+                    || $model->wasChanged('publish_tags')
+                    || $model->wasChanged('date')
+                ) {
+                    Log::info($model->id . ': Updating news message: ' . $model->message_id);
+
+                    Request::editMessageCaption([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'message_id' => $model->message_id,
+                        'caption' => $model->getCaption(),
+                        'reply_markup' => $model->getInlineKeyboard(),
+                    ]);
+                }
+
+                if ($model->wasChanged('media')) {
+                    $model->deleteFile();
+                    $model->loadMediaFile();
+                    if ($model->message_id) {
+                        Request::editMessageMedia([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'message_id' => $model->message_id,
+                            'media' => new InputMediaPhoto([
+                                'type' => 'photo',
+                                'media' => $model->getFileUrl(),
+                            ]),
+                        ]);
+                    }
+                }
+            }
+        });
     }
 }

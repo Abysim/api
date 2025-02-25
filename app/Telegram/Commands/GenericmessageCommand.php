@@ -85,27 +85,8 @@ class GenericmessageCommand extends SystemCommand
             $model->publish_title = $value;
         } elseif ($action == 'tags') {
             $model->publish_tags = $value;
-        } elseif ($action == 'content') {
-            [$i, $value] = explode(' ', $value, 2);
-            if (is_numeric($i)) {
-                $model->updatePublishContent($i, $value);
-            } else {
-                return Request::emptyResponse();
-            }
         } elseif ($action == 'image') {
             $model->media = $value;
-            $model->deleteFile();
-            $model->loadMediaFile();
-            if ($model->message_id) {
-                Request::editMessageMedia([
-                    'chat_id' => $message->getChat()->getId(),
-                    'message_id' => $model->message_id,
-                    'media' => new InputMediaPhoto([
-                        'type' => 'photo',
-                        'media' => $model->getFileUrl(),
-                    ]),
-                ]);
-            }
         } else {
             return Request::emptyResponse();
         }
@@ -117,13 +98,6 @@ class GenericmessageCommand extends SystemCommand
         ]);
 
         if ($model->message_id) {
-            Request::editMessageCaption([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $model->message_id,
-                'caption' => $model->getCaption(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
             $response = Request::sendMessage([
                 'chat_id' => $message->getChat()->getId(),
                 'reply_to_message_id' => $model->message_id,
