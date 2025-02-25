@@ -632,6 +632,7 @@ class NewsController extends Controller
                     )
                     && $model->status != NewsStatus::PUBLISHED
                     && $model->status != NewsStatus::APPROVED
+                    && !$model->is_translated
                 ) {
                     $this->rejectByDupTitle($model, $previousModel);
 
@@ -654,7 +655,7 @@ class NewsController extends Controller
             $previousModel->save();
         }
 
-        if (in_array($model->status, [
+        if ($model->is_translated || in_array($model->status, [
             NewsStatus::REJECTED_BY_DUP_TITLE,
             NewsStatus::PUBLISHED,
             NewsStatus::APPROVED,
