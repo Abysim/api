@@ -6,6 +6,9 @@ use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
 use App\Helpers\FileHelper;
+use App\Jobs\AnalyzeNewsJob;
+use App\Jobs\ApplyNewsAnalysisJob;
+use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
@@ -31,7 +34,7 @@ class NewsController extends Controller
 
     private array $tags = [];
 
-    private array $prompts = [];
+    private static array $prompts = [];
 
     private array $previousWeekNews = [];
 
@@ -142,7 +145,14 @@ class NewsController extends Controller
         }
 
         $service = new BigCatsService();
-        $service->publishNews($model);
+        if (!$service->publishNews($model)) {
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => 'News not published to BigCats!',
+                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            ]);
+        }
 
         Log::info($model->id . ': Publishing News');
         $response = Http::post(
@@ -482,18 +492,18 @@ class NewsController extends Controller
      * @return string
      * @throws Exception
      */
-    private function getPrompt(string $name): string
+    public static function getPrompt(string $name): string
     {
-        if (!isset($this->prompts[$name])) {
+        if (!isset(static::$prompts[$name])) {
             $path = resource_path('prompts/' . $name . '.md');
             if (File::exists($path)) {
-                $this->prompts[$name] = File::get($path);
+                static::$prompts[$name] = File::get($path);
             } else {
                 throw new Exception('Prompt not found: ' . $name);
             }
         }
 
-        return $this->prompts[$name];
+        return static::$prompts[$name];
     }
 
     /**
@@ -544,7 +554,7 @@ class NewsController extends Controller
                     'messages' => [
                         [
                             'role' => $isDeepest ? 'user' : ($isDeep ? 'developer' : 'system'),
-                            'content' => $this->getPrompt($term)
+                            'content' => static::getPrompt($term)
                         ],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
@@ -816,5 +826,53 @@ class NewsController extends Controller
                 $text = $newText;
             }
         }
+    }
+
+    public function translate(News $model): void
+    {
+        if ($model->language == 'uk' || $model->is_translated || $model->is_deepest) {
+            return;
+        }
+
+        TranslateNewsJob::dispatch($model->id);
+    }
+
+    public function analyze(News $model): void
+    {
+        if ($model->language == 'uk' || !$model->is_translated || !empty($model->analysis) || $model->is_deepest) {
+            return;
+        }
+
+        AnalyzeNewsJob::dispatch($model->id);
+    }
+
+    public function apply(News $model): void
+    {
+        if ($model->language == 'uk' || !$model->is_translated || empty($model->analysis) || $model->is_deepest) {
+            return;
+        }
+
+        ApplyNewsAnalysisJob::dispatch($model->id);
+    }
+
+    public function deep(News $model): void
+    {
+        if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
+            return;
+        }
+
+        $model->is_deep = true;
+        $model->analysis = null;
+        $model->save();
+    }
+
+    public function deepest(News $model): void
+    {
+        if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
+            return;
+        }
+
+        $model->is_deepest = true;
+        $model->save();
     }
 }

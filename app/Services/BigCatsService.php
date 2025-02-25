@@ -21,9 +21,6 @@ class BigCatsService
         $this->request = Http::asJson()->withToken(config('services.bigcats.key'));
     }
 
-    /**
-     * @throws Exception
-     */
     public function publishNews(News $news): bool
     {
         if (empty($news->filename)) {
@@ -37,7 +34,7 @@ class BigCatsService
             'image' => $news->getFileUrl() ?? $news->media,
             'image_caption' => FileHelper::generateImageCaption($news->getFilePath(), 'uk', true),
             'publish_tags' => $news->publish_tags,
-            'is_original' => false,
+            'is_original' => $news->language != 'uk',
             'source_url' => $news->link,
             'source_name' => $news->source,
             'tags' => array_map(fn ($item) => trim($item, '#'), explode(' ', $news->publish_tags)) ,

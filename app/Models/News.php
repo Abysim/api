@@ -39,6 +39,10 @@ use Longman\TelegramBot\Request;
  * @property string $filename
  * @property int $status
  * @property array $classification
+ * @property bool $is_translated
+ * @property string $analysis
+ * @property bool $is_deep
+ * @property bool $is_deepest
  * @property string $publish_title
  * @property string $publish_content
  * @property string $publish_tags
@@ -87,7 +91,7 @@ class News extends Model
         return $this->date->format('d.m.Y') . ': '
             . $this->publish_title . "\n#новини "
             . $this->publish_tags . "\n"
-            . $this->link;
+            . (($this->language == 'uk' || empty($this->published_url)) ? $this->link : $this->published_url);
     }
 
     public function getCaption(): string
@@ -126,23 +130,45 @@ class News extends Model
     {
         $firstLine = [];
         $firstLine[] = [
-            'text' => 'Fix Title',
+            'text' => '🛠️Title',
             'switch_inline_query_current_chat' => 'news_title ' . $this->id . ' ' . $this->publish_title,
         ];
         $firstLine[] = [
-            'text' => 'Fix Image',
+            'text' => '🛠️Image',
             'switch_inline_query_current_chat' => 'news_image ' . $this->id . ' ' . $this->media,
         ];
         $firstLine[] = [
-            'text' => 'Fix Tags',
+            'text' => '🛠️Tags',
             'switch_inline_query_current_chat' => 'news_tags ' . $this->id . ' ' . $this->publish_tags,
         ];
 
-        return new InlineKeyboard($firstLine, [
-            ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id],
-            ['text' => 'Fix Content', 'url' => NewsResource::getUrl('edit', ['record' => $this])],
-            ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id],
-        ]);
+        $secondLine = [];
+        if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
+            $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
+        }
+        $secondLine[] = ['text' => '✏️Edit', 'url' => NewsResource::getUrl('edit', ['record' => $this])];
+        $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];
+
+        $thirdLine = [];
+        if ($this->language != 'uk') {
+            if (!$this->is_translated) {
+                $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
+            } else {
+                if (empty($this->analysis)) {
+                    $thirdLine[] = ['text' => ($this->is_deep ? '🔬' : '🧪') . 'Analyze', 'callback_data' => 'news_analyze ' . $this->id];
+                } elseif (!$this->is_deepest) {
+                    $thirdLine[] = ['text' => ($this->is_deep ? '🧬' : '📝') . 'Apply', 'callback_data' => 'news_apply ' . $this->id];
+                    $thirdLine[] = ['text' => '🔍Analysis', 'callback_data' => 'news_analysis ' . $this->id];
+                    if (!$this->is_deep && !$this->is_deepest) {
+                        $thirdLine[] = ['text' => '🏴Mark Deep', 'callback_data' => 'news_deep ' . $this->id];
+                    } elseif (!$this->is_deepest) {
+                        $thirdLine[] = ['text' => '🏁Mark Deepest', 'callback_data' => 'news_deepest ' . $this->id];
+                    }
+                }
+            }
+        }
+
+        return new InlineKeyboard($firstLine, $secondLine, $thirdLine);
     }
 
     /**
@@ -240,6 +266,41 @@ class News extends Model
                             ]),
                         ]);
                     }
+                }
+
+                if ($model->wasChanged('is_translated') && $model->is_translated) {
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'reply_to_message_id' => $model->message_id,
+                        'text' => 'Translation completed',
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
+                }
+
+                if ($model->wasChanged('analysis')) {
+                    if (!empty($model->analysis)) {
+                        Request::sendMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'reply_to_message_id' => $model->message_id,
+                            'text' => $model->analysis,
+                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                        ]);
+                    } elseif (!$model->wasChanged('is_deep')) {
+                        Request::sendMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'reply_to_message_id' => $model->message_id,
+                            'text' => 'Analysis applied',
+                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                        ]);
+                    }
+                }
+
+                if ($model->wasChanged('analysis') || $model->wasChanged('is_deepest')) {
+                    Request::editMessageReplyMarkup([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'message_id' => $model->message_id,
+                        'reply_markup' => $model->getInlineKeyboard(),
+                    ]);
                 }
             }
         });
