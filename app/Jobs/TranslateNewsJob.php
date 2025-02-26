@@ -43,10 +43,10 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => 'o1-preview',
+                    'model' => 'chatgpt-4o-latest',
                     'messages' => [
                         [
-                            'role' => 'user',
+                            'role' => 'developer',
                             'content' => NewsController::getPrompt('translate')
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]

@@ -40,10 +40,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis");
                 $params = [
-                    'model' => $model->is_deep ? 'o1-preview' : 'o3-mini',
+                    'model' => 'chatgpt-4o-latest',
                     'messages' => [
                         [
-                            'role' => $model->is_deep ? 'user' : 'developer',
+                            'role' => 'developer',
                             'content' => Str::replace(
                                 '<date>',
                                 $model->date->format('j F Y'),
@@ -55,9 +55,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         ['role' => 'user', 'content' => NewsController::getPrompt('editor')],
                     ],
                 ];
-                if (!$model->is_deep) {
-                    $params['reasoning_effort'] = 'high';
-                }
                 $response = OpenAI::chat()->create($params);
 
                 Log::info(
