@@ -52,13 +52,13 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    public function process()
+    public function process($load = true): void
     {
         Log::info('Processing news');
         $this->publish();
 
         $models = [];
-        if (now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1])) {
+        if ($load && now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1])) {
             $models = $this->loadNews(now()->format('G') % 3 == 1 ? 'en' : 'uk');
         }
 
