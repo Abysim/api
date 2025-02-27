@@ -169,7 +169,7 @@ class NewsController extends Controller
             [
                 'value1' => $model->getShortCaption(),
                 'value2' => $model->media ?: $model->getFileUrl(),
-                'value3' => $model->publish_content,
+                'value3' => Str::replace('### ', '', Str::of(Str::inlineMarkdown($model->publish_content))->stripTags()),
             ]
         );
 
