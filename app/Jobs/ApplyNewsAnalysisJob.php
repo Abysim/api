@@ -40,7 +40,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis");
                 $params = [
-                    'model' => 'chatgpt-4o-latest',
+                    'model' => 'gpt-4o',
                     'messages' => [
                         [
                             'role' => 'developer',

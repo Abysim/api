@@ -52,14 +52,14 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    public function process($load = true): void
+    public function process($load = true, $force = false, $lang = null): void
     {
-        Log::info('Processing news');
+        Log::info('Processing news ' . $lang);
         $this->publish();
 
         $models = [];
-        if ($load && now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1])) {
-            $models = $this->loadNews(now()->format('G') % 3 == 1 ? 'en' : 'uk');
+        if ($force || ($load && now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1]))) {
+            $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
         }
 
         foreach (News::whereIn('status', [
@@ -208,6 +208,7 @@ class NewsController extends Controller
      */
     private function loadNews(string $lang): array
     {
+        Log::info('Loading news for language ' . $lang);
         $models = [];
 
         $query = '';

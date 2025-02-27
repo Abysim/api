@@ -34,7 +34,7 @@ class NewsCatcherService implements NewsServiceInterface
     {
         $result = [];
         for ($page = 1; $page <= 100; $page++) {
-            Log::info('NewsCatcher search: page: ' . $page . '; query: ' . $query);
+            Log::info('NewsCatcher search ' . $lang . ': page: ' . $page . '; query: ' . $query);
 
             $response = $this->request->get(self::URL . 'search', [
                 'q' => $query,

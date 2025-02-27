@@ -12,7 +12,7 @@ class NewsCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'news';
+    protected $signature = 'news {load?} {force?} {lang?}';
 
     /**
      * The console command description.
@@ -27,6 +27,6 @@ class NewsCommand extends Command
     public function handle()
     {
         $controller = app(NewsController::class);
-        $controller->process(false);
+        $controller->process($this->argument('load') ?? true, $this->argument('force'), $this->argument('lang'));
     }
 }
