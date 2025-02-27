@@ -43,7 +43,7 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis");
                 $params = [
-                    'model' => $model->is_deep ? 'o1-preview' : 'gpt-4o',
+                    'model' => $model->is_deep ? 'o1-preview' : 'chatgpt-4o-latest',
                     'messages' => [
                         [
                             'role' => $model->is_deep ? 'user' : 'developer',

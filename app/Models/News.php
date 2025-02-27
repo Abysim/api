@@ -152,7 +152,7 @@ class News extends Model
         $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];
 
         $thirdLine = [];
-        if ($this->language != 'uk') {
+        if ($this->language != 'uk' || $this->status != NewsStatus::BEING_PROCESSED) {
             if (!$this->is_translated) {
                 $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
             } else {
@@ -161,11 +161,11 @@ class News extends Model
                 } elseif (!$this->is_deepest) {
                     $thirdLine[] = ['text' => ($this->is_deep ? '🧬' : '📝') . 'Apply', 'callback_data' => 'news_apply ' . $this->id];
                     $thirdLine[] = ['text' => '🔍Analysis', 'callback_data' => 'news_analysis ' . $this->id];
-                    if (!$this->is_deep && !$this->is_deepest) {
-                        $thirdLine[] = ['text' => '🏴Mark Deep', 'callback_data' => 'news_deep ' . $this->id];
-                    } elseif (!$this->is_deepest) {
-                        $thirdLine[] = ['text' => '🏁Mark Deepest', 'callback_data' => 'news_deepest ' . $this->id];
-                    }
+                }
+                if (!$this->is_deep && !$this->is_deepest) {
+                    $thirdLine[] = ['text' => '🏴Mark Deep', 'callback_data' => 'news_deep ' . $this->id];
+                } elseif (!$this->is_deepest) {
+                    $thirdLine[] = ['text' => '🏁Mark Deepest', 'callback_data' => 'news_deepest ' . $this->id];
                 }
             }
         }
@@ -297,7 +297,7 @@ class News extends Model
                     }
                 }
 
-                if ($model->wasChanged('analysis') || $model->wasChanged('is_deepest')) {
+                if ($model->wasChanged('analysis') || $model->wasChanged('is_deepest') || $model->wasChanged('is_deep')) {
                     Request::editMessageReplyMarkup([
                         'chat_id' => explode(',', config('telegram.admins'))[0],
                         'message_id' => $model->message_id,

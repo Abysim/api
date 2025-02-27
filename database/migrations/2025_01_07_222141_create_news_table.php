@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('external_id', 64);
             $table->date('date');
             $table->string('author', 128);
-            $table->string('title');
+            $table->string('title', 1024);
             $table->text('content');
             $table->json('tags')->nullable();
             $table->string('link', 1024);
