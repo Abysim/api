@@ -5,6 +5,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
@@ -21,7 +22,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 2;
 
     public int $timeout = 360;
 
@@ -32,15 +33,17 @@ class ApplyNewsAnalysisJob implements ShouldQueue
     public function handle(): void
     {
         $model = News::find($this->id);
-        if (empty($model->analysis)) {
+        if (empty($model->analysis) || $model->status == NewsStatus::BEING_PROCESSED) {
             return;
         }
+        $model->status = NewsStatus::BEING_PROCESSED;
+        $model->save();
 
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis");
                 $params = [
-                    'model' => 'gpt-4o',
+                    'model' => 'gpt-4o-mini',
                     'messages' => [
                         [
                             'role' => 'developer',
@@ -68,6 +71,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $model->analysis = null;
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
+                    $model->status = NewsStatus::PENDING_REVIEW;
                     $model->save();
                 }
             } catch (Exception $e) {

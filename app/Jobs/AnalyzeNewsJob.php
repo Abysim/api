@@ -5,6 +5,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
@@ -21,7 +22,7 @@ class AnalyzeNewsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 2;
 
     public int $timeout = 360;
 
@@ -32,9 +33,11 @@ class AnalyzeNewsJob implements ShouldQueue
     public function handle(): void
     {
         $model = News::find($this->id);
-        if (!empty($model->analysis)) {
+        if (!empty($model->analysis) || $model->status == NewsStatus::BEING_PROCESSED) {
             return;
         }
+        $model->status = NewsStatus::BEING_PROCESSED;
+        $model->save();
 
         for ($i = 0; $i < 4; $i++) {
             try {
@@ -63,6 +66,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->analysis = $response->choices[0]->message->content;
+                    $model->status = NewsStatus::PENDING_REVIEW;
                     $model->save();
                 }
             } catch (Exception $e) {

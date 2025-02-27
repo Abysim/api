@@ -145,6 +145,8 @@ class News extends Model
         $secondLine = [];
         if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
             $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
+        } else {
+            $secondLine[] = ['text' => '🔄Reset', 'callback_data' => 'news_reset ' . $this->id];
         }
         $secondLine[] = ['text' => '✏️Edit', 'url' => NewsResource::getUrl('edit', ['record' => $this])];
         $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];

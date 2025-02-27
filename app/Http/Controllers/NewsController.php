@@ -836,36 +836,80 @@ class NewsController extends Controller
         }
     }
 
-    public function translate(News $model): void
+    public function translate(News $model, Message $message): void
     {
         if ($model->language == 'uk' || $model->is_translated || $model->is_deepest) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+
             return;
         }
 
         TranslateNewsJob::dispatch($model->id);
     }
 
-    public function analyze(News $model): void
+    public function analyze(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || !empty($model->analysis) || $model->is_deepest) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+
             return;
         }
 
         AnalyzeNewsJob::dispatch($model->id);
     }
 
-    public function apply(News $model): void
+    public function analysis(News $model, Message $message): void
+    {
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => $model->getInlineKeyboard(),
+        ]);
+    }
+
+    public function reset(News $model, Message $message): void
+    {
+        $model->status = NewsStatus::PENDING_REVIEW;
+        $model->save();
+        Request::editMessageReplyMarkup([
+            'chat_id' => $message->getChat()->getId(),
+            'message_id' => $message->getMessageId(),
+            'reply_markup' => $model->getInlineKeyboard(),
+        ]);
+    }
+
+    public function apply(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || empty($model->analysis) || $model->is_deepest) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+
             return;
         }
 
         ApplyNewsAnalysisJob::dispatch($model->id);
     }
 
-    public function deep(News $model): void
+    public function deep(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+
             return;
         }
 
@@ -874,9 +918,15 @@ class NewsController extends Controller
         $model->save();
     }
 
-    public function deepest(News $model): void
+    public function deepest(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => $model->getInlineKeyboard(),
+            ]);
+
             return;
         }
 

@@ -5,6 +5,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
@@ -21,7 +22,7 @@ class TranslateNewsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 2;
 
     public int $timeout = 360;
 
@@ -35,9 +36,11 @@ class TranslateNewsJob implements ShouldQueue
     public function handle(): void
     {
         $model = News::find($this->id);
-        if ($model->is_translated) {
+        if ($model->is_translated || $model->status == NewsStatus::BEING_PROCESSED) {
             return;
         }
+        $model->status = NewsStatus::BEING_PROCESSED;
+        $model->save();
 
         for ($i = 0; $i < 4; $i++) {
             try {
@@ -65,6 +68,7 @@ class TranslateNewsJob implements ShouldQueue
                     $model->is_translated = true;
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
+                    $model->status = NewsStatus::PENDING_REVIEW;
                     $model->save();
                 }
             } catch (Exception $e) {
