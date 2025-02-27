@@ -54,6 +54,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         ['role' => 'assistant', 'content' => $model->analysis],
                         ['role' => 'user', 'content' => NewsController::getPrompt('editor')],
                     ],
+                    'temperature' => 0,
                 ];
                 $response = OpenAI::chat()->create($params);
 

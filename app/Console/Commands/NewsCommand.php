@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Http\Controllers\FlickrPhotoController;
 use App\Http\Controllers\NewsController;
 use Illuminate\Console\Command;
 

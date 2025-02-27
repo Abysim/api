@@ -40,7 +40,7 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis");
                 $params = [
-                    'model' => $model->is_deep ? 'o1-preview' : 'chatgpt-4o-latest',
+                    'model' => $model->is_deep ? 'o1-preview' : 'gpt-4o',
                     'messages' => [
                         [
                             'role' => $model->is_deep ? 'user' : 'developer',
@@ -52,6 +52,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
+                    'temperature' => $model->is_deep ? 1 : 0,
                 ];
                 $response = OpenAI::chat()->create($params);
 

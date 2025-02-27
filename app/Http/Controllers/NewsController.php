@@ -559,21 +559,18 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification");
                 $params = [
-                    'model' => $isDeepest ? 'o1-preview' : ($isDeep ? 'o3-mini' : 'gpt-4o-mini'),
+                    'model' => $isDeepest ? 'o1-preview' : ($isDeep ? 'gpt-4o' : 'gpt-4o-mini'),
                     'messages' => [
                         [
-                            'role' => $isDeepest ? 'user' : ($isDeep ? 'developer' : 'system'),
+                            'role' => $isDeepest ? 'user' : 'developer',
                             'content' => static::getPrompt($term)
                         ],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
-                    'temperature' => $isDeep ? 1 : 0,
+                    'temperature' => $isDeepest ? 1 : 0,
                 ];
                 if (!$isDeepest) {
                     $params['response_format'] = ['type' => 'json_object'];
-                    if  ($isDeep) {
-                        $params['reasoning_effort'] = 'high';
-                    }
                 }
                 $classificationResponse = OpenAI::chat()->create($params);
 

@@ -51,6 +51,7 @@ class TranslateNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
+                    'temperature' => 0,
                 ];
                 $response = OpenAI::chat()->create($params);
 
