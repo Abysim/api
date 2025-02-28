@@ -702,6 +702,13 @@ class NewsController extends Controller
             $text = $model->title . "\n\n" . $text;
         }
 
+        if (empty($model->species)) {
+            $model->status = NewsStatus::REJECTED_BY_KEYWORD;
+            $model->save();
+
+            return;
+        }
+
         foreach ($model->species as $species) {
             foreach ($this->getSpecies($model->language, $species)['excludeCase'] ?? [] as $excludeCase) {
                 $lastPosition = 0;

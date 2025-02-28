@@ -68,10 +68,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
+                    $model->status = NewsStatus::PENDING_REVIEW;
                     $model->analysis = null;
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
-                    $model->status = NewsStatus::PENDING_REVIEW;
                     $model->save();
                 }
             } catch (Exception $e) {

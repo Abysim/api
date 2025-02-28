@@ -155,7 +155,7 @@ class News extends Model
         if ($this->language != 'uk' || $this->status != NewsStatus::BEING_PROCESSED) {
             if (!$this->is_translated) {
                 $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
-            } else {
+            } elseif ($this->status == NewsStatus::PENDING_REVIEW) {
                 if (empty($this->analysis)) {
                     $thirdLine[] = ['text' => ($this->is_deep ? '🔬' : '🧪') . 'Analyze', 'callback_data' => 'news_analyze ' . $this->id];
                 } elseif (!$this->is_deepest) {
@@ -238,7 +238,7 @@ class News extends Model
         static::unguard();
 
         static::updated(function (News $model) {
-            if ($model->message_id && $model->status == NewsStatus::PENDING_REVIEW) {
+            if ($model->message_id) {
                 if (
                     $model->wasChanged('publish_title')
                     || $model->wasChanged('publish_content')
@@ -256,13 +256,17 @@ class News extends Model
                 }
 
                 if ($model->wasChanged('media')) {
+                    $model->syncOriginal();
+                    $model->discardChanges();
                     $model->deleteFile();
                     $model->loadMediaFile();
                     if ($model->message_id) {
                         Request::editMessageMedia([
                             'chat_id' => explode(',', config('telegram.admins'))[0],
                             'message_id' => $model->message_id,
+                            'reply_markup' => $model->getInlineKeyboard(),
                             'media' => new InputMediaPhoto([
+                                'caption' => $model->getCaption(),
                                 'type' => 'photo',
                                 'media' => $model->getFileUrl(),
                             ]),
@@ -297,7 +301,12 @@ class News extends Model
                     }
                 }
 
-                if ($model->wasChanged('analysis') || $model->wasChanged('is_deepest') || $model->wasChanged('is_deep')) {
+                if (
+                    $model->wasChanged('analysis')
+                    || $model->wasChanged('is_deepest')
+                    || $model->wasChanged('is_deep')
+                    || $model->wasChanged('status')
+                ) {
                     Request::editMessageReplyMarkup([
                         'chat_id' => explode(',', config('telegram.admins'))[0],
                         'message_id' => $model->message_id,
