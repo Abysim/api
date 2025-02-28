@@ -28,7 +28,9 @@ use OpenAI\Laravel\Facades\OpenAI;
 
 class NewsController extends Controller
 {
-    private const LOAD_TIME = '17:00:00';
+    private const LOAD_TIME = '18:00:00';
+
+    private const STOP_TIME = '22:00:00';
 
     private const PUBLISH_AFTER = '10:00:00';
 
@@ -58,7 +60,12 @@ class NewsController extends Controller
         $this->publish();
 
         $models = [];
-        if ($force || ($load && now()->format('H:i:s') >= self::LOAD_TIME && in_array(now()->format('G') % 3, [0, 1]))) {
+        if ($force || (
+            $load
+            && now()->format('H:i:s') >= self::LOAD_TIME
+            && now()->format('H:i:s') < self::STOP_TIME
+            && in_array(now()->format('G') % 3, [0, 1])
+        )) {
             $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
         }
 
