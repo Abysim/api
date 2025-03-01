@@ -810,10 +810,15 @@ class NewsController extends Controller
     {
         $model->deleteFile();
 
-        Request::deleteMessage([
+        $response = Request::deleteMessage([
             'chat_id' => $message->getChat()->getId(),
             'message_id' => $message->getMessageId(),
         ]);
+
+        if ($response->isOk()) {
+            $model->message_id = null;
+            $model->save();
+        }
     }
 
     /**
