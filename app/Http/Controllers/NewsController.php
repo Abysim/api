@@ -853,45 +853,56 @@ class NewsController extends Controller
     public function translate(News $model, Message $message): void
     {
         if ($model->language == 'uk' || $model->is_translated || $model->is_deepest) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
+            $model->updateReplyMarkup();
             return;
         }
 
         TranslateNewsJob::dispatch($model->id);
     }
 
+    public function auto(News $model, Message $message): void
+    {
+        if ($model->language == 'uk' || $model->is_translated || $model->is_deepest) {
+            $model->updateReplyMarkup();
+            return;
+        }
+
+        $model->is_auto = true;
+        $model->save();
+        TranslateNewsJob::dispatch($model->id);
+    }
+
     public function analyze(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || !empty($model->analysis) || $model->is_deepest) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
+            $model->updateReplyMarkup();
             return;
         }
 
         AnalyzeNewsJob::dispatch($model->id);
     }
 
+    /**
+     * @throws TelegramException
+     */
     public function analysis(News $model, Message $message): void
     {
-        Request::editMessageReplyMarkup([
+        if (empty($model->analysis)) {
+            return;
+        }
+
+        Request::sendMessage([
             'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-            'reply_markup' => $model->getInlineKeyboard(),
+            'reply_to_message_id' => $model->message_id,
+            'text' => $model->analysis,
+            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
         ]);
     }
 
     public function reset(News $model, Message $message): void
     {
         $model->status = NewsStatus::PENDING_REVIEW;
+        $model->is_auto = false;
         $model->save();
         Request::editMessageReplyMarkup([
             'chat_id' => $message->getChat()->getId(),
@@ -903,12 +914,7 @@ class NewsController extends Controller
     public function apply(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || empty($model->analysis) || $model->is_deepest) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
+            $model->updateReplyMarkup();
             return;
         }
 
@@ -918,15 +924,11 @@ class NewsController extends Controller
     public function deep(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
+            $model->updateReplyMarkup();
             return;
         }
 
+        $model->analysis_count = 0;
         $model->is_deep = true;
         $model->analysis = null;
         $model->save();
@@ -935,12 +937,7 @@ class NewsController extends Controller
     public function deepest(News $model, Message $message): void
     {
         if ($model->language == 'uk' || !$model->is_translated || $model->is_deepest) {
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => $model->getInlineKeyboard(),
-            ]);
-
+            $model->updateReplyMarkup();
             return;
         }
 

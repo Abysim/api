@@ -16,6 +16,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Exception\TelegramException;
+use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
 
 class ApplyNewsAnalysisJob implements ShouldQueue
@@ -30,10 +33,17 @@ class ApplyNewsAnalysisJob implements ShouldQueue
     {
     }
 
+    /**
+     * @throws TelegramException
+     */
     public function handle(): void
     {
         $model = News::find($this->id);
-        if (empty($model->analysis) || $model->status == NewsStatus::BEING_PROCESSED) {
+        if (
+            empty($model->analysis)
+            || $model->status == NewsStatus::BEING_PROCESSED
+            || Str::substr(trim($model->analysis, '*# '), 0, 2) == 'Ні'
+        ) {
             return;
         }
         $model->status = NewsStatus::BEING_PROCESSED;
@@ -79,6 +89,29 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             }
 
             if (empty($model->analysis)) {
+                if ($model->is_auto) {
+                   if ($model->analysis_count < 4) {
+                        AnalyzeNewsJob::dispatch($model->id);
+                   } else {
+                       if (!$model->is_deep) {
+                           $model->is_deep = true;
+                           $model->analysis_count = 0;
+                           $model->save();
+                           AnalyzeNewsJob::dispatch($model->id);
+                       } else {
+                           $model->is_auto = false;
+                           $model->save();
+
+                           Request::sendMessage([
+                               'chat_id' => explode(',', config('telegram.admins'))[0],
+                               'reply_to_message_id' => $model->message_id,
+                               'text' => 'Analysis limit reached without success',
+                               'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                           ]);
+                       }
+                   }
+                }
+
                 break;
             }
         }

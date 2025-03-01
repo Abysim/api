@@ -76,6 +76,10 @@ class TranslateNewsJob implements ShouldQueue
             }
 
             if ($model->is_translated) {
+                if ($model->is_auto) {
+                    AnalyzeNewsJob::dispatch($model->id);
+                }
+
                 break;
             }
         }

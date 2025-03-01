@@ -16,6 +16,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Exception\TelegramException;
+use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
 
 class AnalyzeNewsJob implements ShouldQueue
@@ -30,6 +33,9 @@ class AnalyzeNewsJob implements ShouldQueue
     {
     }
 
+    /**
+     * @throws TelegramException
+     */
     public function handle(): void
     {
         $model = News::find($this->id);
@@ -67,6 +73,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 if (!empty($response->choices[0]->message->content)) {
                     $model->analysis = $response->choices[0]->message->content;
                     $model->status = NewsStatus::PENDING_REVIEW;
+                    $model->analysis_count = $model->analysis_count + 1;
                     $model->save();
                 }
             } catch (Exception $e) {
@@ -74,6 +81,34 @@ class AnalyzeNewsJob implements ShouldQueue
             }
 
             if (!empty($model->analysis)) {
+                if ($model->is_auto) {
+                    if (Str::substr(trim($model->analysis, '*# '), 0, 3) == 'Так') {
+                        ApplyNewsAnalysisJob::dispatch($model->id);
+                    } elseif (Str::substr(trim($model->analysis, '*# '), 0, 2) == 'Ні') {
+                        if (!$model->is_deep) {
+                            $model->analysis = null;
+                            $model->is_deep = true;
+                            $model->analysis_count = 0;
+                            $model->save();
+                            AnalyzeNewsJob::dispatch($model->id);
+                        } else {
+                            $model->is_deepest = true;
+                            $model->is_auto = false;
+                            $model->save();
+                        }
+                    } else {
+                        $model->is_auto = false;
+                        $model->save();
+
+                        Request::sendMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'reply_to_message_id' => $model->message_id,
+                            'text' => 'Got unsupported analysis response',
+                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                        ]);
+                    }
+                }
+
                 break;
             }
         }

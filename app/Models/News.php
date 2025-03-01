@@ -40,7 +40,9 @@ use Longman\TelegramBot\Request;
  * @property int $status
  * @property array $classification
  * @property bool $is_translated
+ * @property bool $is_auto
  * @property string $analysis
+ * @property int $analysis_count
  * @property bool $is_deep
  * @property bool $is_deepest
  * @property string $publish_title
@@ -96,9 +98,13 @@ class News extends Model
 
     public function getCaption(): string
     {
+        $link = $this->status == NewsStatus::PENDING_REVIEW
+            ? NewsResource::getUrl('edit', ['record' => $this])
+            : $this->link;
+
         $header = $this->date->format('d.m.Y') . ': ' . $this->publish_title . "\n\n";
 
-        $footer = "\n\n#новини " . $this->publish_tags . "\n\n" . $this->link;
+        $footer = "\n\n#новини " . $this->publish_tags . "\n\n" . $link;
 
         $remainingLength = 1024 - Str::length($header) - Str::length($footer);
 
@@ -146,26 +152,36 @@ class News extends Model
         if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
             $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
         } else {
-            $secondLine[] = ['text' => '🔄Reset', 'callback_data' => 'news_reset ' . $this->id];
+            $secondLine[] = [
+                'text' => '🔄Reset (' . ($this->is_deep ? '🏁' : '🏴') . $this->analysis_count . ')',
+                'callback_data' => 'news_reset ' . $this->id
+            ];
         }
-        $secondLine[] = ['text' => '✏️Edit', 'url' => NewsResource::getUrl('edit', ['record' => $this])];
+        $secondLine[] = ['text' => '🔗Original', 'url' => $this->link];
         $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];
 
         $thirdLine = [];
-        if ($this->language != 'uk' || $this->status != NewsStatus::BEING_PROCESSED) {
+        if ($this->language != 'uk' && $this->status != NewsStatus::BEING_PROCESSED && !$this->is_auto) {
             if (!$this->is_translated) {
                 $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
+                $thirdLine[] = ['text' => '🔁Auto Translate', 'callback_data' => 'news_auto ' . $this->id];
             } elseif ($this->status == NewsStatus::PENDING_REVIEW) {
                 if (empty($this->analysis)) {
-                    $thirdLine[] = ['text' => ($this->is_deep ? '🔬' : '🧪') . 'Analyze', 'callback_data' => 'news_analyze ' . $this->id];
+                    $thirdLine[] = [
+                        'text' => ($this->is_deep ? '🔬' : '🧪') . 'Analyze (' . $this->analysis_count . ')',
+                        'callback_data' => 'news_analyze ' . $this->id
+                    ];
                 } elseif (!$this->is_deepest) {
-                    $thirdLine[] = ['text' => ($this->is_deep ? '🧬' : '📝') . 'Apply', 'callback_data' => 'news_apply ' . $this->id];
+                    $thirdLine[] = [
+                        'text' => ($this->is_deep ? '🧬' : '📝') . 'Apply (' . $this->analysis_count . ')',
+                        'callback_data' => 'news_apply ' . $this->id
+                    ];
                     $thirdLine[] = ['text' => '🔍Analysis', 'callback_data' => 'news_analysis ' . $this->id];
                 }
                 if (!$this->is_deep && !$this->is_deepest) {
-                    $thirdLine[] = ['text' => '🏴Mark Deep', 'callback_data' => 'news_deep ' . $this->id];
+                    $thirdLine[] = ['text' => '🏴Deep', 'callback_data' => 'news_deep ' . $this->id];
                 } elseif (!$this->is_deepest) {
-                    $thirdLine[] = ['text' => '🏁Mark Deepest', 'callback_data' => 'news_deepest ' . $this->id];
+                    $thirdLine[] = ['text' => '🏁Deepest', 'callback_data' => 'news_deepest ' . $this->id];
                 }
             }
         }
@@ -244,6 +260,7 @@ class News extends Model
                     || $model->wasChanged('publish_content')
                     || $model->wasChanged('publish_tags')
                     || $model->wasChanged('date')
+                    || $model->wasChanged('status')
                 ) {
                     Log::info($model->id . ': Updating news message: ' . $model->message_id);
 
@@ -274,46 +291,69 @@ class News extends Model
                     }
                 }
 
-                if ($model->wasChanged('is_translated') && $model->is_translated) {
-                    Request::sendMessage([
-                        'chat_id' => explode(',', config('telegram.admins'))[0],
-                        'reply_to_message_id' => $model->message_id,
-                        'text' => 'Translation completed',
-                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                    ]);
-                }
-
-                if ($model->wasChanged('analysis')) {
-                    if (!empty($model->analysis)) {
+                if (!$model->is_auto) {
+                    if ($model->wasChanged('is_translated') && $model->is_translated) {
                         Request::sendMessage([
                             'chat_id' => explode(',', config('telegram.admins'))[0],
                             'reply_to_message_id' => $model->message_id,
-                            'text' => $model->analysis,
-                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                        ]);
-                    } elseif (!$model->wasChanged('is_deep')) {
-                        Request::sendMessage([
-                            'chat_id' => explode(',', config('telegram.admins'))[0],
-                            'reply_to_message_id' => $model->message_id,
-                            'text' => 'Analysis applied',
+                            'text' => 'Translation completed',
                             'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                         ]);
                     }
-                }
 
-                if (
-                    $model->wasChanged('analysis')
-                    || $model->wasChanged('is_deepest')
-                    || $model->wasChanged('is_deep')
-                    || $model->wasChanged('status')
-                ) {
-                    Request::editMessageReplyMarkup([
-                        'chat_id' => explode(',', config('telegram.admins'))[0],
-                        'message_id' => $model->message_id,
-                        'reply_markup' => $model->getInlineKeyboard(),
-                    ]);
+                    if ($model->wasChanged('analysis')) {
+                        if (!empty($model->analysis)) {
+                            Request::sendMessage([
+                                'chat_id' => explode(',', config('telegram.admins'))[0],
+                                'reply_to_message_id' => $model->message_id,
+                                'text' => $model->analysis,
+                                'reply_markup' => new InlineKeyboard([
+                                    [
+                                        'text' => '❌Delete',
+                                        'callback_data' => 'delete'
+                                    ]
+                                ]),
+                            ]);
+                        } elseif (!$model->wasChanged('is_deep')) {
+                            Request::sendMessage([
+                                'chat_id' => explode(',', config('telegram.admins'))[0],
+                                'reply_to_message_id' => $model->message_id,
+                                'text' => 'Analysis applied',
+                                'reply_markup' => new InlineKeyboard([
+                                    [
+                                        'text' => '❌Delete',
+                                        'callback_data' => 'delete'
+                                    ]
+                                ]),
+                            ]);
+                        }
+                    }
+
+                    if (
+                        $model->wasChanged('analysis')
+                        || $model->wasChanged('is_deepest')
+                        || $model->wasChanged('is_deep')
+                        || $model->wasChanged('status')
+                    ) {
+                        $model->updateReplyMarkup();
+                    }
+                } elseif ($model->wasChanged('is_auto')) {
+                    $model->updateReplyMarkup();
                 }
             }
         });
+    }
+
+    public function updateReplyMarkup(): void
+    {
+        if (!$this->message_id) {
+            return;
+        }
+
+        Request::editMessageReplyMarkup([
+            'chat_id' => explode(',', config('telegram.admins'))[0],
+            'message_id' => $this->message_id,
+            'reply_markup' => $this->getInlineKeyboard(),
+        ]);
     }
 }
