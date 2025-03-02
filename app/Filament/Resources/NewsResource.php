@@ -45,6 +45,14 @@ class NewsResource extends Resource
                             ->columnSpanFull()
                             ->default(null)
                             ->columnSpan(2),
+                        Forms\Components\Toggle::make('is_deep')
+                            ->inlineLabel(),
+                        Forms\Components\Toggle::make('is_deepest')
+                            ->inlineLabel(),
+                        Forms\Components\Textarea::make('analysis')
+                            ->disableGrammarly()
+                            ->rows(12)
+                            ->columnSpan(2),
                     ]),
             ])
             ->columns(1);
