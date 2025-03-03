@@ -78,11 +78,25 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
-                    $model->status = NewsStatus::PENDING_REVIEW;
-                    $model->analysis = null;
+                    if (!$model->is_deep || $i > 0) {
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis = null;
+                    }
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
                     $model->save();
+
+                    if (!empty($tempContent) && $tempContent == $model->publish_content) {
+                        Log::warning("$model->id: News applying analysis: Same content at reapply!");
+                        Request::sendMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'reply_to_message_id' => $model->message_id,
+                            'text' => 'Same content at reapply!',
+                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                        ]);
+                    } else {
+                        $tempContent = $model->publish_content;
+                    }
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News applying analysis fail: {$e->getMessage()}");
