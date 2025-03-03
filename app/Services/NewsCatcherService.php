@@ -16,7 +16,7 @@ class NewsCatcherService implements NewsServiceInterface
 
     private const LANG = 'uk';
 
-    private const EXCLUDE_COUNTRIES = ['RU', 'KZ'];
+    private const EXCLUDE_COUNTRIES = ['RU'];
 
     const EXCLUDE_DOMAINS = [
         'champion.com.ua',
@@ -32,6 +32,11 @@ class NewsCatcherService implements NewsServiceInterface
 
     public function getNews(string $query, ?string $lang = null): array
     {
+        $excludeCountries = self::EXCLUDE_COUNTRIES;
+        if (empty($lang) || $lang == self::LANG) {
+            $excludeCountries[] = 'KZ';
+        }
+
         $result = [];
         for ($page = 1; $page <= 100; $page++) {
             Log::info('NewsCatcher search ' . $lang . ': page: ' . $page . '; query: ' . $query);
@@ -39,7 +44,7 @@ class NewsCatcherService implements NewsServiceInterface
             $response = $this->request->get(self::URL . 'search', [
                 'q' => $query,
                 'lang' => $lang ?? self::LANG,
-                'not_countries' => implode(',', self::EXCLUDE_COUNTRIES),
+                'not_countries' => implode(',', $excludeCountries),
                 'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
                 'ranked_only' => 'False',
                 'sort_by' => 'date',

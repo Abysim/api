@@ -30,9 +30,9 @@ class NewsController extends Controller
 {
     private const LOAD_TIME = '18:00:00';
 
-    private const STOP_TIME = '22:00:00';
+    private const STOP_TIME = '21:00:00';
 
-    private const PUBLISH_AFTER = '10:00:00';
+    private const PUBLISH_AFTER = '07:00:00';
 
     private const PUBLISH_BEFORE = '22:00:00';
 
