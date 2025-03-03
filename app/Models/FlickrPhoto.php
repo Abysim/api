@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Longman\TelegramBot\Entities\InlineKeyboard;
+use Longman\TelegramBot\Entities\InputMedia\InputMediaPhoto;
+use Longman\TelegramBot\Request;
 
 /**
  * Class FlickrPhoto
@@ -223,5 +225,23 @@ class FlickrPhoto extends Model
         }
 
         return $score;
+    }
+
+    protected static function booted(): void
+    {
+        static::unguard();
+
+        static::updated(function (FlickrPhoto $model) {
+            if ($model->message_id) {
+                if ($model->wasChanged('publish_title') || $model->wasChanged('publish_tags')) {
+                    Request::editMessageCaption([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'message_id' => $model->message_id,
+                        'caption' => $model->getCaption(),
+                        'reply_markup' => $model->getInlineKeyboard(),
+                    ]);
+                }
+            }
+        });
     }
 }
