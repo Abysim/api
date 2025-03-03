@@ -91,7 +91,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         Request::sendMessage([
                             'chat_id' => explode(',', config('telegram.admins'))[0],
                             'reply_to_message_id' => $model->message_id,
-                            'text' => 'Same content at reapply!',
+                            'text' => 'Same content at reapply! ' . $model->analysis_count,
                             'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                         ]);
                     } else {
