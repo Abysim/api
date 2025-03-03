@@ -358,22 +358,28 @@ class NewsController extends Controller
                         $classification = $model->classification;
                         unset($classification['species']);
                         $this->classifyNews($model, 'species', true);
-                        $this->rejectNewsByClassification($model);
+                        $this->rejectNewsByClassification($model, true);
                     }
 
-                    if (config('openai.is_deepest') && $model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                    if (config('openai.is_deepest') && $model->status !== NewsStatus::REJECTED_BY_DEEP_AI) {
                         $classification = $model->classification;
                         unset($classification['species']);
                         $this->classifyNews($model, 'species', true, true);
-                        $this->rejectNewsByClassification($model);
+                        $this->rejectNewsByClassification($model, true);
                     }
 
-                    if ($model->status === NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                    if (
+                        $model->status === NewsStatus::REJECTED_BY_CLASSIFICATION
+                        || $model->status === NewsStatus::REJECTED_BY_DEEP_AI
+                    ) {
                         continue;
                     }
                 }
                 $this->rejectNewsByClassification($model);
-                if ($model->status === NewsStatus::REJECTED_BY_CLASSIFICATION) {
+                if (
+                    $model->status === NewsStatus::REJECTED_BY_CLASSIFICATION
+                    || $model->status === NewsStatus::REJECTED_BY_DEEP_AI
+                ) {
                     continue;
                 }
 
@@ -486,7 +492,7 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    private function rejectNewsByClassification(News $model): void
+    private function rejectNewsByClassification(News $model, bool $isDeep = false): void
     {
         if (!isset($model->classification['species'])) {
             return;
@@ -502,7 +508,7 @@ class NewsController extends Controller
         }
 
         if ($rejected) {
-            $model->status = NewsStatus::REJECTED_BY_CLASSIFICATION;
+            $model->status = $isDeep ? NewsStatus::REJECTED_BY_DEEP_AI : NewsStatus::REJECTED_BY_CLASSIFICATION;
             $model->save();
         }
     }
@@ -799,6 +805,20 @@ class NewsController extends Controller
     public function decline(News $model, Message $message): void
     {
         $model->status = NewsStatus::REJECTED_MANUALLY;
+        $model->save();
+
+        $this->delete($model, $message);
+    }
+
+    /**
+     * @param News $model
+     * @param Message $message
+     *
+     * @return void
+     */
+    public function offtopic(News $model, Message $message): void
+    {
+        $model->status = NewsStatus::REJECTED_AS_OFF_TOPIC;
         $model->save();
 
         $this->delete($model, $message);

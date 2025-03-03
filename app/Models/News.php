@@ -37,7 +37,7 @@ use Longman\TelegramBot\Request;
  * @property string $language
  * @property string $media
  * @property string $filename
- * @property int $status
+ * @property NewsStatus $status
  * @property array $classification
  * @property bool $is_translated
  * @property bool $is_auto
@@ -158,7 +158,10 @@ class News extends Model
             ];
         }
         $secondLine[] = ['text' => '🔗Original', 'url' => $this->link];
-        $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];
+        if ($this->status !== NewsStatus::BEING_PROCESSED) {
+            $secondLine[] = ['text' => '❌Decline', 'callback_data' => 'news_decline ' . $this->id];
+            $secondLine[] = ['text' => '❌Off-topic', 'callback_data' => 'news_offtopic ' . $this->id];
+        }
 
         $thirdLine = [];
         if ($this->language != 'uk' && $this->status != NewsStatus::BEING_PROCESSED && !$this->is_auto) {

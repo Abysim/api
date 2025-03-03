@@ -12,6 +12,8 @@ enum NewsStatus: int
     case APPROVED = 5;
     case PUBLISHED = 6;
     case REJECTED_BY_DUP_TITLE = 7;
+    case REJECTED_BY_DEEP_AI = 8;
+    case REJECTED_AS_OFF_TOPIC = 9;
 
     case BEING_PROCESSED = 10;
 }
