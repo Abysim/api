@@ -176,11 +176,11 @@ class NewsController extends Controller
             [
                 'value1' => $model->getShortCaption(),
                 'value2' => $model->media ?: $model->getFileUrl(),
-                'value3' => Str::replace(
+                'value3' => trim(Str::replace(
                     ['### ', '## ', '# ', '---'],
                     '',
                     Str::of(Str::inlineMarkdown($model->publish_content))->stripTags()
-                ),
+                )),
             ]
         );
 
@@ -253,6 +253,10 @@ class NewsController extends Controller
 
                 foreach ($news as $article) {
                     try {
+                        if (Str::length($article['title']) > 1000) {
+                            $article['title'] = Str::substr($article['title'], 0, 1000);
+                        }
+
                         $model = News::updateOrCreate([
                             'platform' => $this->service->getName(),
                             'external_id' => $article['_id']
@@ -272,6 +276,8 @@ class NewsController extends Controller
                         $models[$model->id] = $model;
                     } catch (Exception $e) {
                         Log::error('News load error: ' . $e->getMessage());
+
+                        continue;
                     }
                 }
 
@@ -288,6 +294,8 @@ class NewsController extends Controller
                 $query = $currentQuery;
             }
         }
+
+        Log::info('News loaded for language ' . $lang);
 
         return $models;
     }

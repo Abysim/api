@@ -30,7 +30,7 @@ class BigCatsService
         $data = [
             'date' => $news->date,
             'title' => $news->publish_title,
-            'content' => $news->publish_content,
+            'content' => trim($news->publish_content),
             'image' => $news->getFileUrl() ?? $news->media,
             'image_caption' => FileHelper::generateImageCaption($news->getFilePath(), 'uk', true),
             'publish_tags' => $news->publish_tags,

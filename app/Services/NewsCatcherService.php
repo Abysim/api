@@ -21,6 +21,7 @@ class NewsCatcherService implements NewsServiceInterface
     const EXCLUDE_DOMAINS = [
         'champion.com.ua',
         'sport.ua',
+        'his.edu.vn',
     ];
 
     private PendingRequest $request;
