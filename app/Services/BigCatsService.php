@@ -21,7 +21,7 @@ class BigCatsService
         $this->request = Http::asJson()->withToken(config('services.bigcats.key'));
     }
 
-    public function publishNews(News $news): bool
+    public function publishNews(News $news): bool|string
     {
         if (empty($news->filename)) {
             $news->loadMediaFile();
@@ -50,7 +50,7 @@ class BigCatsService
                 $news->published_url = $response['url'];
                 $news->save();
 
-                return true;
+                return $response['image'] ?? true;
             } else {
                 Log::error($news->id . ': got empty URL at BigCats publishing');
             }

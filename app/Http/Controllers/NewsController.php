@@ -161,7 +161,8 @@ class NewsController extends Controller
         }
 
         $service = new BigCatsService();
-        if (!$service->publishNews($model)) {
+        $image = $service->publishNews($model);
+        if ($image === false) {
             Request::sendMessage([
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'reply_to_message_id' => $model->message_id,
@@ -175,7 +176,7 @@ class NewsController extends Controller
             'https://maker.ifttt.com/trigger/news/with/key/' . config('services.ifttt.webhook_key'),
             [
                 'value1' => $model->getShortCaption(),
-                'value2' => $model->media ?: $model->getFileUrl(),
+                'value2' => (!empty($image) && $image !== true) ? $image : ($model->media ?: $model->getFileUrl()),
                 'value3' => trim(Str::replace(
                     ['### ', '## ', '# ', '---'],
                     '',
