@@ -22,6 +22,7 @@ class NewsCatcherService implements NewsServiceInterface
         'champion.com.ua',
         'sport.ua',
         'his.edu.vn',
+        'newssniffer.co.uk',
     ];
 
     private PendingRequest $request;
