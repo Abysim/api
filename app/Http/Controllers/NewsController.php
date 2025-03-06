@@ -625,6 +625,9 @@ class NewsController extends Controller
                 Log::error("$model->id: News $term classification fail: {$e->getMessage()}");
             }
 
+            unset($classificationResponse);
+            gc_collect_cycles();
+
             if (isset($model->classification[$term])) {
                 break;
             }
