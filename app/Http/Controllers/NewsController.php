@@ -343,7 +343,7 @@ class NewsController extends Controller
      */
     private function processNews(array $models)
     {
-        foreach ($models as $model) {
+        foreach ($models as $modelIndex => $model) {
             $model->refresh();
             if (empty($model->status) || $model->status == NewsStatus::CREATED) {
                 $this->excludeByTags($model);
@@ -376,47 +376,42 @@ class NewsController extends Controller
                         $this->classifyNews($model, 'species', true, true);
                         $this->rejectNewsByClassification($model, true);
                     }
-
-                    if (
-                        $model->status === NewsStatus::REJECTED_BY_CLASSIFICATION
-                        || $model->status === NewsStatus::REJECTED_BY_DEEP_AI
-                    ) {
-                        continue;
-                    }
-                }
-                $this->rejectNewsByClassification($model);
-                if (
-                    $model->status === NewsStatus::REJECTED_BY_CLASSIFICATION
-                    || $model->status === NewsStatus::REJECTED_BY_DEEP_AI
-                ) {
-                    continue;
                 }
 
-                if (!isset($model->classification['country'])) {
-                    $this->classifyNews($model, 'country');
-                }
-
-                if (
-                    isset($model->classification['country']['UA'])
-                    && $model->classification['country']['UA'] >= 0.7
-                    && !isset($model->classification['region'])
-                ) {
-                    $this->classifyNews($model, 'region');
-                }
-
-                $model->loadMediaFile();
-
-                $this->preparePublish($model);
-
-                $model->refresh();
                 if (
                     empty($model->status)
                     || $model->status == NewsStatus::CREATED
-                    || $model->status == NewsStatus::PENDING_REVIEW && empty($model->message_id)
+                    || $model->status == NewsStatus::PENDING_REVIEW
                 ) {
-                    $this->sendNewsToReview($model);
+                    if (!isset($model->classification['country'])) {
+                        $this->classifyNews($model, 'country');
+                    }
+
+                    if (
+                        isset($model->classification['country']['UA'])
+                        && $model->classification['country']['UA'] >= 0.7
+                        && !isset($model->classification['region'])
+                    ) {
+                        $this->classifyNews($model, 'region');
+                    }
+
+                    $model->loadMediaFile();
+
+                    $this->preparePublish($model);
+
+                    $model->refresh();
+                    if (
+                        empty($model->status)
+                        || $model->status == NewsStatus::CREATED
+                        || $model->status == NewsStatus::PENDING_REVIEW && empty($model->message_id)
+                    ) {
+                        $this->sendNewsToReview($model);
+                    }
                 }
             }
+
+            unset($models[$modelIndex]);
+            gc_collect_cycles();
         }
     }
 
