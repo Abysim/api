@@ -42,8 +42,15 @@ class NewsResource extends Resource
                             ->default(null),
                         Forms\Components\TextInput::make('media')
                             ->maxLength(1024)
-                            ->columnSpanFull()
                             ->default(null),
+                        Forms\Components\TextInput::make('source')
+                            ->maxLength(255)
+                            ->hiddenLabel(),
+                        Forms\Components\TextInput::make('link')
+                            ->maxLength(1024)
+                            ->hiddenLabel(),
+                        Forms\Components\Toggle::make('is_auto')
+                            ->inlineLabel(),
                         Forms\Components\Toggle::make('is_translated')
                             ->inlineLabel(),
                         Forms\Components\Toggle::make('is_deep')

@@ -1,7 +1,4 @@
 <?php
-/**
- * @author Andrii Kalmus <andrii.kalmus@abysim.com>
- */
 
 namespace App\Jobs;
 
@@ -84,10 +81,13 @@ class AnalyzeNewsJob implements ShouldQueue
                 );
 
                 if (!empty($response->choices[0]->message->content)) {
-                    $model->analysis = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
-                    $model->status = NewsStatus::PENDING_REVIEW;
-                    $model->analysis_count = $model->analysis_count + 1;
-                    $model->save();
+                    $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
+                    if (!$model->is_deep || $i > 0 || Str::substr($content, 0, 2) != 'Ні') {
+                        $model->analysis = $content;
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis_count = $model->analysis_count + 1;
+                        $model->save();
+                    }
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News analysis $model->analysis_count fail: {$e->getMessage()}");

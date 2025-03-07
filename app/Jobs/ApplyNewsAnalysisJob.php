@@ -6,6 +6,7 @@ use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
+use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,7 +17,7 @@ use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
-use OpenAI\Laravel\Facades\OpenAI;
+use OpenAI;
 
 class ApplyNewsAnalysisJob implements ShouldQueue
 {
@@ -50,10 +51,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count");
                 $params = [
-                    'model' => 'gpt-4o-mini',
+                    'model' => 'deepseek-ai/DeepSeek-V3',
                     'messages' => [
                         [
-                            'role' => 'developer',
+                            'role' => 'system',
                             'content' => Str::replace(
                                 '<date>',
                                 $model->date->format('j F Y'),
@@ -66,7 +67,13 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = OpenAI::chat()->create($params);
+                $response = OpenAI::factory()
+                    ->withApiKey(config('services.nebius.key'))
+                    ->withBaseUri(config('services.nebius.url'))
+                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
+                    ->make()
+                    ->chat()
+                    ->create($params);
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count result: "
@@ -75,10 +82,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
-                    if (!$model->is_deep || $i > 0) {
-                        $model->status = NewsStatus::PENDING_REVIEW;
-                        $model->analysis = null;
-                    }
+                    $model->status = NewsStatus::PENDING_REVIEW;
+                    $model->analysis = null;
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
                     $model->save();

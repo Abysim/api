@@ -164,7 +164,7 @@ class News extends Model
         }
 
         $thirdLine = [];
-        if ($this->language != 'uk' && $this->status != NewsStatus::BEING_PROCESSED && !$this->is_auto) {
+        if ($this->language != 'uk' && $this->status != NewsStatus::BEING_PROCESSED) {
             if (!$this->is_translated) {
                 $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
                 $thirdLine[] = ['text' => '🔁Auto Translate', 'callback_data' => 'news_auto ' . $this->id];
