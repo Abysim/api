@@ -1,7 +1,4 @@
 <?php
-/**
- * @author Andrii Kalmus <andrii.kalmus@abysim.com>
- */
 
 namespace App\Jobs;
 
@@ -51,7 +48,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info("$model->id: News applying analysis");
+                Log::info("$model->id: News applying analysis $model->analysis_count");
                 $params = [
                     'model' => 'gpt-4o-mini',
                     'messages' => [
@@ -72,7 +69,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 $response = OpenAI::chat()->create($params);
 
                 Log::info(
-                    "$model->id: News applying analysis result: "
+                    "$model->id: News applying analysis $model->analysis_count result: "
                     . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
@@ -87,7 +84,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $model->save();
 
                     if (!empty($tempContent) && $tempContent == $model->publish_content) {
-                        Log::warning("$model->id: News applying analysis: Same content at reapply!");
+                        Log::warning("$model->id: News applying analysis $model->analysis_count: Same content at reapply!");
                         Request::sendMessage([
                             'chat_id' => explode(',', config('telegram.admins'))[0],
                             'reply_to_message_id' => $model->message_id,
@@ -99,18 +96,26 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     }
                 }
             } catch (Exception $e) {
-                Log::error("$model->id: News applying analysis fail: {$e->getMessage()}");
+                Log::error("$model->id: News applying analysis $model->analysis_count fail: {$e->getMessage()}");
             }
 
             if (empty($model->analysis)) {
                 if ($model->is_auto) {
-                   if ($model->analysis_count < 4) {
-                        AnalyzeNewsJob::dispatch($model->id);
+                   if ($model->analysis_count < 8) {
+                       AnalyzeNewsJob::dispatch($model->id);
                    } else {
                        if (!$model->is_deep) {
                            $model->is_deep = true;
                            $model->analysis_count = 0;
                            $model->save();
+
+                           Request::sendMessage([
+                               'chat_id' => explode(',', config('telegram.admins'))[0],
+                               'reply_to_message_id' => $model->message_id,
+                               'text' => 'Deep analysis limit reached without success',
+                               'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                           ]);
+
                            AnalyzeNewsJob::dispatch($model->id);
                        } else {
                            $model->is_auto = false;
@@ -119,7 +124,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                            Request::sendMessage([
                                'chat_id' => explode(',', config('telegram.admins'))[0],
                                'reply_to_message_id' => $model->message_id,
-                               'text' => 'Analysis limit reached without success',
+                               'text' => 'Deepest analysis limit reached without success',
                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                            ]);
                        }

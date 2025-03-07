@@ -51,4 +51,9 @@ return [
         'url' => env('BIGCATS_URL'),
         'key' => env('BIGCATS_KEY'),
     ],
+
+    'nebius' => [
+        'url' => env('NEBIUS_API_ENDPOINT'),
+        'key' => env('NEBIUS_API_KEY'),
+    ],
 ];

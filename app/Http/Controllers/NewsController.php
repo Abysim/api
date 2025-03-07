@@ -16,6 +16,7 @@ use App\Services\BigCatsService;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
+use GuzzleHttp\Client;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +25,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
-use OpenAI\Laravel\Facades\OpenAI;
+use OpenAI;
 
 class NewsController extends Controller
 {
@@ -581,20 +582,25 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification");
                 $params = [
-                    'model' => $isDeepest ? 'o1-preview' : ($isDeep ? 'gpt-4o' : 'gpt-4o-mini'),
+                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep ? 'deepseek-ai/DeepSeek-V3' : 'microsoft/phi-4'),
                     'messages' => [
                         [
-                            'role' => $isDeepest ? 'user' : 'developer',
+                            'role' => 'system',
                             'content' => static::getPrompt($term)
                         ],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
-                    'temperature' => $isDeepest ? 1 : 0,
+                    'temperature' => 0,
                 ];
-                if (!$isDeepest) {
-                    $params['response_format'] = ['type' => 'json_object'];
-                }
-                $classificationResponse = OpenAI::chat()->create($params);
+                $params['response_format'] = ['type' => 'json_object'];
+
+                $classificationResponse = OpenAI::factory()
+                    ->withApiKey(config('services.nebius.key'))
+                    ->withBaseUri(config('services.nebius.url'))
+                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
+                    ->make()
+                    ->chat()
+                    ->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "
@@ -945,6 +951,7 @@ class NewsController extends Controller
     public function reset(News $model, Message $message): void
     {
         $model->status = NewsStatus::PENDING_REVIEW;
+        $model->analysis_count = 0;
         $model->is_auto = false;
         $model->save();
         Request::editMessageReplyMarkup([

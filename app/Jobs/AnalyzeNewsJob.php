@@ -9,6 +9,7 @@ use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
+use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -20,6 +21,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
+use OpenAI as AI;
 
 class AnalyzeNewsJob implements ShouldQueue
 {
@@ -27,7 +29,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 360;
+    public int $timeout = 660;
 
     public function __construct(private readonly int $id)
     {
@@ -47,12 +49,12 @@ class AnalyzeNewsJob implements ShouldQueue
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info("$model->id: News analysis");
+                Log::info("$model->id: News analysis $model->analysis_count");
                 $params = [
-                    'model' => $model->is_deep ? 'o1-preview' : 'chatgpt-4o-latest',
+                    'model' => $model->is_deep ? 'deepseek-ai/DeepSeek-R1' : 'chatgpt-4o-latest',
                     'messages' => [
                         [
-                            'role' => $model->is_deep ? 'user' : 'developer',
+                            'role' => 'system',
                             'content' => Str::replace(
                                 '<date>',
                                 $model->date->format('j F Y'),
@@ -61,23 +63,34 @@ class AnalyzeNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
-                    'temperature' => $model->is_deep ? 1 : 0,
+                    'temperature' => 0,
                 ];
-                $response = OpenAI::chat()->create($params);
+
+                if ($model->is_deep) {
+                    $chat = AI::factory()
+                        ->withApiKey(config('services.nebius.key'))
+                        ->withBaseUri(config('services.nebius.url'))
+                        ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
+                        ->make()
+                        ->chat();
+                } else {
+                    $chat = OpenAI::chat();
+                }
+                $response = $chat->create($params);
 
                 Log::info(
-                    "$model->id: News analysis result: "
+                    "$model->id: News analysis $model->analysis_count result: "
                     . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
                 if (!empty($response->choices[0]->message->content)) {
-                    $model->analysis = $response->choices[0]->message->content;
+                    $model->analysis = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
                     $model->status = NewsStatus::PENDING_REVIEW;
                     $model->analysis_count = $model->analysis_count + 1;
                     $model->save();
                 }
             } catch (Exception $e) {
-                Log::error("$model->id: News analysis fail: {$e->getMessage()}");
+                Log::error("$model->id: News analysis $model->analysis_count fail: {$e->getMessage()}");
             }
 
             if (!empty($model->analysis)) {

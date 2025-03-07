@@ -9,6 +9,7 @@ use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
+use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,7 +17,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use OpenAI\Laravel\Facades\OpenAI;
+use OpenAI;
 
 class TranslateNewsJob implements ShouldQueue
 {
@@ -24,7 +25,7 @@ class TranslateNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 360;
+    public int $timeout = 660;
 
     protected int $id;
 
@@ -46,17 +47,23 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => 'chatgpt-4o-latest',
+                    'model' => 'deepseek-ai/DeepSeek-R1',
                     'messages' => [
                         [
-                            'role' => 'developer',
+                            'role' => 'system',
                             'content' => NewsController::getPrompt('translate')
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
                     'temperature' => 0,
                 ];
-                $response = OpenAI::chat()->create($params);
+                $response = OpenAI::factory()
+                    ->withApiKey(config('services.nebius.key'))
+                    ->withBaseUri(config('services.nebius.url'))
+                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
+                    ->make()
+                    ->chat()
+                    ->create($params);
 
                 Log::info(
                     "$model->id: News translation result: "

@@ -220,9 +220,13 @@ abstract class Social
             $languages = $comprehend->detectDominantLanguage(['Text' => $text])->get('Languages');
             $lang = $languages[0]['LanguageCode'] ?? 'uk';
             $score = $languages[0]['Score'] ?? 0;
-            if ($lang == 'ru' || $score < 0.7) {
+            if (in_array($lang, ['ru', 'kk', 'be', 'sr', 'ky', 'tg', 'mn', 'uz']) || $score < 0.7) {
                 Log::warning('strange lang detected: ' . $text);
-                $lang = 'uk';
+                if ($lang == 'mk') {
+                    $lang = 'bg';
+                } else {
+                    $lang = 'uk';
+                }
             }
         } catch (Exception $e) {
             Log::error($e->getMessage());
