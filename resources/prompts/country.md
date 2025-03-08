@@ -39,3 +39,4 @@ Strictly classify countries (using ISO Alpha-2 codes) into a JSON format accordi
     - Example: {"[ISO]": [number], ...}
     - Only include valid ISO Alpha-2 country codes present in your analysis.
     - Exclude any non-ISO codes or invalid entries, even if they appear in the text.
+    - Do not include regions, counties, provinces or states in the output.

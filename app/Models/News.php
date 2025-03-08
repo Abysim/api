@@ -344,6 +344,9 @@ class News extends Model
                     $model->updateReplyMarkup();
                 }
             }
+
+            $model->syncOriginal();
+            $model->discardChanges();
         });
     }
 

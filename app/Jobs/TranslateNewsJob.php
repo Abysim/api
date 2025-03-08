@@ -58,8 +58,8 @@ class TranslateNewsJob implements ShouldQueue
                     'temperature' => 0,
                 ];
                 $response = OpenAI::factory()
-                    ->withApiKey(config('services.nebius.key'))
-                    ->withBaseUri(config('services.nebius.url'))
+                    ->withApiKey(config('laravel-openrouter.api_key'))
+                    ->withBaseUri(config('laravel-openrouter.api_endpoint'))
                     ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
                     ->make()
                     ->chat()

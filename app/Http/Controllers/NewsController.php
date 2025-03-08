@@ -593,6 +593,7 @@ class NewsController extends Controller
                     'temperature' => 0,
                 ];
                 $params['response_format'] = ['type' => 'json_object'];
+                $params['provider'] = ['require_parameters' => true];
 
                 $classificationResponse = OpenAI::factory()
                     ->withApiKey(config('services.nebius.key'))
@@ -609,7 +610,9 @@ class NewsController extends Controller
 
                 if (!empty($classificationResponse->choices[0]->message->content)) {
                     $classification = $model->classification ?? [];
-                    $classification[$term] = json_decode($classificationResponse->choices[0]->message->content, true);
+                    $content = '{' . Str::after($classificationResponse->choices[0]->message->content, '{');
+                    $content = Str::before($content, '}') . '}';
+                    $classification[$term] = json_decode($content, true);
 
                     if (!is_array($classification[$term])) {
                         throw new Exception('Invalid classification');

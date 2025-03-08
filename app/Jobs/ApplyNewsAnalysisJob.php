@@ -68,8 +68,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     'temperature' => 0,
                 ];
                 $response = OpenAI::factory()
-                    ->withApiKey(config('services.nebius.key'))
-                    ->withBaseUri(config('services.nebius.url'))
+                    ->withApiKey(config('laravel-openrouter.api_key'))
+                    ->withBaseUri(config('laravel-openrouter.api_endpoint'))
                     ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
                     ->make()
                     ->chat()
@@ -87,18 +87,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));
                     $model->save();
-
-                    if (!empty($tempContent) && $tempContent == $model->publish_content) {
-                        Log::warning("$model->id: News applying analysis $model->analysis_count: Same content at reapply!");
-                        Request::sendMessage([
-                            'chat_id' => explode(',', config('telegram.admins'))[0],
-                            'reply_to_message_id' => $model->message_id,
-                            'text' => 'Same content at reapply! ' . $model->analysis_count,
-                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                        ]);
-                    } else {
-                        $tempContent = $model->publish_content;
-                    }
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News applying analysis $model->analysis_count fail: {$e->getMessage()}");

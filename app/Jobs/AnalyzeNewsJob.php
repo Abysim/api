@@ -65,8 +65,8 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 if ($model->is_deep) {
                     $chat = AI::factory()
-                        ->withApiKey(config('services.nebius.key'))
-                        ->withBaseUri(config('services.nebius.url'))
+                        ->withApiKey(config('laravel-openrouter.api_key'))
+                        ->withBaseUri(config('laravel-openrouter.api_endpoint'))
                         ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
                         ->make()
                         ->chat();
@@ -108,6 +108,13 @@ class AnalyzeNewsJob implements ShouldQueue
                             $model->is_deepest = true;
                             $model->is_auto = false;
                             $model->save();
+
+                            Request::sendMessage([
+                                'chat_id' => explode(',', config('telegram.admins'))[0],
+                                'reply_to_message_id' => $model->message_id,
+                                'text' => 'Auto translation completed',
+                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                            ]);
                         }
                     } else {
                         $model->is_auto = false;
