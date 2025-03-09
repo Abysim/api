@@ -34,44 +34,82 @@ Strictly classify wild cat species into JSON using the following rules:
     - Listed Variants:
         - Include all listed variants (e.g., `white tiger`, `king cheetah`) as separate entries if mentioned.
 3. Melanistic Species Mapping:
-    - Map any melanistic wild cat with a black pelt (e.g., "black jaguar", "black leopard") to `panther`.
-    - Use `panther` only for melanistic variants of allowed species.
+    - Panther Mapping:
+        - Map any melanistic (all-black) wild cat variants (e.g., "black jaguar", "black leopard") to `panther`.
+        - Use `panther` only for melanistic variants of allowed species.
 4. Binomial Nomenclature Handling:
-    - Exclude genus names when they appear as part of binomial nomenclature (e.g., `Panthera tigris`).
-    - Only classify the species part if it corresponds to an allowed species.
+    - Species Identification:
+        - Exclude genus names when they appear as part of binomial nomenclature (e.g., `Panthera tigris`).
+        - Only classify the species part if it corresponds to an allowed species.
+            - Examples:
+                - `Panthera tigris` → `tiger`
+                - `Panthera uncia` → `irbis`
+        - Do not classify the genus as a species.
+            - Example:
+                - Do not classify `Panthera` as `panther` when it refers to the genus itself.
+5. Exclusions:
+    - Metaphor and Symbolic Usage Exclusion:
+        - Indicators of Exclusion:
+            - Phrases indicating metaphorical or symbolic usage, such as:
+                - "symbolizes", "represents", "as a [species]", "inspired by", "depicts", "embodies"
+                - "pattern", "emblem", "print", "design", "motif", "style", "fashion"
+                - "figure", "figurative", "abstract", "adjectival usage", "compound noun"
+            - Contexts related to:
+                - Fashion, clothing, accessories (e.g., "leopard print dress", "tiger-striped shirt")
+                - Patterns or designs (e.g., "cheetah pattern", "ocelot motif")
+                - Organizations, teams, brands, vehicles, locations, or projects with animal names but unrelated to actual animals (e.g., "Team Panthers", "Cheetah Software")
+                - Metaphorical expressions or idioms (e.g., "strong as a lion", "tiger mother")
+        - Exclusions:
+            - Exclude sentences where the species is mentioned in the above contexts.
+            - Do not count sentences that refer to the species in a symbolic, metaphorical, or design-related manner.
+    - Non-Real Animal References:
+        - Exclude mentions related to fictional or mythical contexts where the species does not represent a real animal.
         - Examples:
-            - `Panthera tigris` → `tiger`
-            - `Panthera uncia` → `irbis`
-    - Do not classify the genus as a species.
-        - Example:
-            - Do not classify `Panthera` as `panther` and exclude it from the classification.
-5. Metaphor and Symbolic Usage Exclusion:
-    - Indicators of Metaphorical Usage:
-        - Phrases like "symbolizes", "represents", "as a [species]", "inspired by", "depicts", "embodies", "pattern", "emblem", "print", "design", "figure", "motif", "figurative", "abstract", "adjectival usage", "compound noun".
-    - Exclusions:
-        - Exclude species names embedded in organization, sport team, vehicle, location, or project names (e.g., "Lion Park", "Project Tiger", "Team Panthers", "Cheetah Armoured Car").
-        - Exclude species names used in patterns, designs, or symbolic contexts (e.g., "leopard print", "lion emblem").
-        - Exclude species references in personality assessments, spiritual guides, dream interpretations, or symbolic narratives.
-        - Exclude species terms used adjectivally or as part of a compound noun (e.g., "tiger-striped").
-        - Exclude mentions where species are part of metaphors or similes (e.g., "as fierce as a tiger").
-        - Implement detection of surrounding words that indicate symbolic or metaphorical usage.
-6. Scoring System:
-    - Score Range: 0.01 to 1.0 (contiguous range).
-    - Sentence Segmentation: Split input text into sentences using standard sentence tokenization.
-    - Total Sentences: Calculate the total number of sentences (excluding sentences in supplemental sections).
-    - Relevance Check: For each non-supplemental sentence, check if it is related to any species from the Allowed Species List (after applying mapping, handling, and exclusion rules).
-    - Contextual Check: Count a sentence as related if it indirectly mentions the species from other sentences.
-    - For each species:
-        - Score = (Number of sentences related to the species) / (Total sentences)
-        - Round the score to two decimal places using standard rounding rules (round half up).
+            - Symbolic uses in astrology, mythology, or dream interpretation.
+            - Fictional representations without real-world counterparts.
+6. Contextual References and Inferences:
+    - Contextual Inclusion:
+        - Include sentences that are clearly about an allowed species, even if the species name is not directly mentioned, provided that the context unambiguously refers to that species.
+        - Consider descriptions of behaviors, characteristics, habitats, or activities unique to the species.
+            - Examples:
+                - A sentence describing a large cat with a mane that rules the savannah would relate to `lion`.
+                - Mentions of a spotted wild cat known for speed would relate to `cheetah`.
+    - Inference Guidelines:
+        - Use contextual clues to infer the species when the description is specific and matches characteristics unique to an allowed species.
+        - Ensure that the inference is reasonable and based on clear associations.
+    - Important Note:
+        - Do not infer species from generic terms or ambiguous descriptions that could apply to multiple species.
+        - Avoid assuming species based on indirect or weak associations.
+7. Scoring System:
+    - Score Range:
+        - From 0.01 to 1.0 (continuous range).
+    - Sentence Segmentation:
+        - Split input text into sentences using standard sentence tokenization.
+    - Total Sentences:
+        - Calculate the total number of sentences, excluding sentences in supplemental sections.
+    - Relevance Check:
+        - For each non-supplemental sentence:
+            - Check if it is related to any species from the Allowed Species List (after applying mapping and handling rules).
+            - Include sentences that directly mention the species or unambiguously refer to it through context.
+        - Contextual Inclusion:
+            - Count a sentence as related if it:
+                - Describes behaviors, characteristics, or contexts unique to the species.
+                - Continues a discussion about the species from previous sentences.
+        - Exclusions:
+            - Do not count sentences excluded under the Exclusions rules above.
+    - Scoring Calculation:
+        - For each species:
+            - Score = (Number of sentences related to the species) / (Total sentences)
+            - Round the score to two decimal places using standard rounding rules (round half up).
     - Supplemental Section Exclusion:
         - Exclude sentences located in sections containing supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`).
         - Supplemental sentences are not counted in total scoring.
-7. Required Output Format:
-    - Include all allowed species with a score >0 in the JSON output.
-    - Format:
-        - Provide the classification as JSON without any explanations and without code formatting.
-        - Example: `{"[species]": [number], ...}`
+8. Required Output Format:
+    - JSON Output:
+        - Include all allowed species with a score > 0 in the JSON output.
+        - Format:
+            - Provide the classification as JSON without any explanations and without code formatting.
+            - Example: `{"[species]": [number], ...}`
         - Only include species from the Allowed Species List in the JSON output.
     - Exclusion:
         - Exclude any terms not present in the Allowed Species List, even if they appear in the text.

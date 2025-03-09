@@ -2,12 +2,11 @@
 
 namespace App\Jobs;
 
+use App\AI;
 use App\Enums\NewsStatus;
-use App\Facades\OpenRouter;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
-use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -19,7 +18,6 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
-use OpenAI as AI;
 
 class AnalyzeNewsJob implements ShouldQueue
 {
@@ -64,7 +62,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     'temperature' => 0,
                 ];
 
-                $chat = $model->is_deep ? OpenRouter::chat() : OpenAI::chat();
+                $chat = $model->is_deep ? AI::client('openrouter')->chat() : OpenAI::chat();
                 $response = $chat->create($params);
 
                 Log::info(
@@ -74,7 +72,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
-                    if (!$model->is_deep || $i > 0 || Str::substr($content, 0, 2) != 'Ні') {
+                    if ($i > 0 || Str::substr($content, 0, 2) != 'Ні') {
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;

@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\AI;
 use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
-use App\Facades\Nebius;
-use App\Facades\OpenRouter;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\TranslateNewsJob;
@@ -28,6 +27,8 @@ use Longman\TelegramBot\Request;
 
 class NewsController extends Controller
 {
+    private const SPECIES_THRESHOLD = 0.25;
+
     private const LOAD_TIME = '18:00:00';
 
     private const STOP_TIME = '22:00:00';
@@ -475,7 +476,7 @@ class NewsController extends Controller
 
         $tags = [];
         foreach ($model->classification['species'] as $key => $value) {
-            if ($value >= 0.2 && isset($this->getTags('species')[$key])) {
+            if ($value >= self::SPECIES_THRESHOLD && isset($this->getTags('species')[$key])) {
                 $tags[] = $this->getTags('species')[$key];
             }
         }
@@ -508,7 +509,7 @@ class NewsController extends Controller
 
         $rejected = true;
         foreach ($model->classification['species'] as $key => $value) {
-            if (isset($this->getTags('species')[$key]) && $value >= 0.2) {
+            if (isset($this->getTags('species')[$key]) && $value >= self::SPECIES_THRESHOLD) {
                 $rejected = false;
 
                 break;
@@ -597,13 +598,10 @@ class NewsController extends Controller
                     ],
                     'temperature' => 0,
                 ];
-                if (!$isDeepest) {
-                    $params['response_format'] = ['type' => 'json_object'];
-                    $params['provider'] = ['require_parameters' => true];
-                }
+                $params['response_format'] = ['type' => 'json_object'];
+                $params['provider'] = ['require_parameters' => true];
 
-                $chat = ($isDeep || $i) ? OpenRouter::chat() : Nebius::chat();
-                $classificationResponse = $chat->create($params);
+                $classificationResponse = AI::client(($isDeep || $i) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "

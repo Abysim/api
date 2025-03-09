@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
+use App\AI;
 use App\Enums\NewsStatus;
-use App\Facades\OpenRouter;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
@@ -66,7 +66,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = OpenRouter::chat()->create($params);
+                $response = AI::client('openrouter')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count result: "
