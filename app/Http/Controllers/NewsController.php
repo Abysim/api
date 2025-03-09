@@ -5,7 +5,8 @@ namespace App\Http\Controllers;
 use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
-use App\Helpers\FileHelper;
+use App\Facades\Nebius;
+use App\Facades\OpenRouter;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\TranslateNewsJob;
@@ -16,7 +17,6 @@ use App\Services\BigCatsService;
 use App\Services\NewsCatcherService;
 use App\Services\NewsServiceInterface;
 use Exception;
-use GuzzleHttp\Client;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -25,7 +25,6 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
-use OpenAI;
 
 class NewsController extends Controller
 {
@@ -371,11 +370,15 @@ class NewsController extends Controller
                         $this->rejectNewsByClassification($model, true);
                     }
 
-                    if (config('openai.is_deepest') && $model->status !== NewsStatus::REJECTED_BY_DEEP_AI) {
+                    if (
+                        config('app.is_deepest')
+                        && $model->status !== NewsStatus::REJECTED_BY_DEEP_AI
+                        && $model->status !== NewsStatus::REJECTED_BY_CLASSIFICATION
+                    ) {
                         $classification = $model->classification;
                         unset($classification['species']);
                         $this->classifyNews($model, 'species', true, true);
-                        $this->rejectNewsByClassification($model, true);
+                        $this->rejectNewsByClassification($model, true, true);
                     }
                 }
 
@@ -472,7 +475,7 @@ class NewsController extends Controller
 
         $tags = [];
         foreach ($model->classification['species'] as $key => $value) {
-            if ($value >= 0.7 && isset($this->getTags('species')[$key])) {
+            if ($value >= 0.2 && isset($this->getTags('species')[$key])) {
                 $tags[] = $this->getTags('species')[$key];
             }
         }
@@ -497,7 +500,7 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    private function rejectNewsByClassification(News $model, bool $isDeep = false): void
+    private function rejectNewsByClassification(News $model, bool $isDeep = false, bool $isDeepest = false): void
     {
         if (!isset($model->classification['species'])) {
             return;
@@ -505,7 +508,7 @@ class NewsController extends Controller
 
         $rejected = true;
         foreach ($model->classification['species'] as $key => $value) {
-            if (isset($this->getTags('species')[$key]) && $value >= 0.7) {
+            if (isset($this->getTags('species')[$key]) && $value >= 0.2) {
                 $rejected = false;
 
                 break;
@@ -513,7 +516,9 @@ class NewsController extends Controller
         }
 
         if ($rejected) {
-            $model->status = $isDeep ? NewsStatus::REJECTED_BY_DEEP_AI : NewsStatus::REJECTED_BY_CLASSIFICATION;
+            $model->status = $isDeepest
+                ? NewsStatus::REJECTED_BY_DEEPEST_AI
+                : ($isDeep ? NewsStatus::REJECTED_BY_DEEP_AI : NewsStatus::REJECTED_BY_CLASSIFICATION);
             $model->save();
         }
     }
@@ -529,7 +534,7 @@ class NewsController extends Controller
         if (!isset(static::$prompts[$name])) {
             $path = resource_path('prompts/' . $name . '.md');
             if (File::exists($path)) {
-                static::$prompts[$name] = File::get($path);
+                static::$prompts[$name] = implode("\n", array_map('trim', explode("\n", File::get($path))));
             } else {
                 throw new Exception('Prompt not found: ' . $name);
             }
@@ -582,7 +587,7 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification");
                 $params = [
-                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep ? 'deepseek-ai/DeepSeek-V3' : 'microsoft/phi-4'),
+                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep ? 'deepseek-ai/DeepSeek-V3' : 'Qwen/Qwen2.5-32B-Instruct'),
                     'messages' => [
                         [
                             'role' => 'system',
@@ -592,16 +597,13 @@ class NewsController extends Controller
                     ],
                     'temperature' => 0,
                 ];
-                $params['response_format'] = ['type' => 'json_object'];
-                $params['provider'] = ['require_parameters' => true];
+                if (!$isDeepest) {
+                    $params['response_format'] = ['type' => 'json_object'];
+                    $params['provider'] = ['require_parameters' => true];
+                }
 
-                $classificationResponse = OpenAI::factory()
-                    ->withApiKey(config('services.nebius.key'))
-                    ->withBaseUri(config('services.nebius.url'))
-                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
-                    ->make()
-                    ->chat()
-                    ->create($params);
+                $chat = ($isDeep || $i) ? OpenRouter::chat() : Nebius::chat();
+                $classificationResponse = $chat->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "
@@ -610,7 +612,9 @@ class NewsController extends Controller
 
                 if (!empty($classificationResponse->choices[0]->message->content)) {
                     $classification = $model->classification ?? [];
-                    $content = '{' . Str::after($classificationResponse->choices[0]->message->content, '{');
+                    $content = Str::after($classificationResponse->choices[0]->message->content, '</think>');
+                    $content = Str::after($content, '```json');
+                    $content = '{' . Str::after($content, '{');
                     $content = Str::before($content, '}') . '}';
                     $classification[$term] = json_decode($content, true);
 
@@ -629,6 +633,7 @@ class NewsController extends Controller
                 Log::error("$model->id: News $term classification fail: {$e->getMessage()}");
             }
 
+            unset($chat);
             unset($classificationResponse);
             gc_collect_cycles();
 

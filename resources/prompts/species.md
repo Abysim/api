@@ -45,49 +45,30 @@ Strictly classify wild cat species into JSON using the following rules:
     - Do not classify the genus as a species.
         - Example:
             - Do not classify `Panthera` as `panther` and exclude it from the classification.
-5. Scoring System:
-    - Score Range: 0.1 to 1.0 (contiguous range).
-    - Main Subject Species (1.0):
-        - Assign a score of 1.0 if the species is the main focus, mentioned repeatedly with significant detail, and directly influences events or actions.
-        - Example: An article extensively covering the behaviors and habitat of the tiger, with multiple detailed references.
-    - Significant Mentions (0.7–0.9):
-        - Assign scores between 0.7–0.9 for species that are important but not the central focus.
-        - Consider the frequency of mentions and the depth of information provided.
-        - Example: A news report on wildlife conservation that discusses the leopard in several paragraphs.
-    - Incidental Mentions (0.1–0.6):
-        - Assign scores between 0.1–0.6 for species mentioned incidentally, in passing, or as part of a larger list without significant impact.
-        - For single mentions without narrative impact, assign scores between 0.1–0.2.
-        - Example: An article about a city that briefly mentions the caracal among many other species.
-    - Supplemental Sections (0.1–0.4):
-        - Recognize supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`).
-        - Assign scores between 0.1–0.4 for species mentioned in supplemental sections.
-        - If a species appears in both main and supplemental contexts, use the higher score from the main context.
-6. Metaphor and Symbolic Usage Exclusion:
+5. Metaphor and Symbolic Usage Exclusion:
     - Indicators of Metaphorical Usage:
         - Phrases like "symbolizes", "represents", "as a [species]", "inspired by", "depicts", "embodies", "pattern", "emblem", "print", "design", "figure", "motif", "figurative", "abstract", "adjectival usage", "compound noun".
     - Exclusions:
+        - Exclude species names embedded in organization, sport team, vehicle, location, or project names (e.g., "Lion Park", "Project Tiger", "Team Panthers", "Cheetah Armoured Car").
         - Exclude species names used in patterns, designs, or symbolic contexts (e.g., "leopard print", "lion emblem").
         - Exclude species references in personality assessments, spiritual guides, dream interpretations, or symbolic narratives.
         - Exclude species terms used adjectivally or as part of a compound noun (e.g., "tiger-striped").
         - Exclude mentions where species are part of metaphors or similes (e.g., "as fierce as a tiger").
         - Implement detection of surrounding words that indicate symbolic or metaphorical usage.
-    - Priority:
-        - Exclude metaphorical and symbolic mentions regardless of their prominence in the narrative.
-7. Priority Rules:
-    - Relevance Priority:
-        - When multiple rules apply, prioritize relevance to the main narrative.
-    - Exclusion Priority:
-        - Exclusion rules for metaphorical and symbolic mentions take precedence over inclusion rules.
-8. Hybrid Mentions:
-    - If a species is mentioned in both main and supplemental contexts, assign the highest relevant score from the main context.
-9. Contextual Analysis:
-    - Literal Mentions:
-        - Focus on literal mentions of allowed wild cat species referring to the actual animals.
-    - Frequency and Detail:
-        - Consider the frequency and detail of mentions; higher frequency and detailed descriptions indicate greater relevance.
-    - Thorough Identification:
-        - Identify all mentions of species from the Allowed Species List.
-10. Required Output Format:
+6. Scoring System:
+    - Score Range: 0.01 to 1.0 (contiguous range).
+    - Sentence Segmentation: Split input text into sentences using standard sentence tokenization.
+    - Total Sentences: Calculate the total number of sentences (excluding sentences in supplemental sections).
+    - Relevance Check: For each non-supplemental sentence, check if it is related to any species from the Allowed Species List (after applying mapping, handling, and exclusion rules).
+    - Contextual Check: Count a sentence as related if it indirectly mentions the species from other sentences.
+    - For each species:
+        - Score = (Number of sentences related to the species) / (Total sentences)
+        - Round the score to two decimal places using standard rounding rules (round half up).
+    - Supplemental Section Exclusion:
+        - Exclude sentences located in sections containing supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`).
+        - Supplemental sentences are not counted in total scoring.
+7. Required Output Format:
+    - Include all allowed species with a score >0 in the JSON output.
     - Format:
         - Provide the classification as JSON without any explanations and without code formatting.
         - Example: `{"[species]": [number], ...}`

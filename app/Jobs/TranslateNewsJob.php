@@ -6,10 +6,10 @@
 namespace App\Jobs;
 
 use App\Enums\NewsStatus;
+use App\Facades\OpenRouter;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
-use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +17,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use OpenAI;
 
 class TranslateNewsJob implements ShouldQueue
 {
@@ -57,13 +56,7 @@ class TranslateNewsJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = OpenAI::factory()
-                    ->withApiKey(config('laravel-openrouter.api_key'))
-                    ->withBaseUri(config('laravel-openrouter.api_endpoint'))
-                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
-                    ->make()
-                    ->chat()
-                    ->create($params);
+                $response = OpenRouter::chat()->create($params);
 
                 Log::info(
                     "$model->id: News translation result: "

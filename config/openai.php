@@ -25,6 +25,4 @@ return [
     */
 
     'request_timeout' => env('OPENAI_REQUEST_TIMEOUT', 30),
-
-    'is_deepest' => env('OPENAI_IS_DEEPEST', false),
 ];

@@ -3,10 +3,10 @@
 namespace App\Jobs;
 
 use App\Enums\NewsStatus;
+use App\Facades\OpenRouter;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
-use GuzzleHttp\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +17,6 @@ use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
-use OpenAI;
 
 class ApplyNewsAnalysisJob implements ShouldQueue
 {
@@ -67,13 +66,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = OpenAI::factory()
-                    ->withApiKey(config('laravel-openrouter.api_key'))
-                    ->withBaseUri(config('laravel-openrouter.api_endpoint'))
-                    ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
-                    ->make()
-                    ->chat()
-                    ->create($params);
+                $response = OpenRouter::chat()->create($params);
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count result: "
@@ -94,7 +87,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
             if (empty($model->analysis)) {
                 if ($model->is_auto) {
-                   if ($model->analysis_count < 8) {
+                   if ($model->analysis_count < 16) {
                        AnalyzeNewsJob::dispatch($model->id);
                    } else {
                        if (!$model->is_deep) {

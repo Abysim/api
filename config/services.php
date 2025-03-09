@@ -52,8 +52,15 @@ return [
         'key' => env('BIGCATS_KEY'),
     ],
 
+    'openrouter' => [
+        'api_key' => env('OPENROUTER_API_KEY'),
+        'api_endpoint' => env('OPENROUTER_API_ENDPOINT'),
+        'api_timeout' => env('OPENROUTER_API_TIMEOUT', 30),
+    ],
+
     'nebius' => [
-        'url' => env('NEBIUS_API_ENDPOINT'),
-        'key' => env('NEBIUS_API_KEY'),
+        'api_key' => env('NEBIUS_API_KEY'),
+        'api_endpoint' => env('NEBIUS_API_ENDPOINT'),
+        'api_timeout' => env('NEBIUS_API_TIMEOUT', 30),
     ],
 ];

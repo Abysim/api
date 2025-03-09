@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\NewsStatus;
+use App\Facades\OpenRouter;
 use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Exception;
@@ -63,16 +64,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     'temperature' => 0,
                 ];
 
-                if ($model->is_deep) {
-                    $chat = AI::factory()
-                        ->withApiKey(config('laravel-openrouter.api_key'))
-                        ->withBaseUri(config('laravel-openrouter.api_endpoint'))
-                        ->withHttpClient(new Client(['timeout' => config('openai.request_timeout', 30)]))
-                        ->make()
-                        ->chat();
-                } else {
-                    $chat = OpenAI::chat();
-                }
+                $chat = $model->is_deep ? OpenRouter::chat() : OpenAI::chat();
                 $response = $chat->create($params);
 
                 Log::info(
