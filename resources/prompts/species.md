@@ -1,115 +1,100 @@
-Strictly classify wild cat species into JSON using the following rules:
-1. Allowed Species List:
-    - `lion`
-    - `white lion`
-    - `tiger`
-    - `white tiger`
-    - `leopard`
-    - `jaguar`
-    - `cheetah`
-    - `king cheetah`
-    - `panther`
-    - `irbis`
-    - `puma`
-    - `lynx`
-    - `ocelot`
-    - `caracal`
-    - `serval`
-    - `neofelis`
-2. Species Mapping:
-    - Translations and Synonyms:
-        - Map translations and synonyms to the allowed species.
-            - Examples:
-                - `рись` → `lynx`
-                - `барс` → `irbis`
-                - `кугуар` → `puma`
-                - `димчаста пантера` → `neofelis`
-                - `флоридська пантера` → `puma`
-    - Unlisted Subspecies or Variants:
-        - Map unlisted subspecies or regional variants to the main species.
-            - Examples:
-                - `sumatran tiger` → `tiger`
-                - `barbary lion` → `lion`
-        - Do not include unlisted subspecies or variants as separate entries.
-    - Listed Variants:
-        - Include all listed variants (e.g., `white tiger`, `king cheetah`) as separate entries if mentioned.
-3. Melanistic Species Mapping:
-    - Panther Mapping:
-        - Map any melanistic (all-black) wild cat variants (e.g., "black jaguar", "black leopard") to `panther`.
-        - Use `panther` only for melanistic variants of allowed species.
-4. Binomial Nomenclature Handling:
-    - Species Identification:
-        - Exclude genus names when they appear as part of binomial nomenclature (e.g., `Panthera tigris`).
-        - Only classify the species part if it corresponds to an allowed species.
-            - Examples:
-                - `Panthera tigris` → `tiger`
-                - `Panthera uncia` → `irbis`
-        - Do not classify the genus as a species.
-            - Example:
-                - Do not classify `Panthera` as `panther` when it refers to the genus itself.
-5. Exclusions:
-    - Metaphor and Symbolic Usage Exclusion:
-        - Indicators of Exclusion:
-            - Phrases indicating metaphorical or symbolic usage, such as:
-                - "symbolizes", "represents", "as a [species]", "inspired by", "depicts", "embodies"
-                - "pattern", "emblem", "print", "design", "motif", "style", "fashion"
-                - "figure", "figurative", "abstract", "adjectival usage", "compound noun"
-            - Contexts related to:
-                - Fashion, clothing, accessories (e.g., "leopard print dress", "tiger-striped shirt")
-                - Patterns or designs (e.g., "cheetah pattern", "ocelot motif")
-                - Organizations, teams, brands, vehicles, locations, or projects with animal names but unrelated to actual animals (e.g., "Team Panthers", "Cheetah Software")
-                - Metaphorical expressions or idioms (e.g., "strong as a lion", "tiger mother")
-        - Exclusions:
-            - Exclude sentences where the species is mentioned in the above contexts.
-            - Do not count sentences that refer to the species in a symbolic, metaphorical, or design-related manner.
-    - Non-Real Animal References:
-        - Exclude mentions related to fictional or mythical contexts where the species does not represent a real animal.
-        - Examples:
-            - Symbolic uses in astrology, mythology, or dream interpretation.
-            - Fictional representations without real-world counterparts.
-6. Contextual References and Inferences:
-    - Contextual Inclusion:
-        - Include sentences that are clearly about an allowed species, even if the species name is not directly mentioned, provided that the context unambiguously refers to that species.
-        - Consider descriptions of behaviors, characteristics, habitats, or activities unique to the species.
-            - Examples:
-                - A sentence describing a large cat with a mane that rules the savannah would relate to `lion`.
-                - Mentions of a spotted wild cat known for speed would relate to `cheetah`.
-    - Inference Guidelines:
-        - Use contextual clues to infer the species when the description is specific and matches characteristics unique to an allowed species.
-        - Ensure that the inference is reasonable and based on clear associations.
-    - Important Note:
-        - Do not infer species from generic terms or ambiguous descriptions that could apply to multiple species.
-        - Avoid assuming species based on indirect or weak associations.
-7. Scoring System:
-    - Score Range:
-        - From 0.01 to 1.0 (continuous range).
-    - Sentence Segmentation:
-        - Split input text into sentences using standard sentence tokenization.
-    - Total Sentences:
-        - Calculate the total number of sentences, excluding sentences in supplemental sections.
-    - Relevance Check:
-        - For each non-supplemental sentence:
-            - Check if it is related to any species from the Allowed Species List (after applying mapping and handling rules).
-            - Include sentences that directly mention the species or unambiguously refer to it through context.
-        - Contextual Inclusion:
-            - Count a sentence as related if it:
-                - Describes behaviors, characteristics, or contexts unique to the species.
-                - Continues a discussion about the species from previous sentences.
-        - Exclusions:
-            - Do not count sentences excluded under the Exclusions rules above.
-    - Scoring Calculation:
-        - For each species:
-            - Score = (Number of sentences related to the species) / (Total sentences)
-            - Round the score to two decimal places using standard rounding rules (round half up).
-    - Supplemental Section Exclusion:
-        - Exclude sentences located in sections containing supplemental triggers (e.g., `нагадаємо`, `раніше`, `також`, `крім того`, `до слова`, `окрім цього`, `додамо`, `цікаво`).
-        - Supplemental sentences are not counted in total scoring.
-8. Required Output Format:
-    - JSON Output:
-        - Include all allowed species with a score > 0 in the JSON output.
-        - Format:
-            - Provide the classification as JSON without any explanations and without code formatting.
-            - Example: `{"[species]": [number], ...}`
-        - Only include species from the Allowed Species List in the JSON output.
-    - Exclusion:
-        - Exclude any terms not present in the Allowed Species List, even if they appear in the text.
+Classify wild cat species into JSON using the following rules:
+1. Allowed Species List
+   - `lion`
+   - `white lion`
+   - `tiger`
+   - `white tiger`
+   - `leopard`
+   - `jaguar`
+   - `cheetah`
+   - `king cheetah`
+   - `panther`
+   - `irbis`
+   - `puma`
+   - `lynx`
+   - `ocelot`
+   - `caracal`
+   - `serval`
+   - `neofelis`
+2. Species Mapping Rules
+   - Translations, Synonyms, and Common Names
+     - Mapping Guidelines:
+         - Map all translations, synonyms, regional names, and common names to their corresponding species in the Allowed Species List.
+         - Include regional variants, subspecies names, and local common names scientifically recognized as part of an allowed species.
+         - Always use the mappings provided below and extrapolate them.
+     - Common Mapping Examples:
+         - `bobcat` → `lynx`
+         - `mountain lion` → `puma`
+         - `snow leopard` → `irbis`
+         - `рись` → `lynx`
+         - `барс` → `irbis`
+         - `кугуар` → `puma`
+         - `димчаста пантера` → `neofelis`
+         - `флоридська пантера` → `puma`
+         - `jag` → `jaguar`
+         - `snep` → `irbis`
+   - Unlisted Subspecies and Variants
+     - Map unlisted subspecies, regional variants, and local names to their main species.
+     - Examples:
+         - `sumatran tiger` → `tiger`
+         - `barbary lion` → `lion`
+         - `amur leopard` → `leopard`
+   - Melanistic Variants
+     - Panther Mapping:
+         - Map any melanistic (all-black) variants to `panther`.
+         - Examples:
+             - `black jaguar` → `panther`
+             - `black leopard` → `panther`
+     - Note:
+         - Do not map the genus name "Panthera" to `panther` unless it specifically refers to melanistic individuals.
+   - Binomial Nomenclature Handling
+     - Map species mentioned using scientific names to their corresponding allowed species.
+     - Examples:
+         - `Panthera tigris` → `tiger`
+         - `Panthera uncia` → `irbis`
+     - Genus Exclusion:
+         - Do not classify genus names alone as species.
+         - Example:
+             - `Panthera` (genus) → Do not map to any species.
+3. Scoring System
+   - Sentence Segmentation
+     - Split the input text into sentences using standard sentence tokenization.
+   - Relevance Check
+     - For each sentence:
+         - Check if it directly mentions or refers to any species from the Allowed Species List, after applying the mapping rules.
+         - Include sentences that:
+             - Mention the species by name (including mapped names).
+             - Describe characteristics or behaviors unique to the species.
+   - Scoring Calculation
+     - Per Species:
+         - Score = (Number of related sentences for the species) ÷ (Total number of sentences)
+         - Round the score to two decimal places (standard rounding).
+   - Include All Relevant Species
+     - Include all species with a score greater than 0 in the JSON output.
+4. Exclusions
+   - Non-Animal Contexts
+     - Do Not Include Sentences:
+       - Where wild cat species names are used as:
+           - Names of Rivers, Mountains, or Places
+           - Names of People or Characters
+           - Names of Teams, Brands, or Organizations
+           - Names of Vehicles, Products, or Other Objects
+       - Where the context makes it clear that the mention is not about the animal itself.
+   - Metaphorical and Symbolic Usage
+     - Do Not Include Sentences:
+         - Where the species is mentioned metaphorically or symbolically.
+         - In contexts related to fashion, design, landmarks, locations, brands, teams, or idioms.
+         - Indicators:
+             - Words like "symbolizes," "represents," "pattern," "print," "motif," etc.
+             - Examples: "leopard print dress," "strong as a lion."
+   - Non-Real Animal References
+     - Exclude mentions in fictional, mythological, or astrological contexts.
+   - Supplemental Sections
+     - Exclude sentences in sections indicated by words like:
+         - `Note`, `Additionally`, `Moreover`, `Besides`, `Furthermore`
+         - These sentences are not counted in scoring.
+5. Required Output Format
+   - JSON Output:
+       - Provide the classification as a JSON object.
+       - Format Example: `{"[species]": [score], ...}`
+       - Only include species from the Allowed Species List.

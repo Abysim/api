@@ -24,6 +24,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use Throwable;
 
 class NewsController extends Controller
 {
@@ -601,7 +602,7 @@ class NewsController extends Controller
                 $params['response_format'] = ['type' => 'json_object'];
                 $params['provider'] = ['require_parameters' => true];
 
-                $classificationResponse = AI::client(($isDeep || $i) ? 'openrouter' : 'nebius')->chat()->create($params);
+                $classificationResponse = AI::client(($isDeep || $i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "
@@ -623,7 +624,7 @@ class NewsController extends Controller
                     $model->classification = $classification;
                     $model->save();
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 $classification = $model->classification ?? [];
                 unset($classification[$term]);
                 $model->classification = $classification;
