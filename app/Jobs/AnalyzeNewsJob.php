@@ -81,6 +81,9 @@ class AnalyzeNewsJob implements ShouldQueue
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News analysis $model->analysis_count fail: {$e->getMessage()}");
+                if ($i > 0 && $i < 3) {
+                    sleep(30);
+                }
             }
 
             if (!empty($model->analysis)) {

@@ -599,8 +599,10 @@ class NewsController extends Controller
                     ],
                     'temperature' => 0,
                 ];
-                $params['response_format'] = ['type' => 'json_object'];
-                $params['provider'] = ['require_parameters' => true];
+                if ($i < 2) {
+                    $params['response_format'] = ['type' => 'json_object'];
+                    $params['provider'] = ['require_parameters' => true];
+                }
 
                 $classificationResponse = AI::client(($isDeep || $i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 

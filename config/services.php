@@ -63,4 +63,10 @@ return [
         'api_endpoint' => env('NEBIUS_API_ENDPOINT'),
         'api_timeout' => env('NEBIUS_API_TIMEOUT', 30),
     ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'api_endpoint' => env('GEMINI_API_ENDPOINT'),
+        'api_timeout' => env('GEMINI_API_TIMEOUT', 30),
+    ],
 ];

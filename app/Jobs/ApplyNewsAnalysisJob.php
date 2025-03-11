@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -74,7 +75,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 );
 
                 if (!empty($response->choices[0]->message->content)) {
-                    [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
+                    $content = trim(Str::after($response->choices[0]->message->content, '```markdown'));
+                    [$title, $content] = explode("\n", $content, 2);
                     $model->status = NewsStatus::PENDING_REVIEW;
                     $model->analysis = null;
                     $model->publish_title = trim($title, '*# ');
