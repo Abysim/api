@@ -25,7 +25,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 660;
+    public int $timeout = 1260;
 
     public function __construct(private readonly int $id)
     {
@@ -47,10 +47,10 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis $model->analysis_count");
                 $params = [
-                    'model' => $model->is_deep ? 'deepseek-ai/DeepSeek-R1' : 'chatgpt-4o-latest',
+                    'model' => $model->is_deep ? 'o1-preview' : 'deepseek-ai/DeepSeek-R1',
                     'messages' => [
                         [
-                            'role' => 'system',
+                            'role' => $model->is_deep ? 'user' : 'system',
                             'content' => Str::replace(
                                 '<date>',
                                 $model->date->format('j F Y'),
@@ -59,10 +59,10 @@ class AnalyzeNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
-                    'temperature' => 0,
+                    'temperature' => $model->is_deep ? 1 : 0,
                 ];
 
-                $chat = $model->is_deep ? AI::client('openrouter')->chat() : OpenAI::chat();
+                $chat = $model->is_deep ? OpenAI::chat() : AI::client('openrouter')->chat();
                 $response = $chat->create($params);
 
                 Log::info(
@@ -72,7 +72,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
-                    if ($i > 0 || Str::substr($content, 0, 2) != 'Ні') {
+                    if ($model->is_deep || $i > 0 || Str::substr($content, 0, 2) != 'Ні') {
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;
