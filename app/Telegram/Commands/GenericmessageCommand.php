@@ -38,7 +38,27 @@ class GenericmessageCommand extends SystemCommand
     public function execute(): ServerResponse
     {
         $message = $this->getMessage();
-        $text = $message->getText(true);
+        if ($message->getType()  == 'photo') {
+            $text = $message->getCaption();
+            $baseUrl = 'https://api.telegram.org/file/bot' . $this->getTelegram()->getApiKey();
+
+            $photos = $message->getPhoto();
+            $maxSize = 0;
+            foreach ($photos as $p) {
+                if ($p->getFileSize() > $maxSize) {
+                    $maxSize = $p->getFileSize();
+                    $photo = $p;
+                }
+            }
+
+            if (!empty($photo)) {
+                $filePath = Request::getFile(['file_id' => $photo->getFileId()])->getResult()->getFilePath();
+
+                $photoUrl = $baseUrl . '/'. $filePath;
+            }
+        } else {
+            $text = $message->getText(true);
+        }
 
         if (empty($message->getFrom()) || empty($text) || !$this->telegram->isAdmin()) {
             return Request::emptyResponse();
@@ -75,6 +95,10 @@ class GenericmessageCommand extends SystemCommand
         $model = $modelClass::find($id);
         if (empty($model)) {
             return Request::emptyResponse();
+        }
+
+        if (!empty($photoUrl)) {
+            $value = $photoUrl;
         }
 
         if (empty($value)) {
