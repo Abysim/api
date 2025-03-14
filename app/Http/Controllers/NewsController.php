@@ -604,7 +604,7 @@ class NewsController extends Controller
                     $params['provider'] = ['require_parameters' => true];
                 }
 
-                $classificationResponse = AI::client(($isDeep || $i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
+                $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News $term classification result: "
