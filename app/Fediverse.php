@@ -62,10 +62,26 @@ class Fediverse extends Social
 
         $mediaIds = [];
         foreach ($media as $item) {
-            $result = $this->request('v2/media', ['description' => $item['text'] ?? ''], $item['path']);
-            Log::info('Image uploaded: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
+            for ($i = 0; $i <= 4; $i++) {
+                try {
+                    $result = $this->request('v2/media', ['description' => $item['text'] ?? ''], $item['path']);
+                    Log::info('Image uploaded: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
 
-            $mediaIds[] = $result->id;
+                    if (empty($result->id)) {
+                        throw new Exception('No media id');
+                    }
+
+                    $mediaIds[] = $result->id;
+                    break;
+                } catch (Exception $e) {
+                    if ($i == 4) {
+                        continue;
+                    }
+
+                    Log::error('Image upload problem: ' . $e->getMessage());
+                    sleep($i * $i);
+                }
+            }
         }
 
         if (!empty($mediaIds)) {
