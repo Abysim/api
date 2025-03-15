@@ -24,6 +24,7 @@
         "openai-php/laravel": "^0.10.1",
         "php-telegram-bot/laravel": "^2.1",
         "phrity/websocket": "^3.0",
+        "saade/filament-laravel-log": "^3.0",
         "stechstudio/laravel-jwt": "^2.3",
         "steppinghat/emoji-detector": "^1.5"
     },

@@ -482,10 +482,14 @@ class NewsController extends Controller
             }
         }
 
+        $countries = [];
         foreach ($model->classification['country'] as $key => $value) {
             if ($value >= 0.7 && isset($this->getTags('country')[$key])) {
-                $tags[] = $this->getTags('country')[$key];
+                $countries[] = $this->getTags('country')[$key];
             }
+        }
+        if (count($countries) <= 8) {
+            $tags = array_merge($tags, $countries);
         }
 
         if (isset($model->classification['region'])) {
