@@ -61,13 +61,13 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                                 NewsController::getPrompt('analyzer')
                             ),
                         ],
-                        ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content],
+                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content],
                         ['role' => 'assistant', 'content' => $model->analysis],
                         ['role' => 'user', 'content' => NewsController::getPrompt('editor')],
                     ],
                     'temperature' => 0,
                 ];
-                $response = AI::client('openrouter')->chat()->create($params);
+                $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count result: "

@@ -25,7 +25,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 1260;
+    public int $timeout = 2400;
 
     public function __construct(private readonly int $id)
     {
@@ -57,7 +57,7 @@ class AnalyzeNewsJob implements ShouldQueue
                                 NewsController::getPrompt('analyzer')
                             ),
                         ],
-                        ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
+                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ],
                     'temperature' => $model->is_deep ? 1 : 0,
                 ];
@@ -72,6 +72,14 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
+                    if (Str::substr($content, 0, 2) != 'Ні' && Str::substr($content, 0, 3) != 'Так') {
+                        if (Str::contains($content, 'Так.')) {
+                            $content = 'Так.' . Str::after($content, 'Так.') . Str::before($content, 'Так.');
+                        } elseif (Str::contains($content, 'Ні.')) {
+                            $content = 'Ні.' . Str::after($content, 'Ні.') . Str::before($content, 'Ні.');
+                        }
+                    }
+
                     if ($model->is_deep || $i > 0 || Str::substr($content, 0, 2) != 'Ні') {
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
