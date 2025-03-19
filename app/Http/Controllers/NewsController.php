@@ -8,6 +8,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
+use App\Jobs\NewsJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
@@ -69,9 +70,6 @@ class NewsController extends Controller
             && in_array(now()->format('G') % 3, [0, 1])
         )) {
             $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
-
-            unset($this->service);
-            gc_collect_cycles();
         }
 
         if (empty($models)) {
@@ -81,9 +79,11 @@ class NewsController extends Controller
             ])->get() as $model) {
                 $models[$model->id] = $model;
             }
-        }
 
-        $this->processNews($models);
+            $this->processNews($models);
+        } else {
+            NewsJob::dispatch(false);
+        }
 
         $this->deleteNewsFiles();
     }
