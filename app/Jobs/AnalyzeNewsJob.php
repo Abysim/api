@@ -71,6 +71,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 );
 
                 if (!empty($response->choices[0]->message->content)) {
+                    $model->refresh();
                     $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
                     if (Str::substr($content, 0, 2) != 'Ні' && Str::substr($content, 0, 3) != 'Так') {
                         if (Str::contains($content, 'Так.')) {
