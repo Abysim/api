@@ -12,13 +12,13 @@ class NewsCatcherService implements NewsServiceInterface
 {
     private const URL = 'https://api.newscatcherapi.com/v2/';
 
-    private const SEARCH_QUERY_LIMIT = 1000;
+    protected const SEARCH_QUERY_LIMIT = 1000;
 
-    private const LANG = 'uk';
+    protected const LANG = 'uk';
 
-    private const EXCLUDE_COUNTRIES = ['RU'];
+    protected const EXCLUDE_COUNTRIES = ['RU'];
 
-    const EXCLUDE_DOMAINS = [
+    protected const EXCLUDE_DOMAINS = [
         'champion.com.ua',
         'sport.ua',
         'his.edu.vn',

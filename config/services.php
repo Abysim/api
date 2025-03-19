@@ -47,6 +47,10 @@ return [
         'key' => env('NEWSCATCHER_KEY'),
     ],
 
+    'newscatcher3' => [
+        'key' => env('NEWSCATCHER_3_KEY'),
+    ],
+
     'bigcats' => [
         'url' => env('BIGCATS_URL'),
         'key' => env('BIGCATS_KEY'),

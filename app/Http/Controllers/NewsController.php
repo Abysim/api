@@ -13,7 +13,7 @@ use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\BigCatsService;
-use App\Services\NewsCatcherService;
+use App\Services\NewsCatcher3Service;
 use App\Services\NewsServiceInterface;
 use Exception;
 use Illuminate\Support\Facades\File;
@@ -48,7 +48,7 @@ class NewsController extends Controller
 
     private NewsServiceInterface|null $service;
 
-    public function __construct(NewsCatcherService $service)
+    public function __construct(NewsCatcher3Service $service)
     {
         $this->service = $service;
     }
@@ -262,14 +262,14 @@ class NewsController extends Controller
 
                         $model = News::updateOrCreate([
                             'platform' => $this->service->getName(),
-                            'external_id' => $article['_id']
+                            'external_id' => $article['id'] ?? $article['_id']
                         ], [
                             'date' => explode(' ', $article['published_date'])[0],
                             'author' => $article['author'],
                             'title' => $article['title'],
-                            'content' => $article['summary'],
+                            'content' => $article['content'] ?? $article['summary'],
                             'link' => $article['link'],
-                            'source' => $article['rights'] ?? $article['clean_url'],
+                            'source' => $article['name_source'] ?? $article['rights'] ?? $article['clean_url'] ?? $article['domain_url'],
                             'language' => $article['language'],
                             'media' => $article['media'],
                             'posted_at' => $article['published_date'],
