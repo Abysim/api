@@ -69,13 +69,18 @@ class NewsController extends Controller
             && in_array(now()->format('G') % 3, [0, 1])
         )) {
             $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
+
+            unset($this->service);
+            gc_collect_cycles();
         }
 
-        foreach (News::whereIn('status', [
-            NewsStatus::CREATED,
-            NewsStatus::PENDING_REVIEW,
-        ])->whereNotIn('id', array_keys($models))->get() as $model) {
-            $models[$model->id] = $model;
+        if (empty($models)) {
+            foreach (News::whereIn('status', [
+                NewsStatus::CREATED,
+                NewsStatus::PENDING_REVIEW,
+            ])->get() as $model) {
+                $models[$model->id] = $model;
+            }
         }
 
         $this->processNews($models);
@@ -256,6 +261,11 @@ class NewsController extends Controller
 
                 foreach ($news as $article) {
                     try {
+                        $content = $article['content'] ?? $article['summary'];
+                        if (Str::length($content) > 65535) {
+                            continue;
+                        }
+
                         if (Str::length($article['title']) > 1000) {
                             $article['title'] = Str::substr($article['title'], 0, 1000);
                         }
@@ -267,7 +277,7 @@ class NewsController extends Controller
                             'date' => explode(' ', $article['published_date'])[0],
                             'author' => $article['author'],
                             'title' => $article['title'],
-                            'content' => $article['content'] ?? $article['summary'],
+                            'content' => $content,
                             'link' => $article['link'],
                             'source' => $article['name_source'] ?? $article['rights'] ?? $article['clean_url'] ?? $article['domain_url'],
                             'language' => $article['language'],
@@ -345,6 +355,8 @@ class NewsController extends Controller
      */
     private function processNews(array $models)
     {
+        Log::info('Processing unprocessed news');
+
         foreach ($models as $modelIndex => $model) {
             $model->refresh();
             if (empty($model->status) || $model->status == NewsStatus::CREATED) {
@@ -605,6 +617,7 @@ class NewsController extends Controller
                 ];
                 if ($i < 2) {
                     $params['response_format'] = ['type' => 'json_object'];
+                    $params['presence_penalty'] = 2;
                     $params['provider'] = ['require_parameters' => true];
                 }
 

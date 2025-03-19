@@ -54,6 +54,9 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
             if ($page >= $response->json()['total_pages'] ?? 0) {
                 break;
             }
+
+            unset($response);
+            gc_collect_cycles();
         }
 
         return $result;
