@@ -76,11 +76,15 @@ class NewsController extends Controller
             foreach (News::whereIn('status', [
                 NewsStatus::CREATED,
                 NewsStatus::PENDING_REVIEW,
-            ])->get() as $model) {
+            ])->limit(1000)->get() as $model) {
                 $models[$model->id] = $model;
             }
 
+            $count = count($models);
             $this->processNews($models);
+            if ($count == 1000) {
+                NewsJob::dispatch(false);
+            }
         } else {
             NewsJob::dispatch(false);
         }
@@ -373,6 +377,9 @@ class NewsController extends Controller
                 || $model->status == NewsStatus::CREATED
                 || $model->status == NewsStatus::PENDING_REVIEW
             ) {
+                $model->status = NewsStatus::BEING_PROCESSED;
+                $model->save();
+
                 if (!isset($model->classification['species'])) {
                     $this->classifyNews($model, 'species');
                     $this->rejectNewsByClassification($model);
@@ -396,10 +403,12 @@ class NewsController extends Controller
                     }
                 }
 
+                $model->refresh();
                 if (
                     empty($model->status)
                     || $model->status == NewsStatus::CREATED
                     || $model->status == NewsStatus::PENDING_REVIEW
+                    || $model->status == NewsStatus::BEING_PROCESSED
                 ) {
                     if (!isset($model->classification['country'])) {
                         $this->classifyNews($model, 'country');
@@ -419,12 +428,25 @@ class NewsController extends Controller
 
                     $model->refresh();
                     if (
-                        empty($model->status)
-                        || $model->status == NewsStatus::CREATED
-                        || $model->status == NewsStatus::PENDING_REVIEW && empty($model->message_id)
+                        (
+                            empty($model->status)
+                            || $model->status == NewsStatus::CREATED
+                            || $model->status == NewsStatus::BEING_PROCESSED
+                            || $model->status == NewsStatus::PENDING_REVIEW
+                        )
+                        && empty($model->message_id)
                     ) {
                         $this->sendNewsToReview($model);
                     }
+                }
+
+                if ($model->status == NewsStatus::BEING_PROCESSED) {
+                    if (empty($model->message_id)) {
+                        $model->status = NewsStatus::CREATED;
+                    } else {
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                    }
+                    $model->save();
                 }
             }
 
@@ -453,6 +475,8 @@ class NewsController extends Controller
             $model->status = NewsStatus::PENDING_REVIEW;
             $model->save();
         } else {
+            $model->status = NewsStatus::CREATED;
+            $model->save();
             Log::error("$model->id: News not sent to review: " . $telegramResult->getDescription() . ' ' . $model->getFileUrl());
         }
 
@@ -666,6 +690,7 @@ class NewsController extends Controller
         if (empty($this->previousWeekNews[$model->language])) {
             $this->previousWeekNews[$model->language] = News::where('language', $model->language)
                 ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                ->select('id', 'title')
                 ->get();
         }
 
@@ -678,29 +703,33 @@ class NewsController extends Controller
             similar_text($model->title, $previousModel->title, $percent);
 
             if ($percent >= 70) {
-                $previousModel->refresh();
+                if (empty($previousModel->posted_at)) {
+                    $previousModel->append(['content', 'posted_at', 'status', 'is_translated'])->refresh();
+                }
                 if (
                     (
                         $model->posted_at->format('H:i:s') == '00:00:00'
                         && $previousModel->posted_at->format('H:i:s') != '00:00:00'
-                        || (
-                            $model->posted_at->format('H:i:s') != '00:00:00'
-                            && $previousModel->posted_at->format('H:i:s') != '00:00:00'
-                            || $model->posted_at->format('H:i:s') == '00:00:00'
-                            && $previousModel->posted_at->format('H:i:s') == '00:00:00'
-                        )
+                        || $model->posted_at->format('H:i:s') != '00:00:00'
+                        && $previousModel->posted_at->format('H:i:s') != '00:00:00'
                         && $model->posted_at > $previousModel->posted_at
-                        || ($model->posted_at == $previousModel->posted_at)
+                        || $model->posted_at == $previousModel->posted_at
                         && Str::length($model->content) < Str::length($previousModel->content)
                     )
                     && $model->status != NewsStatus::PUBLISHED
                     && $model->status != NewsStatus::APPROVED
                     && !$model->is_translated
                 ) {
+                    $previousModel->append(['classification'])->refresh();
                     $this->rejectByDupTitle($model, $previousModel);
 
                     return;
-                } else {
+                } elseif (
+                    $previousModel->status != NewsStatus::PUBLISHED
+                    && $previousModel->status != NewsStatus::APPROVED
+                    && !$previousModel->is_translated
+                ) {
+                    $previousModel->append(['classification', 'message_id', 'filename'])->refresh();
                     $this->rejectByDupTitle($previousModel, $model);
                 }
             } elseif ($percent >= 50) {
@@ -718,6 +747,7 @@ class NewsController extends Controller
             if (
                 $model->status == NewsStatus::REJECTED_BY_CLASSIFICATION
                 || $model->status == NewsStatus::REJECTED_BY_DEEP_AI
+                || $model->status == NewsStatus::REJECTED_BY_DEEPEST_AI
             ) {
                 $previousModel->status = $model->status;
             }
