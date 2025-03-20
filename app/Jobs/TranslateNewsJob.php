@@ -60,7 +60,7 @@ class TranslateNewsJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = AI::client('openrouter')->chat()->create($params);
+                $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News translation result: "
@@ -69,7 +69,8 @@ class TranslateNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->refresh();
-                    [$title, $content] = explode("\n", $response->choices[0]->message->content, 2);
+                    $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
+                    [$title, $content] = explode("\n", $content, 2);
                     $model->is_translated = true;
                     $model->publish_title = trim($title, '*# ');
                     $model->publish_content = Str::replace('**', '', trim($content));

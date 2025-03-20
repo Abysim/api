@@ -62,7 +62,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     'temperature' => $model->is_deep ? 1 : 0,
                 ];
 
-                $chat = $model->is_deep ? OpenAI::chat() : AI::client('openrouter')->chat();
+                $chat = $model->is_deep ? OpenAI::chat() : AI::client($i > 1 ? 'openrouter' : 'nebius')->chat();
                 $response = $chat->create($params);
 
                 Log::info(
