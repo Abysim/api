@@ -8,6 +8,24 @@ use Illuminate\Support\Facades\Log;
 
 class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInterface
 {
+    private const NEWS_TYPES = [
+        'News and Blogs',
+        'Educational News',
+        'Press Releases',
+        'Entertainment and Media News',
+        'Health and Medical News',
+        'Government and Municipal News',
+        'News Aggregators',
+        'Local News and Community Events',
+        'Blogs and Magazines',
+        'Non-Profit and Organization News',
+        'Event News',
+        'General News Outlets',
+        'Travel and Lifestyle',
+        'Specific News Type',
+        'Pure News Outlet',
+        'Other'
+    ];
     private const URL = 'https://v3-api.newscatcherapi.com/api/';
 
     private PendingRequest $request;
@@ -38,7 +56,9 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
                 'sort_by' => 'date',
                 'page_size' => 1000,
                 'page' => $page,
-                'from_' => now()->subDays((empty($lang) || $lang == self::LANG) ? 2 : 1)->format('Y/m/d'),
+                'from_' => now()->subHours((empty($lang) || $lang == self::LANG) ? 50 : 26)->format('Y/m/d H:i:s'),
+                'by_parse_date' => 'True',
+                'news_type' => implode(',', self::NEWS_TYPES),
             ]);
 
             if ($response->status() >= 400) {

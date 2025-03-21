@@ -745,9 +745,9 @@ class NewsController extends Controller
         if (empty($previousModel->classification) && !empty($model->classification)) {
             $previousModel->classification = $model->classification;
             if (
-                $model->status == NewsStatus::REJECTED_BY_CLASSIFICATION
-                || $model->status == NewsStatus::REJECTED_BY_DEEP_AI
-                || $model->status == NewsStatus::REJECTED_BY_DEEPEST_AI
+                $model->status != NewsStatus::PENDING_REVIEW
+                && $model->status != NewsStatus::BEING_PROCESSED
+                && $model->status != NewsStatus::PUBLISHED
             ) {
                 $previousModel->status = $model->status;
             }
