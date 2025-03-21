@@ -453,6 +453,8 @@ class NewsController extends Controller
             unset($models[$modelIndex]);
             gc_collect_cycles();
         }
+
+        Log::info('Unprocessed news processed');
     }
 
     private function sendNewsToReview(News $model)
