@@ -6,13 +6,14 @@
 namespace App\Jobs;
 
 use App\Http\Controllers\NewsController;
-use App\Models\News;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class NewsJob implements ShouldQueue
 {
@@ -35,5 +36,10 @@ class NewsJob implements ShouldQueue
     {
         $controller = app(NewsController::class);
         $controller->process($this->load ?? false, $this->force ?? false, $this->lang ?? null);
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('NewsJob failed: ' . $exception->getMessage());
     }
 }
