@@ -73,4 +73,10 @@ return [
         'api_endpoint' => env('GEMINI_API_ENDPOINT'),
         'api_timeout' => env('GEMINI_API_TIMEOUT', 30),
     ],
+
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'api_endpoint' => env('ANTHROPIC_API_ENDPOINT'),
+        'api_timeout' => env('ANTHROPIC_API_TIMEOUT', 30),
+    ],
 ];

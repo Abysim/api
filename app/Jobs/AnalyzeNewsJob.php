@@ -47,7 +47,7 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis $model->analysis_count");
                 $params = [
-                    'model' => $model->is_deep ? 'anthropic/claude-3.7-sonnet:thinking' : 'deepseek-ai/DeepSeek-R1',
+                    'model' => $model->is_deep ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219') : 'deepseek-ai/DeepSeek-R1',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -59,12 +59,19 @@ class AnalyzeNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ],
-                    'temperature' => 0,
-                    'max_tokens' => 100000,
-                    'provider' => ['require_parameters' => true],
                 ];
 
-                $chat = AI::client(($i > 1 || $model->is_deep) ? 'openrouter' : 'nebius')->chat();
+                if ($model->is_deep && $i <= 1) {
+                    $params['max_tokens'] = 64000;
+                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 60000];
+                } else {
+                    $params['max_tokens'] = 128000;
+                    $params['temperature'] = 0;
+                    $params['provider'] = ['require_parameters' => true];
+                    $params['reasoning'] = ['effort' => 'high'];
+                }
+
+                $chat = AI::client(($i > 1 || $model->is_deep) ? ($i > 1 ? 'openrouter' : 'anthropic') : 'nebius')->chat();
                 $response = $chat->create($params);
 
                 Log::info(
@@ -93,6 +100,8 @@ class AnalyzeNewsJob implements ShouldQueue
             } catch (Exception $e) {
                 Log::error("$model->id: News analysis $model->analysis_count fail: {$e->getMessage()}");
                 if ($i > 0 && $i < 3) {
+                    return;
+
                     sleep(30);
                 }
             }

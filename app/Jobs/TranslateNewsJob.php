@@ -59,6 +59,9 @@ class TranslateNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
                     'temperature' => 0,
+                    'max_tokens' => 128000,
+                    'reasoning' => ['effort' => 'high'],
+                    'provider' => ['require_parameters' => true],
                 ];
                 $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
