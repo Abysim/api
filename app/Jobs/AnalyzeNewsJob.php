@@ -47,10 +47,10 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis $model->analysis_count");
                 $params = [
-                    'model' => $model->is_deep ? 'o1-preview' : 'deepseek-ai/DeepSeek-R1',
+                    'model' => $model->is_deep ? 'anthropic/claude-3.7-sonnet:thinking' : 'deepseek-ai/DeepSeek-R1',
                     'messages' => [
                         [
-                            'role' => $model->is_deep ? 'user' : 'system',
+                            'role' => 'system',
                             'content' => Str::replace(
                                 '<date>',
                                 $model->date->format('j F Y'),
@@ -59,10 +59,12 @@ class AnalyzeNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ],
-                    'temperature' => $model->is_deep ? 1 : 0,
+                    'temperature' => 0,
+                    'max_tokens' => 100000,
+                    'provider' => ['require_parameters' => true],
                 ];
 
-                $chat = $model->is_deep ? OpenAI::chat() : AI::client($i > 1 ? 'openrouter' : 'nebius')->chat();
+                $chat = AI::client(($i > 1 || $model->is_deep) ? 'openrouter' : 'nebius')->chat();
                 $response = $chat->create($params);
 
                 Log::info(
@@ -81,7 +83,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         }
                     }
 
-                    if ($model->is_deep || $i > 0 || Str::substr($content, 0, 2) != 'Ні') {
+                    if ($i > 0 || Str::substr($content, 0, 2) != 'Ні') {
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;

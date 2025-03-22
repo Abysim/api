@@ -33,6 +33,7 @@ Classify wild cat species into JSON using the following rules:
          - `флоридська пантера` → `puma`
          - `jag` → `jaguar`
          - `snep` → `irbis`
+         - `Egyptian lynx` → `caracal`
    - Unlisted Subspecies and Variants
      - Map unlisted subspecies, regional variants, and local names to their main species.
      - Examples:
