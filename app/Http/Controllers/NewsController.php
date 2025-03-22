@@ -285,9 +285,11 @@ class NewsController extends Controller
                             'link' => $article['link'],
                             'source' => $article['name_source'] ?? $article['rights'] ?? $article['clean_url'] ?? $article['domain_url'],
                             'language' => $article['language'],
-                            'media' => $article['media'],
                             'posted_at' => $article['published_date'],
                         ]);
+                        if (empty($model->media)) {
+                            $model->media = $article['media'];
+                        }
 
                         $this->mapSpecies($model, $currentSpecieses);
                         $models[$model->id] = $model;
@@ -361,6 +363,7 @@ class NewsController extends Controller
     {
         Log::info('Processing unprocessed news');
 
+        /** @var News $model */
         foreach ($models as $modelIndex => $model) {
             $model->refresh();
             if (empty($model->status) || $model->status == NewsStatus::CREATED) {

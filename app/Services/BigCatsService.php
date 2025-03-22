@@ -26,6 +26,9 @@ class BigCatsService
         if (empty($news->filename)) {
             $news->loadMediaFile();
         }
+        if (empty($news->filename)) {
+            return false;
+        }
 
         $data = [
             'date' => $news->date,
