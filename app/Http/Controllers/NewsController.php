@@ -283,7 +283,9 @@ class NewsController extends Controller
                             'title' => $article['title'],
                             'content' => $content,
                             'link' => $article['link'],
-                            'source' => $article['name_source'] ?? $article['rights'] ?? $article['clean_url'] ?? $article['domain_url'],
+                            'source' => !empty($article['name_source'])
+                                ? $article['name_source']
+                                : ($article['rights'] ?? $article['clean_url'] ?? $article['domain_url']),
                             'language' => $article['language'],
                             'posted_at' => $article['published_date'],
                         ]);
