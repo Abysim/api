@@ -468,7 +468,9 @@ class NewsController extends Controller
             $telegramResult = Request::sendPhoto([
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'caption' => $model->getCaption(),
-                'photo' => empty($model->getFileUrl()) || $i > 0 ? asset('logo.jpg') : $model->getFileUrl(),
+                'photo' => empty($model->media ?? $model->getFileUrl()) || $i > 0
+                    ? asset('logo.jpg')
+                    : ($model->media ?? $model->getFileUrl()),
                 'reply_markup' => $model->getInlineKeyboard(),
             ]);
 

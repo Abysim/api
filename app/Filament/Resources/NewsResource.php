@@ -31,7 +31,7 @@ class NewsResource extends Resource
                     ->rows(24)
                     ->columnSpanFull(),
                 Forms\Components\Section::make('Information')
-                    ->columns(3)
+                    ->columns(['default' => 2, 'md' => 3])
                     ->collapsible()
                     ->collapsed()
                     ->schema([
@@ -42,7 +42,8 @@ class NewsResource extends Resource
                             ->default(null),
                         Forms\Components\TextInput::make('media')
                             ->maxLength(1024)
-                            ->default(null),
+                            ->default(null)
+                            ->columnSpan(['default' => 2, 'md' => 1]),
                         Forms\Components\TextInput::make('source')
                             ->maxLength(255)
                             ->hiddenLabel(),
@@ -60,7 +61,7 @@ class NewsResource extends Resource
                         Forms\Components\Textarea::make('analysis')
                             ->disableGrammarly()
                             ->rows(12)
-                            ->columnSpan(3),
+                            ->columnSpanFull(),
                     ]),
             ])
             ->columns(1);
