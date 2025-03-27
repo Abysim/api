@@ -51,7 +51,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count");
                 $params = [
-                    'model' => 'deepseek-ai/DeepSeek-V3',
+                    'model' => 'deepseek-ai/DeepSeek-V3-0324',
                     'messages' => [
                         [
                             'role' => 'system',
