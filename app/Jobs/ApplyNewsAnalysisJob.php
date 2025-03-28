@@ -81,7 +81,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $model->status = NewsStatus::PENDING_REVIEW;
                     $model->analysis = null;
                     $model->publish_title = trim($title, '*# ');
-                    $model->publish_content = Str::replace('**', '', trim($content));
+                    $model->publish_content = trim(trim($content, '`'));
                     $model->save();
                 }
             } catch (Exception $e) {

@@ -480,6 +480,8 @@ class NewsController extends Controller
         }
 
         if ($telegramResult->isOk()) {
+            Log::info("$model->id: News sent to review result: " . json_encode($telegramResult, JSON_UNESCAPED_UNICODE));
+
             $model->message_id = $telegramResult->getResult()->getMessageId();
             $model->status = NewsStatus::PENDING_REVIEW;
             $model->save();
