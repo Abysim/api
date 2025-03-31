@@ -49,7 +49,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info("$model->id: News applying analysis $model->analysis_count");
+                Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
                     'model' => 'deepseek-ai/DeepSeek-V3-0324',
                     'messages' => [
@@ -70,7 +70,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
-                    "$model->id: News applying analysis $model->analysis_count result: "
+                    "$model->id: News applying analysis $model->analysis_count $i result: "
                     . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
@@ -85,7 +85,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $model->save();
                 }
             } catch (Exception $e) {
-                Log::error("$model->id: News applying analysis $model->analysis_count fail: {$e->getMessage()}");
+                Log::error("$model->id: News applying analysis $model->analysis_count $i fail: {$e->getMessage()}");
             }
 
             if (empty($model->analysis)) {

@@ -45,7 +45,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info("$model->id: News analysis $model->analysis_count");
+                Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
                     'model' => $model->is_deep ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219') : 'deepseek-ai/DeepSeek-R1',
                     'messages' => [
@@ -75,7 +75,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 $response = $chat->create($params);
 
                 Log::info(
-                    "$model->id: News analysis $model->analysis_count result: "
+                    "$model->id: News analysis $model->analysis_count $i result: "
                     . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
@@ -98,7 +98,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                 }
             } catch (Exception $e) {
-                Log::error("$model->id: News analysis $model->analysis_count fail: {$e->getMessage()}");
+                Log::error("$model->id: News analysis $model->analysis_count $i fail: {$e->getMessage()}");
                 if ($i > 0 && $i < 3) {
                     sleep(30);
                 }
@@ -123,7 +123,7 @@ class AnalyzeNewsJob implements ShouldQueue
                             Request::sendMessage([
                                 'chat_id' => explode(',', config('telegram.admins'))[0],
                                 'reply_to_message_id' => $model->message_id,
-                                'text' => 'Auto translation completed',
+                                'text' => 'Auto translation completed ' . $model->analysis_count,
                                 'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                             ]);
                         }
