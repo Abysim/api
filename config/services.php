@@ -41,6 +41,7 @@ return [
 
     'bluesky' => [
         'handle' => env('BLUESKY_HANDLE'),
+        'english_handle' => env('BLUESKY_ENGLISH_HANDLE'),
     ],
 
     'newscatcher' => [

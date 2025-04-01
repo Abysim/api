@@ -218,12 +218,56 @@ class NewsController extends Controller
                     Log::error($model->id . ': Bluesky post error: ' . $e->getMessage());
                 }
             }
+
+            if ($model->language == 'en' && !empty($model->original_content) && !empty($model->original_title)) {
+                $caption = $model->original_title . "\n"
+                    . $this->englishTags($model->publish_tags) . "\n"
+                    . $model->link;
+
+                Http::post(
+                    'https://maker.ifttt.com/trigger/englishnews/with/key/' . config('services.ifttt.webhook_key'),
+                    [
+                        'value1' => $caption,
+                        'value2' => (!empty($image) && $image !== true) ? $image : ($model->media ?: $model->getFileUrl()),
+                        'value3' => trim(Str::replace(
+                            ['### ', '## ', '# ', '---'],
+                            '',
+                            Str::of(Str::inlineMarkdown($model->original_content))->stripTags()
+                        )),
+                    ]
+                );
+
+                $connection = BlueskyConnection::where('handle', config('services.bluesky.english_handle'))->first();
+                if ($connection) {
+                    try {
+                        $bluesky = new Bluesky($connection);
+                        $bluesky->post(['text' => $caption], [['thumb' => $model->getFilePath()]]);
+                    } catch (Exception $e) {
+                        Log::error($model->id . ': Bluesky post error: ' . $e->getMessage());
+                    }
+                }
+            }
         } else {
             // TODO: Make wait and check that the news is really not published
 
             Log::error($model->id . ': News not published! ' . $response->body());
         }
 
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function englishTags($tags): string
+    {
+        $result = [];
+        foreach (explode(' ', $tags) as $tag) {
+            if (isset($this->getTags('english')[$tag])) {
+                $result[] = $this->getTags('english')[$tag];
+            }
+        }
+
+        return implode(' ', $result);
     }
 
     /**

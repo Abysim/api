@@ -48,6 +48,8 @@ use Longman\TelegramBot\Request;
  * @property string $publish_title
  * @property string $publish_content
  * @property string $publish_tags
+ * @property string $original_title
+ * @property string $original_content
  * @property int $message_id
  * @property string $published_url
  * @property Carbon $published_at
@@ -348,6 +350,18 @@ class News extends Model
                 } elseif ($model->wasChanged('is_auto')) {
                     $model->updateReplyMarkup();
                 }
+            }
+
+            if (
+                $model->language != 'uk'
+                && !$model->is_translated
+                && ($model->wasChanged('publish_title') || $model->wasChanged('publish_content'))
+            ) {
+                $model->syncOriginal();
+                $model->discardChanges();
+                $model->original_title = $model->publish_title;
+                $model->original_content = $model->publish_content;
+                $model->save();
             }
 
             $model->syncOriginal();
