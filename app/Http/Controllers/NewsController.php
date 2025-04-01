@@ -682,7 +682,7 @@ class NewsController extends Controller
         $isDeep = $isDeep || $isDeepest;
         for ($i = 0; $i < 4; $i++) {
             try {
-                Log::info("$model->id: News $term classification");
+                Log::info("$model->id: News $term classification $i");
                 $params = [
                     'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep ? 'deepseek-ai/DeepSeek-V3-0324' : 'Qwen/Qwen2.5-32B-Instruct'),
                     'messages' => [
@@ -703,7 +703,7 @@ class NewsController extends Controller
                 $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
-                    "$model->id: News $term classification result: "
+                    "$model->id: News $term classification $i result: "
                     . json_encode($classificationResponse, JSON_UNESCAPED_UNICODE)
                 );
 
@@ -716,7 +716,7 @@ class NewsController extends Controller
                     $classification[$term] = json_decode($content, true);
 
                     if (!is_array($classification[$term])) {
-                        throw new Exception('Invalid classification');
+                        throw new Exception('Invalid classification ' . $i);
                     }
 
                     $model->classification = $classification;
@@ -727,7 +727,7 @@ class NewsController extends Controller
                 unset($classification[$term]);
                 $model->classification = $classification;
 
-                Log::error("$model->id: News $term classification fail: {$e->getMessage()}");
+                Log::error("$model->id: News $term classification $i fail: {$e->getMessage()}");
             }
 
             unset($chat);
