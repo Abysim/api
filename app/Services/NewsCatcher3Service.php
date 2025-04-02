@@ -81,4 +81,14 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
 
         return $result;
     }
+
+    public function subscription(): string
+    {
+        $response = $this->request->get(self::URL . 'subscription');
+        if ($response->status() >= 400) {
+            Log::error('NewsCatcher3 subscription error: ' . $response->body());
+        }
+
+        return $response->body();
+    }
 }
