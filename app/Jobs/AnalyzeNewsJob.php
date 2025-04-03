@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -47,7 +48,9 @@ class AnalyzeNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
-                    'model' => $model->is_deep ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219') : 'deepseek-ai/DeepSeek-R1',
+                    'model' => $model->is_deep
+                        ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
+                        : ($i > 1 ? 'google/gemini-2.5-pro-exp-03-25:free' : 'gemini-2.5-pro-exp-03-25'),
                     'messages' => [
                         [
                             'role' => 'system',
@@ -65,14 +68,29 @@ class AnalyzeNewsJob implements ShouldQueue
                     $params['max_tokens'] = 64000;
                     $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 60000];
                 } else {
-                    $params['max_tokens'] = 128000;
                     $params['temperature'] = 0;
-                    $params['provider'] = ['require_parameters' => true];
-                    $params['reasoning'] = ['effort' => 'high'];
+
+                    if ($model->is_deep) {
+                        $params['max_tokens'] = 128000;
+                        $params['provider'] = ['require_parameters' => true];
+                        $params['reasoning'] = ['effort' => 'high'];
+                    }
                 }
 
-                $chat = AI::client(($i > 1 || $model->is_deep) ? ($i > 1 ? 'openrouter' : 'anthropic') : 'nebius')->chat();
-                $response = $chat->create($params);
+                if (!$model->is_deep && $i <= 1) {
+                    $response = Http::asJson()
+                        ->withToken(config('services.gemini.api_key'))
+                        ->timeout(config('services.gemini.api_timeout'))
+                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
+                        ->object();
+                } else {
+                    $chat = AI::client(
+                        $model->is_deep
+                            ? ($i > 1 ? 'openrouter' : 'anthropic')
+                            : 'openrouter'
+                    )->chat();
+                    $response = $chat->create($params);
+                }
 
                 Log::info(
                     "$model->id: News analysis $model->analysis_count $i result: "

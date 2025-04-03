@@ -15,6 +15,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -46,7 +47,7 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => 'deepseek-ai/DeepSeek-R1',
+                    'model' => $i % 2 ? 'google/gemini-2.5-pro-exp-03-25:free' : 'gemini-2.5-pro-exp-03-25',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -59,11 +60,16 @@ class TranslateNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
                     'temperature' => 0,
-                    'max_tokens' => 128000,
-                    'reasoning' => ['effort' => 'high'],
-                    'provider' => ['require_parameters' => true],
                 ];
-                $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
+                if ($i % 2) {
+                    $response = AI::client('openrouter')->chat()->create($params);
+                } else {
+                    $response = Http::asJson()
+                        ->withToken(config('services.gemini.api_key'))
+                        ->timeout(config('services.gemini.api_timeout'))
+                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
+                        ->object();
+                }
 
                 Log::info(
                     "$model->id: News translation result: "
