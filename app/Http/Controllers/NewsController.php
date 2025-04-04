@@ -631,7 +631,7 @@ class NewsController extends Controller
         if (!isset(static::$prompts[$name])) {
             $path = resource_path('prompts/' . $name . '.md');
             if (File::exists($path)) {
-                static::$prompts[$name] = implode("\n", array_map('trim', explode("\n", File::get($path))));
+                static::$prompts[$name] = trim(implode("\n", array_map('trim', explode("\n", File::get($path)))));
             } else {
                 throw new Exception('Prompt not found: ' . $name);
             }

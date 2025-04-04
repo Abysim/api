@@ -51,7 +51,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => 'deepseek-ai/DeepSeek-V3-0324',
+                    'model' =>  $i % 2 ? 'google/gemini-2.0-flash-001' : 'gemini-2.0-flash',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -67,11 +67,20 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                $response = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
+
+                if ($i % 2) {
+                    $response = AI::client('openrouter')->chat()->create($params);
+                } else {
+                    $response = Http::asJson()
+                        ->withToken(config('services.gemini.api_key'))
+                        ->timeout(config('services.gemini.api_timeout'))
+                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
+                        ->object();
+                }
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count $i result: "
-                    . json_encode($response, JSON_UNESCAPED_UNICODE)
+                    . json_encode($response, JSON_UNESCAPED_UNICODE + JSON_PRETTY_PRINT)
                 );
 
                 if (!empty($response->choices[0]->message->content)) {

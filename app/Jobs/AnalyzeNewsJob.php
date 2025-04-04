@@ -44,30 +44,39 @@ class AnalyzeNewsJob implements ShouldQueue
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
 
-        for ($i = 0; $i < 4; $i++) {
+        for ($i = 0; $i < 2; $i++) {
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
                         : ($i > 1 ? 'google/gemini-2.5-pro-exp-03-25:free' : 'gemini-2.5-pro-exp-03-25'),
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => Str::replace(
-                                '<date>',
-                                $model->date->format('j F Y'),
-                                NewsController::getPrompt('analyzer')
-                            ),
-                        ],
-                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
-                    ],
                 ];
 
                 if ($model->is_deep && $i <= 1) {
+                    $params['system'] = [
+                        [
+                            'type' => 'text',
+                            'text' => NewsController::getPrompt('analyzer'),
+                            'cache_control' => ['type' => 'ephemeral'],
+                        ],
+                        ['type' => 'text', 'text' => $model->date->format('j F Y')]
+                    ];
+                    $params['messages'] = [
+                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
+                    ];
+
                     $params['max_tokens'] = 64000;
                     $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 60000];
                 } else {
+                    $params['messages'] = [
+                        [
+                            'role' => 'system',
+                            'content' => NewsController::getPrompt('analyzer') . $model->date->format('j F Y')
+                        ],
+                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
+                    ];
+
                     $params['temperature'] = 0;
 
                     if ($model->is_deep) {
@@ -83,23 +92,29 @@ class AnalyzeNewsJob implements ShouldQueue
                         ->timeout(config('services.gemini.api_timeout'))
                         ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
                         ->object();
+                } elseif ($model->is_deep && $i <= 1) {
+                    $response = Http::asJson()
+                        ->withHeaders([
+                            'x-api-key' => config('services.anthropic.api_key'),
+                            'anthropic-version' => '2023-06-01',
+                        ])
+                        ->withToken(config('services.anthropic.api_key'))
+                        ->timeout(config('services.anthropic.api_timeout'))
+                        ->post('https://' . config('services.anthropic.api_endpoint') . '/messages', $params)
+                        ->object();
                 } else {
-                    $chat = AI::client(
-                        $model->is_deep
-                            ? ($i > 1 ? 'openrouter' : 'anthropic')
-                            : 'openrouter'
-                    )->chat();
-                    $response = $chat->create($params);
+                    $response = AI::client('openrouter')->chat()->create($params);
                 }
 
                 Log::info(
                     "$model->id: News analysis $model->analysis_count $i result: "
-                    . json_encode($response, JSON_UNESCAPED_UNICODE)
+                    . json_encode($response, JSON_UNESCAPED_UNICODE + JSON_PRETTY_PRINT)
                 );
 
-                if (!empty($response->choices[0]->message->content)) {
+                $content = $response->content[1]->text ?? $response->choices[0]->message->content ?? null;
+                if (!empty($content)) {
                     $model->refresh();
-                    $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
+                    $content = trim(Str::after($content, '</think>'), "#* \n\r\t\v\0");
                     if (Str::substr($content, 0, 2) != 'Ні' && Str::substr($content, 0, 3) != 'Так') {
                         if (Str::contains($content, 'Так.')) {
                             $content = 'Так.' . Str::after($content, 'Так.') . Str::before($content, 'Так.');
