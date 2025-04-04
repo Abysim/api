@@ -98,7 +98,6 @@ class AnalyzeNewsJob implements ShouldQueue
                             'x-api-key' => config('services.anthropic.api_key'),
                             'anthropic-version' => '2023-06-01',
                         ])
-                        ->withToken(config('services.anthropic.api_key'))
                         ->timeout(config('services.anthropic.api_timeout'))
                         ->post('https://' . config('services.anthropic.api_endpoint') . '/messages', $params)
                         ->object();
