@@ -151,13 +151,14 @@ class News extends Model
         ];
 
         $secondLine = [];
+        $reset = [
+            'text' => '🔄Reset (' . ($this->is_deep ? '🏁' : '🏴') . $this->analysis_count . ')',
+            'callback_data' => 'news_reset ' . $this->id
+        ];
         if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
             $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
         } else {
-            $secondLine[] = [
-                'text' => '🔄Reset (' . ($this->is_deep ? '🏁' : '🏴') . $this->analysis_count . ')',
-                'callback_data' => 'news_reset ' . $this->id
-            ];
+            $secondLine[] = $reset;
         }
         $secondLine[] = ['text' => '🔗Original', 'url' => $this->link];
         if ($this->status !== NewsStatus::BEING_PROCESSED) {
@@ -188,6 +189,18 @@ class News extends Model
                 } elseif (!$this->is_deepest) {
                     $thirdLine[] = ['text' => '🏁Deepest', 'callback_data' => 'news_deepest ' . $this->id];
                 }
+            }
+
+            if (empty($thirdLine) && $this->is_translated) {
+                $thirdLine[] = $reset;
+                $thirdLine[] = [
+                    'text' => '🔄Counter',
+                    'callback_data' => 'news_counter ' . $this->id
+                ];
+                $thirdLine[] = [
+                    'text' => '🔄Translation',
+                    'callback_data' => 'news_translation ' . $this->id
+                ];
             }
         }
 

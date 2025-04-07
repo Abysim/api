@@ -1061,15 +1061,31 @@ class NewsController extends Controller
 
     public function reset(News $model, Message $message): void
     {
-        $model->status = NewsStatus::PENDING_REVIEW;
-        $model->analysis_count = 0;
         $model->is_auto = false;
+
+        $this->cancel($model, $message);
+    }
+
+    public function counter(News $model, Message $message): void
+    {
+        $model->analysis_count = 0;
         $model->save();
         Request::editMessageReplyMarkup([
             'chat_id' => $message->getChat()->getId(),
             'message_id' => $message->getMessageId(),
             'reply_markup' => $model->getInlineKeyboard(),
         ]);
+    }
+
+    public function translation(News $model, Message $message): void
+    {
+        $model->publish_title = $model->original_title;
+        $model->publish_content = $model->original_content;
+        $model->is_deepest = false;
+        $model->is_deep = true;
+        $model->is_translated = false;
+
+        $this->reset($model, $message);
     }
 
     public function apply(News $model, Message $message): void
