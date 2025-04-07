@@ -59,6 +59,7 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
                 'from_' => now()->subHours((empty($lang) || $lang == self::LANG) ? 50 : 26)->format('Y/m/d H:i:s'),
                 'by_parse_date' => 'True',
                 'news_type' => implode(',', self::NEWS_TYPES),
+                'word_count_min' => 50,
             ]);
 
             if ($response->status() >= 400) {
