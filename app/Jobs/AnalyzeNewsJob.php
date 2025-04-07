@@ -26,7 +26,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 2400;
+    public int $timeout = 3600;
 
     public function __construct(private readonly int $id)
     {
@@ -37,6 +37,7 @@ class AnalyzeNewsJob implements ShouldQueue
      */
     public function handle(): void
     {
+        $startTime = now();
         $model = News::find($this->id);
         if (!empty($model->analysis) || $model->status == NewsStatus::BEING_PROCESSED) {
             return;
@@ -44,7 +45,7 @@ class AnalyzeNewsJob implements ShouldQueue
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
 
-        for ($i = 0; $i < 2; $i++) {
+        for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
@@ -66,8 +67,8 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
 
-                    $params['max_tokens'] = 64000;
-                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 60000];
+                    $params['max_tokens'] = 128000;
+                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 100000];
                 } else {
                     $params['messages'] = [
                         [
@@ -97,10 +98,92 @@ class AnalyzeNewsJob implements ShouldQueue
                         ->withHeaders([
                             'x-api-key' => config('services.anthropic.api_key'),
                             'anthropic-version' => '2023-06-01',
+                            'anthropic-beta' => 'output-128k-2025-02-19',
                         ])
                         ->timeout(config('services.anthropic.api_timeout'))
-                        ->post('https://' . config('services.anthropic.api_endpoint') . '/messages', $params)
+                        ->post(
+                            'https://' . config('services.anthropic.api_endpoint') . '/messages/batches',
+                            [
+                                'requests' => [
+                                    [
+                                        'custom_id' => $model->id . 'analyze' . $model->analysis_count . 'i' . $i,
+                                        'params' => $params,
+                                    ]
+                                ]
+                            ]
+                        )
                         ->object();
+                    Log::info(
+                        "$model->id: News analysis batch started $model->analysis_count $i: "
+                        . json_encode($response, JSON_UNESCAPED_UNICODE)
+                    );
+
+                    if (empty($response->id)) {
+                        throw new Exception("$model->id: Failed to get batch ID $model->analysis_count $i");
+                    }
+                    $batchId = $response->id;
+
+                    $sleep = 30;
+                    for ($j = 0; $j < intdiv($this->timeout, $sleep); $j++) {
+                        sleep($sleep);
+                        $response = Http::withHeaders([
+                                'x-api-key' => config('services.anthropic.api_key'),
+                                'anthropic-version' => '2023-06-01',
+                            ])
+                            ->timeout(config('services.anthropic.api_timeout'))
+                            ->get('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId)
+                            ->object();
+                        Log::info(
+                            "$model->id: News analysis batch waiting $model->analysis_count $i $j: "
+                            . json_encode($response, JSON_UNESCAPED_UNICODE)
+                        );
+
+                        if ($response->processing_status == 'ended') {
+                            if (empty($response->results_url)) {
+                                throw new Exception("$model->id:  News analysis failed to get batch result $model->analysis_count $i");
+                            }
+
+                            $response = Http::withHeaders([
+                                    'x-api-key' => config('services.anthropic.api_key'),
+                                    'anthropic-version' => '2023-06-01',
+                                ])
+                                ->timeout(config('services.anthropic.api_timeout'))
+                                ->get($response->results_url)
+                                ->object();
+
+                            if (empty($response->result->message)) {
+                                throw new Exception(
+                                    "$model->id: News analysis failed to get batch result $model->analysis_count $i: "
+                                    . json_encode($response, JSON_UNESCAPED_UNICODE)
+                                );
+                            }
+
+                            $response = $response->result->message;
+                            break;
+                        }
+
+                        $currentTime = now();
+                        if ($currentTime->diffInSeconds($startTime) >= $this->timeout - 60 || $response->processing_status == 'canceling') {
+                            break;
+                        }
+                    }
+
+                    if (empty($response->content[1]->text)) {
+                        Log::warning("$model->id: News analysis batch timeout $model->analysis_count $i");
+
+                        Http::withHeaders([
+                            'x-api-key' => config('services.anthropic.api_key'),
+                            'anthropic-version' => '2023-06-01',
+                        ])
+                            ->post('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId . '/cancel')
+                            ->object();
+
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->save();
+                        AnalyzeNewsJob::dispatch($model->id);
+
+                        break;
+                    }
                 } else {
                     $response = AI::client('openrouter')->chat()->create($params);
                 }
