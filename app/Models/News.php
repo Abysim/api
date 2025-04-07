@@ -152,7 +152,7 @@ class News extends Model
 
         $secondLine = [];
         $reset = [
-            'text' => '🔄Reset (' . ($this->is_deep ? '🏁' : '🏴') . $this->analysis_count . ')',
+            'text' => '🔄Reset' . ($this->is_deep ? '🏁' : '🏴'),
             'callback_data' => 'news_reset ' . $this->id
         ];
         if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
@@ -190,18 +190,20 @@ class News extends Model
                     $thirdLine[] = ['text' => '🏁Deepest', 'callback_data' => 'news_deepest ' . $this->id];
                 }
             }
+        }
 
-            if (empty($thirdLine) && $this->is_translated) {
+        if (empty($thirdLine) && $this->is_translated) {
+            if ($this->is_deepest) {
                 $thirdLine[] = $reset;
-                $thirdLine[] = [
-                    'text' => '🔄Counter',
-                    'callback_data' => 'news_counter ' . $this->id
-                ];
-                $thirdLine[] = [
-                    'text' => '🔄Translation',
-                    'callback_data' => 'news_translation ' . $this->id
-                ];
             }
+            $thirdLine[] = [
+                'text' => '🔄' . $this->analysis_count,
+                'callback_data' => 'news_counter ' . $this->id
+            ];
+            $thirdLine[] = [
+                'text' => '🔄Translation',
+                'callback_data' => 'news_translation ' . $this->id
+            ];
         }
 
         return new InlineKeyboard($firstLine, $secondLine, $thirdLine);

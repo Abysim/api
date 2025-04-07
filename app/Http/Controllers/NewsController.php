@@ -1062,6 +1062,11 @@ class NewsController extends Controller
     public function reset(News $model, Message $message): void
     {
         $model->is_auto = false;
+        if ($model->is_deepest) {
+            $model->is_deepest = false;
+        } else {
+            $model->is_deep = false;
+        }
 
         $this->cancel($model, $message);
     }
