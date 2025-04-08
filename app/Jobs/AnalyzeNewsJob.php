@@ -140,7 +140,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
                         if ($response->processing_status == 'ended') {
                             if (empty($response->results_url)) {
-                                throw new Exception("$model->id:  News analysis failed to get batch result $model->analysis_count $i");
+                                break;
                             }
 
                             $response = Http::withHeaders([
