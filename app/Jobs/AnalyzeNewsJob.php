@@ -26,7 +26,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 3600;
+    public int $timeout = 24 * 60 * 60;
 
     public function __construct(private readonly int $id)
     {
@@ -123,7 +123,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                     $batchId = $response->id;
 
-                    $sleep = 30;
+                    $sleep = 60;
                     for ($j = 0; $j < intdiv($this->timeout, $sleep); $j++) {
                         sleep($sleep);
                         $response = Http::withHeaders([
@@ -163,9 +163,15 @@ class AnalyzeNewsJob implements ShouldQueue
                         }
 
                         $currentTime = now();
-                        if ($currentTime->diffInSeconds($startTime) >= $this->timeout - 60 || $response->processing_status == 'canceling') {
+                        if (
+                            $currentTime->diffInSeconds($startTime) >= $this->timeout - $sleep * 2
+                            || $response->processing_status == 'canceling'
+                        ) {
                             break;
                         }
+
+                        unset($response);
+                        gc_collect_cycles();
                     }
 
                     if (empty($response->content[1]->text)) {
