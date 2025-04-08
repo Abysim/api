@@ -26,7 +26,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 24 * 60 * 60;
+    public int $timeout = 7200;
 
     public function __construct(private readonly int $id)
     {
@@ -123,7 +123,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                     $batchId = $response->id;
 
-                    $sleep = 60;
+                    $sleep = 30;
                     for ($j = 0; $j < intdiv($this->timeout, $sleep); $j++) {
                         sleep($sleep);
                         $response = Http::withHeaders([
