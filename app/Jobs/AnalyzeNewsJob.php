@@ -39,7 +39,7 @@ class AnalyzeNewsJob implements ShouldQueue
     {
         $startTime = now();
         $model = News::find($this->id);
-        if (!empty($model->analysis) || $model->status == NewsStatus::BEING_PROCESSED) {
+        if (!empty($model->analysis) || $model->status != NewsStatus::PENDING_REVIEW) {
             return;
         }
         $model->status = NewsStatus::BEING_PROCESSED;
@@ -165,7 +165,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         $currentTime = now();
                         if (
                             $currentTime->diffInSeconds($startTime) >= $this->timeout - $sleep * 2
-                            || $response->processing_status == 'canceling'
+                            || $response->processing_status != 'in_progress'
                         ) {
                             break;
                         }
@@ -175,8 +175,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
 
                     if (empty($response->content[1]->text)) {
-                        Log::warning("$model->id: News analysis batch timeout $model->analysis_count $i");
-
+                        Log::warning("$model->id: News analysis batch without result $model->analysis_count $i");
                         Http::withHeaders([
                             'x-api-key' => config('services.anthropic.api_key'),
                             'anthropic-version' => '2023-06-01',
@@ -186,7 +185,10 @@ class AnalyzeNewsJob implements ShouldQueue
 
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->save();
-                        AnalyzeNewsJob::dispatch($model->id);
+                        if (!isset($response->processing_status) || $response->processing_status == 'in_progress') {
+                            Log::warning("$model->id: News analysis batch timeout $model->analysis_count $i");
+                            AnalyzeNewsJob::dispatch($model->id);
+                        }
 
                         break;
                     }
