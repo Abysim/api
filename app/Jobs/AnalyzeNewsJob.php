@@ -222,8 +222,18 @@ class AnalyzeNewsJob implements ShouldQueue
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News analysis $model->analysis_count $i fail: {$e->getMessage()}");
-                if ($i > 0 && $i < 3) {
+                if ($i < 3) {
                     sleep(30);
+                } else {
+                    $model->status = NewsStatus::PENDING_REVIEW;
+                    $model->save();
+
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'reply_to_message_id' => $model->message_id,
+                        'text' => 'Analysis failed',
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
                 }
             }
 
