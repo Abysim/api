@@ -55,7 +55,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     'messages' => [
                         [
                             'role' => 'system',
-                            'content' => NewsController::getPrompt('analyzer') . $model->date->format('j F Y'),
+                            'content' => trim(Str::before(NewsController::getPrompt('analyzer'), '1.')),
                         ],
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content],
                         ['role' => 'assistant', 'content' => $model->analysis],
