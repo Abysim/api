@@ -508,13 +508,14 @@ class NewsController extends Controller
 
     private function sendNewsToReview(News $model)
     {
-        for ($i = 0; $i < 2; $i++) {
+        for ($i = 0; $i < 3; $i++) {
+            // TODO: Optimise this
             $telegramResult = Request::sendPhoto([
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'caption' => $model->getCaption(),
-                'photo' => empty($model->media ?? $model->getFileUrl()) || $i > 0
+                'photo' => (empty($model->media) && empty($model->getFileUrl())) || $i > 1
                     ? asset('logo.jpg')
-                    : ($model->media ?? $model->getFileUrl()),
+                    : (empty($model->media) || $i > 0 ? $model->getFileUrl() : $model->media),
                 'reply_markup' => $model->getInlineKeyboard(),
             ]);
 

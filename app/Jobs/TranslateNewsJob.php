@@ -51,11 +51,7 @@ class TranslateNewsJob implements ShouldQueue
                     'messages' => [
                         [
                             'role' => 'system',
-                            'content' => Str::replace(
-                                '<date>',
-                                $model->date->format('j F Y'),
-                                NewsController::getPrompt('translate')
-                            ),
+                            'content' => NewsController::getPrompt('translate') . $model->date->format('j F Y'),
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],

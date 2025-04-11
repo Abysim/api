@@ -311,7 +311,22 @@ class News extends Model
                         ]);
 
                         if (!$response->isOk()) {
-                            Log::error($model->id . ': Failed to send media: ' . $response->getDescription());
+                            if ($model->getFileUrl()) {
+                                $response = Request::editMessageMedia([
+                                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                                    'message_id' => $model->message_id,
+                                    'reply_markup' => $model->getInlineKeyboard(),
+                                    'media' => new InputMediaPhoto([
+                                        'caption' => $model->getCaption(),
+                                        'type' => 'photo',
+                                        'media' => $model->getFileUrl(),
+                                    ]),
+                                ]);
+                            }
+
+                            if (!$response->isOk()) {
+                                Log::error($model->id . ': Failed to send media: ' . $response->getDescription());
+                            }
                         }
                     }
                 }
