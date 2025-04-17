@@ -67,7 +67,7 @@ class FileHelper
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                $response = OpenAI::chat()->create(['model' => $isDeep ? 'chatgpt-4o-latest' : 'gpt-4o-mini', 'messages' => [
+                $response = OpenAI::chat()->create(['model' => $isDeep ? 'chatgpt-4o-latest' : 'gpt-4.1-mini', 'messages' => [
                     ['role' => 'user', 'content' => [
                         [
                             'type' => 'text',

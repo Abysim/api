@@ -51,7 +51,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 $params = [
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
-                        : ($i > 1 ? 'google/gemini-2.5-pro-exp-03-25:free' : 'gemini-2.5-pro-exp-03-25'),
+                        : ($i > 1 ? 'gemini-2.5-pro-preview-03-25' : 'gemini-2.5-pro-exp-03-25'),
                 ];
 
                 if ($model->is_deep && $i <= 1) {
@@ -87,7 +87,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                 }
 
-                if (!$model->is_deep && $i <= 1) {
+                if (!$model->is_deep) {
                     $response = Http::asJson()
                         ->withToken(config('services.gemini.api_key'))
                         ->timeout(config('services.gemini.api_timeout'))
