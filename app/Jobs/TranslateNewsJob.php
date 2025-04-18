@@ -47,7 +47,7 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => $i % 2 ? 'google/gemini-2.5-pro-exp-03-25:free' : 'gemini-2.5-pro-exp-03-25',
+                    'model' => $i % 2 ? 'gemini-2.5-pro-preview-03-25' : 'gemini-2.5-pro-exp-03-25',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -57,15 +57,11 @@ class TranslateNewsJob implements ShouldQueue
                     ],
                     'temperature' => 0,
                 ];
-                if ($i % 2) {
-                    $response = AI::client('openrouter')->chat()->create($params);
-                } else {
-                    $response = Http::asJson()
-                        ->withToken(config('services.gemini.api_key'))
-                        ->timeout(config('services.gemini.api_timeout'))
-                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
-                        ->object();
-                }
+                $response = Http::asJson()
+                    ->withToken(config('services.gemini.api_key'))
+                    ->timeout(config('services.gemini.api_timeout'))
+                    ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
+                    ->object();
 
                 Log::info(
                     "$model->id: News translation result: "

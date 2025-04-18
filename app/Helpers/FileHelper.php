@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
+use Longman\TelegramBot\Request;
 use OpenAI\Laravel\Facades\OpenAI;
 
 class FileHelper
@@ -67,7 +68,7 @@ class FileHelper
 
         for ($i = 0; $i < 4; $i++) {
             try {
-                $response = OpenAI::chat()->create(['model' => $isDeep ? 'chatgpt-4o-latest' : 'gpt-4.1-mini', 'messages' => [
+                $response = OpenAI::chat()->create(['model' => $isDeep ? 'gpt-4.5-preview' : 'gpt-4.1-mini', 'messages' => [
                     ['role' => 'user', 'content' => [
                         [
                             'type' => 'text',
@@ -97,5 +98,27 @@ class FileHelper
         }
 
         return $result;
+    }
+
+    public static function getTelegramPhotoUrl(array $photos): ?string
+    {
+        $photoUrl = null;
+
+        $baseUrl = 'https://api.telegram.org/file/bot' . config('telegram.bot.api_token');
+        $maxSize = 0;
+        foreach ($photos as $p) {
+            if ($p->getFileSize() > $maxSize) {
+                $maxSize = $p->getFileSize();
+                $photo = $p;
+            }
+        }
+
+        if (!empty($photo)) {
+            $filePath = Request::getFile(['file_id' => $photo->getFileId()])->getResult()->getFilePath();
+
+            $photoUrl = $baseUrl . '/'. $filePath;
+        }
+
+        return $photoUrl;
     }
 }

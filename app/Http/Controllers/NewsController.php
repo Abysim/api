@@ -6,6 +6,7 @@ use App\AI;
 use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
 use App\Enums\NewsStatus;
+use App\Helpers\FileHelper;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
@@ -526,6 +527,9 @@ class NewsController extends Controller
 
         if ($telegramResult->isOk()) {
             Log::info("$model->id: News sent to review result: " . json_encode($telegramResult, JSON_UNESCAPED_UNICODE));
+            if (empty($model->filename)) {
+                $model->media = FileHelper::getTelegramPhotoUrl($telegramResult->getResult()->getPhoto());
+            }
 
             $model->message_id = $telegramResult->getResult()->getMessageId();
             $model->status = NewsStatus::PENDING_REVIEW;

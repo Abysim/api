@@ -328,6 +328,11 @@ class News extends Model
                                 Log::error($model->id . ': Failed to send media: ' . $response->getDescription());
                             }
                         }
+
+                        if ($response->isOk() && empty($model->filename)) {
+                            $model->media = FileHelper::getTelegramPhotoUrl($response->getResult()->getPhoto());
+                            $model->save();
+                        }
                     }
                 }
 

@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Commands;
 
+use App\Helpers\FileHelper;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use Illuminate\Support\Facades\Cache;
@@ -40,22 +41,7 @@ class GenericmessageCommand extends SystemCommand
         $message = $this->getMessage();
         if ($message->getType()  == 'photo') {
             $text = $message->getCaption();
-            $baseUrl = 'https://api.telegram.org/file/bot' . $this->getTelegram()->getApiKey();
-
-            $photos = $message->getPhoto();
-            $maxSize = 0;
-            foreach ($photos as $p) {
-                if ($p->getFileSize() > $maxSize) {
-                    $maxSize = $p->getFileSize();
-                    $photo = $p;
-                }
-            }
-
-            if (!empty($photo)) {
-                $filePath = Request::getFile(['file_id' => $photo->getFileId()])->getResult()->getFilePath();
-
-                $photoUrl = $baseUrl . '/'. $filePath;
-            }
+            $photoUrl = FileHelper::getTelegramPhotoUrl($message->getPhoto());
         } else {
             $text = $message->getText(true);
         }
