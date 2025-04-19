@@ -51,7 +51,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 $params = [
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
-                        : ($i > 1 ? 'gemini-2.5-pro-preview-03-25' : 'gemini-2.5-pro-exp-03-25'),
+                        : ($i > 1 ? 'openai/o3' : 'o3'),
                 ];
 
                 if ($model->is_deep && $i <= 1) {
@@ -78,21 +78,17 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
 
-                    $params['temperature'] = 0;
-
-                    if ($model->is_deep) {
+                    if ($model->is_deep || $i > 1) {
                         $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
                         $params['reasoning'] = ['effort' => 'high'];
+                    } else {
+                        $params['reasoning_effort'] = 'high';
                     }
                 }
 
-                if (!$model->is_deep) {
-                    $response = Http::asJson()
-                        ->withToken(config('services.gemini.api_key'))
-                        ->timeout(config('services.gemini.api_timeout'))
-                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
-                        ->object();
+                if (!$model->is_deep && $i <= 1) {
+                    $response = OpenAI::chat()->create($params);
                 } elseif ($model->is_deep && $i <= 1) {
                     $response = Http::asJson()
                         ->withHeaders([

@@ -18,6 +18,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class TranslateNewsJob implements ShouldQueue
 {
@@ -47,7 +48,7 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => $i % 2 ? 'gemini-2.5-pro-preview-03-25' : 'gemini-2.5-pro-exp-03-25',
+                    'model' => $i % 2 ? 'openai/o3' : 'o3',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -55,13 +56,17 @@ class TranslateNewsJob implements ShouldQueue
                         ],
                         ['role' => 'user', 'content' => $model->publish_title . "\n\n" . $model->publish_content]
                     ],
-                    'temperature' => 0,
                 ];
-                $response = Http::asJson()
-                    ->withToken(config('services.gemini.api_key'))
-                    ->timeout(config('services.gemini.api_timeout'))
-                    ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
-                    ->object();
+
+                if ($i % 2) {
+                    $params['max_tokens'] = 128000;
+                    $params['provider'] = ['require_parameters' => true];
+                    $params['reasoning'] = ['effort' => 'high'];
+                    $response = AI::client('openrouter')->chat()->create($params);
+                } else {
+                    $params['reasoning_effort'] = 'high';
+                    $response = OpenAI::chat()->create($params);
+                }
 
                 Log::info(
                     "$model->id: News translation result: "
