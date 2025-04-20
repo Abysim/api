@@ -273,6 +273,11 @@ class News extends Model
     {
         static::unguard();
 
+        static::creating(function (News $model) {
+            $model->title = $model->title ?? $model->publish_title;
+            $model->content = $model->content ?? $model->publish_content;
+        });
+
         static::updated(function (News $model) {
             if ($model->message_id) {
                 if (

@@ -69,12 +69,12 @@ class FileHelper
         for ($i = 0; $i < 4; $i++) {
             try {
                 $params = [
-                    'model' => $isDeep ? 'o3' : 'gpt-4.1-mini',
+                    'model' => $isDeep ? 'gpt-4.5-preview' : 'gpt-4.1-mini',
                     'messages' => [
                         ['role' => 'user', 'content' => [
                             [
                                 'type' => 'text',
-                                'text' => "Generate the image caption for visually impaired people, focusing solely on evident visual elements such as colours, shapes, objects, and any discernible text without mentioning the image (do not use wording `at image`, `on picture`, etc.). Do not include additional descriptions, interpretations, what is missing, or assumptions not explicitly visible in the image. Limit the output to 300 characters. Write the caption in the following language: $language"
+                                'text' => "Generate the image caption for visually impaired people, focusing solely on evident visual elements such as colours, shapes, objects, and any discernible text without mentioning the image (do not use wording `at image`, `on picture`, etc.). Do not include what is missing, additional descriptions, interpretations, or assumptions not explicitly visible in the image. Limit the output to 300 characters. Write the caption in the following language: $language"
                             ],
                             [
                                 'type' => 'image_url',
@@ -85,10 +85,6 @@ class FileHelper
                         ]]
                     ]
                 ];
-
-                if ($isDeep) {
-                    $params['reasoning_effort'] = 'high';
-                }
 
                 $response = OpenAI::chat()->create($params);
 

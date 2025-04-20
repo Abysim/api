@@ -631,7 +631,7 @@ class NewsController extends Controller
      * @return string
      * @throws Exception
      */
-    public static function getPrompt(string $name): string
+    public static function getPrompt(string $name, bool $isScience = false): string
     {
         if (!isset(static::$prompts[$name])) {
             $path = resource_path('prompts/' . $name . '.md');
@@ -640,6 +640,22 @@ class NewsController extends Controller
             } else {
                 throw new Exception('Prompt not found: ' . $name);
             }
+        }
+
+        if ($isScience) {
+            return Str::replace([
+                'Публіцистичн',
+                'журналістик',
+                'журналістськ',
+                'публіцистичн',
+                'журналістом',
+            ], [
+                'Науков',
+                'наук',
+                'науков',
+                'науков',
+                'вченим',
+            ], static::$prompts[$name]);
         }
 
         return static::$prompts[$name];

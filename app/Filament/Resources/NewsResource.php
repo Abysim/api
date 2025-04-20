@@ -22,6 +22,31 @@ class NewsResource extends Resource
     {
         return $form
             ->schema([
+                Forms\Components\Section::make('Create')
+                    ->columns(['default' => 2, 'md' => 3])
+                    ->collapsible()
+                    ->visibleOn('create')
+                    ->schema([
+                        Forms\Components\TextInput::make('platform')
+                            ->default('article')
+                            ->required()
+                            ->maxLength(255),
+                        Forms\Components\TextInput::make('external_id')
+                            ->required()
+                            ->maxLength(255),
+                        Forms\Components\TextInput::make('language')
+                            ->required()
+                            ->maxLength(2)
+                            ->default('en'),
+                        Forms\Components\TextInput::make('author')
+                            ->default(config('app.name'))
+                            ->required()
+                            ->maxLength(255),
+                        Forms\Components\Select::make('status')
+                            ->options(NewsStatus::class)
+                            ->default(NewsStatus::PENDING_REVIEW)
+                            ->required(),
+                    ]),
                 Forms\Components\TextInput::make('publish_title')
                     ->maxLength(255)
                     ->columnSpanFull()

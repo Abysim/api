@@ -58,7 +58,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     $params['system'] = [
                         [
                             'type' => 'text',
-                            'text' => NewsController::getPrompt('analyzer'),
+                            'text' => NewsController::getPrompt('analyzer', $model->platform == 'article'),
                             'cache_control' => ['type' => 'ephemeral'],
                         ],
                         ['type' => 'text', 'text' => $model->date->format('j F Y')]
@@ -73,7 +73,8 @@ class AnalyzeNewsJob implements ShouldQueue
                     $params['messages'] = [
                         [
                             'role' => 'system',
-                            'content' => NewsController::getPrompt('analyzer') . $model->date->format('j F Y')
+                            'content' => NewsController::getPrompt('analyzer', $model->platform == 'article')
+                                . $model->date->format('j F Y')
                         ],
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
