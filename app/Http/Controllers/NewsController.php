@@ -1111,7 +1111,7 @@ class NewsController extends Controller
         $model->analysis = null;
         $model->analysis_count = 0;
         $model->is_deepest = false;
-        $model->is_deep = true;
+        $model->is_deep = false;
         $model->is_translated = false;
 
         $this->reset($model, $message);
