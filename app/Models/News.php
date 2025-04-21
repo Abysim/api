@@ -172,7 +172,7 @@ class News extends Model
                 $thirdLine[] = ['text' => '🌐Translate', 'callback_data' => 'news_translate ' . $this->id];
                 $thirdLine[] = ['text' => '🔁Auto Translate', 'callback_data' => 'news_auto ' . $this->id];
             } elseif ($this->status == NewsStatus::PENDING_REVIEW) {
-                if (empty($this->analysis)) {
+                if (empty($this->analysis) && !$this->is_deepest) {
                     $thirdLine[] = [
                         'text' => ($this->is_deep ? '🔬' : '🧪') . 'Analyze (' . $this->analysis_count . ')',
                         'callback_data' => 'news_analyze ' . $this->id
