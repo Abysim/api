@@ -51,7 +51,9 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' =>  $i % 2 ? 'google/gemini-2.0-flash-001' : 'gemini-2.0-flash',
+                    'model' => Str::length($model->publish_content) > 23000
+                        ? ($i % 2 ? 'google/gemini-2.5-flash-preview' : 'gemini-2.5-flash-preview-04-17')
+                        : ($i % 2 ? 'google/gemini-2.0-flash-001' : 'gemini-2.0-flash'),
                     'messages' => [
                         [
                             'role' => 'system',
