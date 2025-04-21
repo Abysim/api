@@ -1108,6 +1108,8 @@ class NewsController extends Controller
     {
         $model->publish_title = $model->original_title;
         $model->publish_content = $model->original_content;
+        $model->analysis = null;
+        $model->analysis_count = 0;
         $model->is_deepest = false;
         $model->is_deep = true;
         $model->is_translated = false;
