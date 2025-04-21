@@ -705,7 +705,10 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification $i");
                 $params = [
-                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep ? 'deepseek-ai/DeepSeek-V3-0324' : 'Qwen/Qwen2.5-32B-Instruct'),
+                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep
+                        ? 'deepseek-ai/DeepSeek-V3-0324'
+                        : ($i % 2 ? 'qwen/qwen2.5-32b-instruct' : 'Qwen/Qwen2.5-32B-Instruct')
+                    ),
                     'messages' => [
                         [
                             'role' => 'system',
