@@ -188,4 +188,6 @@ return [
 
 
     'is_deepest' => env('IS_DEEPEST', false),
+
+    'is_news_by_openai' => env('IS_NEWS_BY_OPENAI', false),
 ];

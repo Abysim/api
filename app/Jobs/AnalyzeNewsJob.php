@@ -45,6 +45,7 @@ class AnalyzeNewsJob implements ShouldQueue
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
 
+        $isOA = $model->platform == 'article' || config('app.is_news_by_openai');
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
@@ -52,8 +53,8 @@ class AnalyzeNewsJob implements ShouldQueue
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
                         : ($i > 1
-                            ? ($model->platform == 'article' ? 'openai/o3' : 'gemini-2.5-pro-preview-03-25')
-                            : ($model->platform == 'article' ? 'o3' : 'gemini-2.5-pro-exp-03-25')
+                            ? ($isOA ? 'openai/o3' : 'gemini-2.5-pro-preview-03-25')
+                            : ($isOA ? 'o3' : 'gemini-2.5-pro-exp-03-25')
                         ),
                 ];
 
@@ -82,26 +83,26 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
 
-                    if ($model->platform != 'article') {
+                    if (!$isOA) {
                         $params['temperature'] = 0;
                     }
 
-                    if ($model->is_deep || $i > 1 && $model->platform == 'article') {
+                    if ($model->is_deep || $i > 1 && $isOA) {
                         $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
                         $params['reasoning'] = ['effort' => 'high'];
-                    } elseif ($model->platform == 'article') {
+                    } elseif ($isOA) {
                         $params['reasoning_effort'] = 'high';
                     }
                 }
 
-                if (!$model->is_deep && $model->platform != 'article') {
+                if (!$model->is_deep && !$isOA) {
                     $response = Http::asJson()
                         ->withToken(config('services.gemini.api_key'))
                         ->timeout(config('services.gemini.api_timeout'))
                         ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
                         ->object();
-                } elseif (!$model->is_deep && $model->platform == 'article' && $i <= 1) {
+                } elseif (!$model->is_deep && $isOA && $i <= 1) {
                     $response = OpenAI::chat()->create($params);
                 } elseif ($model->is_deep && $i <= 1) {
                     $response = Http::asJson()
