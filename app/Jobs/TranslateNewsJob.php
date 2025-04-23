@@ -25,7 +25,7 @@ class TranslateNewsJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 660;
+    public int $timeout = 3600;
 
     protected int $id;
 

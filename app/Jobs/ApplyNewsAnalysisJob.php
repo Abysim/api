@@ -100,7 +100,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
             if (empty($model->analysis)) {
                 if ($model->is_auto) {
-                   if ($model->analysis_count < 16) {
+                   if ($model->analysis_count < ($model->platform == 'article' ? 24 : 16)) {
                        AnalyzeNewsJob::dispatch($model->id);
                    } else {
                        if (!$model->is_deep) {
