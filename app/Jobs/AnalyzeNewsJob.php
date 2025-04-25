@@ -224,7 +224,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         }
                     }
 
-                    if ($i > 0 || Str::substr($content, 0, 2) != 'Ні') {
+                    if ($i > 0 || !$model->is_deep && !$isOA || Str::substr($content, 0, 2) != 'Ні') {
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;
