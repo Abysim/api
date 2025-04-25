@@ -21,7 +21,7 @@ class NewsJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 2400;
+    public int $timeout = 3500;
 
     public function __construct(
         private readonly ?bool $load = false,

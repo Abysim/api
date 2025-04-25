@@ -26,6 +26,7 @@ use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use OpenAI\Laravel\Facades\OpenAI;
 use Throwable;
 
 class NewsController extends Controller
@@ -705,7 +706,7 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification $i");
                 $params = [
-                    'model' => $isDeepest ? 'deepseek-ai/DeepSeek-R1' : ($isDeep
+                    'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini' : 'o4-mini') : ($isDeep
                         ? 'deepseek-ai/DeepSeek-V3-0324'
                         : ($i % 2 ? 'qwen/qwen2.5-32b-instruct' : 'Qwen/Qwen2.5-32B-Instruct')
                     ),
@@ -716,15 +717,24 @@ class NewsController extends Controller
                         ],
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
-                    'temperature' => 0,
                 ];
-                if ($i < 2) {
-                    $params['response_format'] = ['type' => 'json_object'];
-                    $params['presence_penalty'] = 2;
-                    $params['provider'] = ['require_parameters' => true];
+                if ($isDeepest && !($i % 2)) {
+                    $params['reasoning_effort'] = 'high';
+                    $classificationResponse = OpenAI::chat()->create($params);
+                } else {
+                    if ($isDeepest) {
+                        $params['provider'] = ['require_parameters' => true];
+                        $params['reasoning'] = ['effort' => 'high'];
+                    } else {
+                        if ($i < 2) {
+                            $params['response_format'] = ['type' => 'json_object'];
+                            $params['presence_penalty'] = 2;
+                            $params['provider'] = ['require_parameters' => true];
+                        }
+                        $params['temperature'] = 0;
+                    }
+                    $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
                 }
-
-                $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
 
                 Log::info(
                     "$model->id: News $term classification $i result: "

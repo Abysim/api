@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Exception\TelegramException;
 use Longman\TelegramBot\Request;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class ApplyNewsAnalysisJob implements ShouldQueue
 {
@@ -51,9 +52,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => Str::length($model->publish_content) > 23000
-                        ? ($i % 2 ? 'google/gemini-2.5-flash-preview' : 'gemini-2.5-flash-preview-04-17')
-                        : ($i % 2 ? 'google/gemini-2.0-flash-001' : 'gemini-2.0-flash'),
+                    'model' => $i % 2 ? 'openai/o4-mini' : 'o4-mini',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -66,17 +65,15 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         ['role' => 'assistant', 'content' => $model->analysis],
                         ['role' => 'user', 'content' => NewsController::getPrompt('editor')],
                     ],
-                    'temperature' => 0,
                 ];
 
                 if ($i % 2) {
+                    $params['provider'] = ['require_parameters' => true];
+                    $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
                 } else {
-                    $response = Http::asJson()
-                        ->withToken(config('services.gemini.api_key'))
-                        ->timeout(config('services.gemini.api_timeout'))
-                        ->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)
-                        ->object();
+                    $params['reasoning_effort'] = 'high';
+                    $response = OpenAI::chat()->create($params);
                 }
 
                 Log::info(
