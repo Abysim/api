@@ -2,6 +2,7 @@
 
 namespace App\Helpers;
 
+use App\Models\AiUsage;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -87,6 +88,10 @@ class FileHelper
                 ];
 
                 $response = OpenAI::chat()->create($params);
+                if ($isDeep && isset($response->usage->totalTokens)) {
+                    AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
+                        ->increment('total_tokens', $response->usage->totalTokens);
+                }
 
                 Log::info($imagePath . ': image description : ' . json_encode($response, JSON_UNESCAPED_UNICODE));
 

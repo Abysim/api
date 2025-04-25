@@ -71,6 +71,10 @@ class TranslateNewsJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->refresh();
+                    $totalTokens = $response->usage->totalTokens ?? $response->usage->total_tokens ?? 0;
+                    if ($totalTokens > $model->max_tokens) {
+                        $model->max_tokens = $totalTokens;
+                    }
                     $content = trim(Str::after($response->choices[0]->message->content, '</think>'), "#* \n\r\t\v\0");
                     [$title, $content] = explode("\n", $content, 2);
                     $model->is_translated = true;

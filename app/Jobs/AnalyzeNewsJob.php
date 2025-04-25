@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\AI;
 use App\Enums\NewsStatus;
 use App\Http\Controllers\NewsController;
+use App\Models\AiUsage;
 use App\Models\News;
 use Exception;
 use Illuminate\Bus\Queueable;
@@ -46,6 +47,29 @@ class AnalyzeNewsJob implements ShouldQueue
         $model->save();
 
         $isOA = $model->platform == 'article' || config('app.is_news_by_openai');
+        if (
+            $isOA
+            && !$model->is_deep
+            && AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])->total_tokens + $model->max_tokens * 2 > 1000000
+        ) {
+            Log::warning("$model->id: News analysis $model->analysis_count: OpenAI token limit exceeded");
+            if ($model->platform == 'article') {
+                $model->status = NewsStatus::PENDING_REVIEW;
+                $model->save();
+
+                Request::sendMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'reply_to_message_id' => $model->message_id,
+                    'text' => 'OpenAI token limit exceeded',
+                    'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                ]);
+
+                return;
+            } else {
+                $isOA = false;
+            }
+        }
+
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
@@ -104,6 +128,8 @@ class AnalyzeNewsJob implements ShouldQueue
                         ->object();
                 } elseif (!$model->is_deep && $isOA && $i <= 1) {
                     $response = OpenAI::chat()->create($params);
+                    AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
+                        ->increment('total_tokens', $response->usage->totalTokens ?? 0);
                 } elseif ($model->is_deep && $i <= 1) {
                     $response = Http::asJson()
                         ->withHeaders([
@@ -225,6 +251,11 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
 
                     if ($i > 0 || !$model->is_deep && !$isOA || Str::substr($content, 0, 2) != 'Ні') {
+                        $totalTokens = $response->usage->totalTokens ?? $response->usage->total_tokens ?? 0;
+                        if ($totalTokens > $model->max_tokens) {
+                            $model->max_tokens = $totalTokens;
+                        }
+
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;

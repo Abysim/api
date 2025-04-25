@@ -45,6 +45,7 @@ use Longman\TelegramBot\Request;
  * @property int $analysis_count
  * @property bool $is_deep
  * @property bool $is_deepest
+ * @property int $max_tokens
  * @property string $publish_title
  * @property string $publish_content
  * @property string $publish_tags
