@@ -52,7 +52,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => $i % 2 ? 'openai/o4-mini' : 'o4-mini',
+                    'model' => $i % 2 ? 'openai/o4-mini-high' : 'o4-mini',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -68,8 +68,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 ];
 
                 if ($i % 2) {
-                    $params['provider'] = ['require_parameters' => true];
-                    $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
                 } else {
                     $params['reasoning_effort'] = 'high';

@@ -706,7 +706,7 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification $i");
                 $params = [
-                    'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini' : 'o4-mini') : ($isDeep
+                    'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
                         ? 'deepseek-ai/DeepSeek-V3-0324'
                         : ($i % 2 ? 'qwen/qwen2.5-32b-instruct' : 'Qwen/Qwen2.5-32B-Instruct')
                     ),
@@ -722,10 +722,7 @@ class NewsController extends Controller
                     $params['reasoning_effort'] = 'high';
                     $classificationResponse = OpenAI::chat()->create($params);
                 } else {
-                    if ($isDeepest) {
-                        $params['provider'] = ['require_parameters' => true];
-                        $params['reasoning'] = ['effort' => 'high'];
-                    } else {
+                    if (!$isDeepest) {
                         if ($i < 2) {
                             $params['response_format'] = ['type' => 'json_object'];
                             $params['presence_penalty'] = 2;
