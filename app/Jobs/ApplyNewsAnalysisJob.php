@@ -59,7 +59,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                             'content' => trim(Str::before(
                                 NewsController::getPrompt('analyzer', $model->platform == 'article'),
                                 '1.'
-                            )),
+                            )) . "\n" . trim(Str::after(Str::afterLast(
+                                    trim(NewsController::getPrompt('analyzer', $model->platform == 'article')),
+                                    "\n"
+                            ), '.')) . ' ' . $model->date->translatedFormat('j F Y'),
                         ],
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content],
                         ['role' => 'assistant', 'content' => $model->analysis],
