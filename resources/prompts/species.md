@@ -64,8 +64,9 @@ Classify wild cat species into JSON using the following rules:
      - For each sentence:
          - Check if it directly mentions or refers to any species from the Allowed Species List, after applying the mapping rules.
          - Include sentences that:
-             - Mention the species by name (including mapped names).
+             - Mention the species by name (including mapped names) or synonym.
              - Describe characteristics or behaviors unique to the species.
+             - Refer to an allowed species animal by nickname or pronoun.
    - Scoring Calculation
      - Per Species:
          - Score = (Number of related sentences for the species) ÷ (Total number of sentences)
@@ -86,13 +87,13 @@ Classify wild cat species into JSON using the following rules:
          - Where the species is mentioned metaphorically or symbolically.
          - In contexts related to fashion, design, landmarks, locations, brands, teams, or idioms.
          - Indicators:
-             - Words like "symbolizes," "represents," "pattern," "print," "motif," etc.
+             - Words like "symbolizes", "represents", "pattern", "print", "motif", etc.
              - Examples: "leopard print dress," "strong as a lion."
    - Non-Real Animal References
      - Exclude mentions in fictional, mythological, or astrological contexts.
    - Supplemental Sections
      - Exclude sentences in sections indicated by words like:
-         - `Note`, `Additionally`, `Moreover`, `Besides`, `Furthermore`
+         - `Note`, `Additionally`, `Moreover`, `Besides`, `Furthermore`, etc.
          - These sentences are not counted in scoring.
 5. Required Output Format
    - JSON Output:
