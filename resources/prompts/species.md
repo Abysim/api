@@ -62,7 +62,7 @@ Classify wild cat species into JSON using the following rules:
      - Split the input text into sentences using standard sentence tokenization.
    - Relevance Check
      - For each sentence:
-         - Check if it directly mentions or refers to any species from the Allowed Species List, after applying the mapping rules.
+         - Check if it about any species from the Allowed Species List, after applying the mapping rules.
          - Include sentences that:
              - Mention the species by name (including mapped names) or synonym.
              - Describe characteristics or behaviors unique to the species.

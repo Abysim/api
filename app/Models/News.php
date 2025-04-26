@@ -105,9 +105,11 @@ class News extends Model
             ? NewsResource::getUrl('edit', ['record' => $this])
             : $this->link;
 
-        $header = $this->date->format('d.m.Y') . ': ' . $this->publish_title . "\n\n";
+        $header = ($this->platform == 'article' ? '' : $this->date->format('d.m.Y') . ': ') . $this->publish_title . "\n\n";
 
-        $footer = "\n\n#новини " . $this->publish_tags . "\n\n" . $link;
+        $footer = "\n\n";
+        $footer .= $this->platform == 'article' ? '#стаття' : '#новини';
+        $footer .= ' ' . $this->publish_tags . "\n\n" . $link;
 
         $remainingLength = 1024 - Str::length($header) - Str::length($footer);
 
