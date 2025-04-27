@@ -462,7 +462,7 @@ class NewsController extends Controller
                     || $model->status == NewsStatus::BEING_PROCESSED
                 ) {
                     if (!isset($model->classification['country'])) {
-                        $this->classifyNews($model, 'country');
+                        $this->classifyNews($model, 'country', true, true);
                     }
 
                     if (
@@ -470,7 +470,7 @@ class NewsController extends Controller
                         && $model->classification['country']['UA'] >= 0.7
                         && !isset($model->classification['region'])
                     ) {
-                        $this->classifyNews($model, 'region');
+                        $this->classifyNews($model, 'region', true, true);
                     }
 
                     $model->loadMediaFile();
