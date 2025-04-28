@@ -61,12 +61,17 @@ Classify wild cat species into JSON using the following rules:
    - Sentence Segmentation
      - Split the input text into sentences using standard sentence tokenization.
    - Relevance Check
-     - For each sentence:
-         - Check if it about any species from the Allowed Species List, after applying the mapping rules.
-         - Include sentences that:
-             - Mention the species by name (including mapped names) or synonym.
-             - Describe characteristics or behaviors unique to the species.
-             - Refer to an allowed species animal by nickname or pronoun.
+     - For each sentence, decide if it is about an allowed species (after applying all mapping rules).  
+     - Count a sentence as “relevant” to species X if it meets any of the following:
+       - It explicitly names species X (or a mapped synonym, regional name, subspecies, scientific binomial).
+       - It describes a behavior, trait, habitat, health condition, or conservation issue unique to species X.
+       - It refers back to species X by any of:  
+          – Pronouns: it, they, she, he, them, their, etc.  
+          – Proper names or nicknames that have been introduced (e.g. “Nala”, “Sher Khan”, "F-22", etc.).  
+          – Descriptive epithets tied to the group or individual (e.g. “the three cubs”, “the pair”, “the big cat”, “the melanistic individual”, etc.).  
+     - Coreference & Name Resolution  
+          – Once you have identified a first mention of an individual or group as species X, every subsequent sentence that unambiguously refers to that same entity—via pronouns, given names, or linked descriptions—also counts toward species X.  
+          – If a sentence contains multiple pronouns or names, but it is clear they refer to different species, split the counts accordingly.
    - Scoring Calculation
      - Per Species:
          - Score = (Number of related sentences for the species) ÷ (Total number of sentences)
@@ -85,12 +90,13 @@ Classify wild cat species into JSON using the following rules:
    - Metaphorical and Symbolic Usage
      - Do Not Include Sentences:
          - Where the species is mentioned metaphorically or symbolically.
-         - In contexts related to fashion, design, landmarks, locations, brands, teams, or idioms.
+         - In contexts related to fashion, design, costumes, masks, paintings, landmarks, locations, brands, teams, or idioms.
          - Indicators:
              - Words like "symbolizes", "represents", "pattern", "print", "motif", etc.
-             - Examples: "leopard print dress," "strong as a lion."
+             - Examples: "leopard print dress", "strong as a lion", "dressed like jaguars", etc.
    - Non-Real Animal References
-     - Exclude mentions in fictional, mythological, or astrological contexts.
+     - Exclude mentions in fictional, mythological, ritual, ceremonial or astrological contexts.
+     - Exclude any mention of humans dressing up as, impersonating, or wearing the likeness of a wild cat.
    - Supplemental Sections
      - Exclude sentences in sections indicated by words like:
          - `Note`, `Additionally`, `Moreover`, `Besides`, `Furthermore`, etc.
