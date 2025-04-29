@@ -707,8 +707,8 @@ class NewsController extends Controller
                 Log::info("$model->id: News $term classification $i");
                 $params = [
                     'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
-                        ? 'deepseek-ai/DeepSeek-V3-0324'
-                        : ($i % 2 ? 'qwen/qwen2.5-32b-instruct' : 'Qwen/Qwen2.5-32B-Instruct')
+                        ? ($i % 2 ? 'openai/gpt-4.1-mini' : 'gpt-4.1-mini')
+                        : ($i % 2 ? 'openai/gpt-4.1-nano' : 'Qwen/Qwen2.5-32B-Instruct')
                     ),
                     'messages' => [
                         [
@@ -718,17 +718,23 @@ class NewsController extends Controller
                         ['role' => 'user', 'content' => $model->title . "\n\n" . $model->content]
                     ],
                 ];
-                if ($isDeepest && !($i % 2)) {
-                    $params['reasoning_effort'] = 'high';
+                if ($i < 2) {
+                    $params['response_format'] = ['type' => 'json_object'];
+                }
+                if (!$isDeepest) {
+                    $params['temperature'] = 0;
+                }
+                if ($isDeep && !($i % 2)) {
+                    if ($isDeepest) {
+                        $params['reasoning_effort'] = 'high';
+                    }
                     $classificationResponse = OpenAI::chat()->create($params);
                 } else {
-                    if (!$isDeepest) {
-                        if ($i < 2) {
-                            $params['response_format'] = ['type' => 'json_object'];
+                    if ($i < 2) {
+                        if (!$isDeep) {
                             $params['presence_penalty'] = 2;
-                            $params['provider'] = ['require_parameters' => true];
                         }
-                        $params['temperature'] = 0;
+                        $params['provider'] = ['require_parameters' => true];
                     }
                     $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
                 }
