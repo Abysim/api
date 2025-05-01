@@ -200,7 +200,8 @@ class News extends Model
                 $thirdLine[] = $reset;
             }
             $thirdLine[] = [
-                'text' => '🔄' . $this->analysis_count,
+                'text' => '🔄' . $this->analysis_count . ' '
+                    . AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])->total_tokens,
                 'callback_data' => 'news_counter ' . $this->id
             ];
             $thirdLine[] = [
