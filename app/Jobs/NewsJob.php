@@ -1,7 +1,4 @@
 <?php
-/**
- * @author Andrii Kalmus <andrii.kalmus@abysim.com>
- */
 
 namespace App\Jobs;
 
@@ -26,7 +23,8 @@ class NewsJob implements ShouldQueue
     public function __construct(
         private readonly ?bool $load = false,
         private readonly ?bool $force = false,
-        private readonly ?string $lang = null
+        private readonly ?string $lang = null,
+        private readonly ?bool $publish = true
     ) {}
 
     /**
@@ -35,7 +33,12 @@ class NewsJob implements ShouldQueue
     public function handle(): void
     {
         $controller = app(NewsController::class);
-        $controller->process($this->load ?? false, $this->force ?? false, $this->lang ?? null);
+        $controller->process(
+            $this->load ?? false,
+                $this->force ?? false,
+                $this->lang ?? null,
+                $this->publish ?? true
+        );
     }
 
     public function failed(Throwable $exception): void

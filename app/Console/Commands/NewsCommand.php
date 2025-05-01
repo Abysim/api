@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\NewsController;
+use Exception;
 use Illuminate\Console\Command;
 
 class NewsCommand extends Command
@@ -12,7 +13,7 @@ class NewsCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'news {load?} {force?} {lang?}';
+    protected $signature = 'news {load?} {force?} {lang?} {publish?}';
 
     /**
      * The console command description.
@@ -23,10 +24,16 @@ class NewsCommand extends Command
 
     /**
      * Execute the console command.
+     * @throws Exception
      */
-    public function handle()
+    public function handle(): void
     {
         $controller = app(NewsController::class);
-        $controller->process($this->argument('load') ?? true, $this->argument('force'), $this->argument('lang'));
+        $controller->process(
+            $this->argument('load') ?? true,
+            $this->argument('force'),
+            $this->argument('lang'),
+            $this->argument('publish')
+        );
     }
 }

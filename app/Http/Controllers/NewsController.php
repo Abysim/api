@@ -59,10 +59,12 @@ class NewsController extends Controller
     /**
      * @throws Exception
      */
-    public function process($load = true, $force = false, $lang = null): void
+    public function process($load = true, $force = false, $lang = null, $publish = true): void
     {
         Log::info('Processing news ' . $lang);
-        $this->publish();
+        if ($publish) {
+            $this->publish();
+        }
 
         $models = [];
         if ($force || (
@@ -85,10 +87,10 @@ class NewsController extends Controller
             $count = count($models);
             $this->processNews($models);
             if ($count == 1000) {
-                NewsJob::dispatch(false);
+                NewsJob::dispatch(publish: false);
             }
         } else {
-            NewsJob::dispatch(false);
+            NewsJob::dispatch(publish: false);
         }
 
         $this->deleteNewsFiles();
