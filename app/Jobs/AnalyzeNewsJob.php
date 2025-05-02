@@ -233,6 +233,13 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                 } else {
                     $response = AI::client('openrouter')->chat()->create($params);
+                    if ($isOA && !$model->is_deep) {
+                        AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
+                            ->increment(
+                                'total_tokens',
+                                $response->usage->totalTokens ?? $response->usage->total_tokens ??  0
+                            );
+                    }
                 }
 
                 Log::info(
