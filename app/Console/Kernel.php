@@ -12,6 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->command('telegram:fetch')->withoutOverlapping()->runInBackground()->everyMinute();
         $schedule->command('flickr-photo')->withoutOverlapping()->runInBackground()->hourly();
         $schedule->command('queue:work --max-time=180')->everyMinute();
     }
