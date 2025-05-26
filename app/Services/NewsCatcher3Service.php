@@ -33,7 +33,7 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
     public function __construct()
     {
         parent::__construct();
-        $this->request = Http::withHeader('x-api-token', config('services.newscatcher3.key'));
+        $this->request = Http::withHeader('x-api-token', config('services.newscatcher3.key'))->timeout(300);
     }
 
     public function getNews(string $query, ?string $lang = null): array
