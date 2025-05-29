@@ -26,7 +26,8 @@
         "phrity/websocket": "^3.0",
         "saade/filament-laravel-log": "^3.0",
         "stechstudio/laravel-jwt": "^2.3",
-        "steppinghat/emoji-detector": "^1.5"
+        "steppinghat/emoji-detector": "^1.5",
+        "ext-pcntl": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
