@@ -381,7 +381,8 @@ class FlickrPhotoController extends Controller
     {
         $errorMessage = null;
 
-        if (!in_array($this->loadPhotoLicense($model), self::LICENSES)) {
+        $license = $this->loadPhotoLicense($model);
+        if (!in_array($license, self::LICENSES) && !isset(self::LICENSES[$license])) {
             $errorMessage = 'The author removed the photo from the publication!';
             $model->status = FlickrPhotoStatus::REMOVED_BY_AUTHOR;
             $model->save();
