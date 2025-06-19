@@ -77,7 +77,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-4-sonnet:thinking' : 'claude-sonnet-4-20250514')
                         : ($i > 1
-                            ? ($isOA ? 'openai/o3' : 'gemini-2.5-pro-preview-03-25')
+                            ? ($isOA ? 'openai/o3' : 'gemini-2.5-pro-preview-06-05')
                             : ($isOA ? 'o3' : 'gemini-2.5-pro-exp-03-25')
                         ),
                 ];
