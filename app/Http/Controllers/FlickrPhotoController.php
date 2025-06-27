@@ -650,7 +650,7 @@ class FlickrPhotoController extends Controller
 
             if ($byText) {
                 $searchData['text'] = key(array_slice(self::TAGS, $i, 1));
-                $searchData['min_upload_date'] = now()->subDays(8)->timestamp;
+                $searchData['min_upload_date'] = now()->subDays(32)->timestamp;
             } else {
                 // Flickr limits search request by 20 tags
                 $tags = array_keys(array_slice(self::TAGS, $i * 20, 20));
