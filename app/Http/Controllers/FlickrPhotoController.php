@@ -121,12 +121,18 @@ class FlickrPhotoController extends Controller
         1 => 'Attribution-NonCommercial-ShareAlike License',
         2 => 'Attribution-NonCommercial License',
         3 => 'Attribution-NonCommercial-NoDerivs License',
-        4 => 'Attribution License',
+        4 => 'CC BY 2.0',
         5 => 'Attribution-ShareAlike License',
         6 => 'Attribution-NoDerivs License',
         7 => 'No known copyright restrictions',
         9 => 'Public Domain Dedication (CC0)',
         10 => 'Public Domain Mark',
+        11 => 'CC BY 4.0',
+        12 => 'CC BY-SA 4.0',
+        13 => 'CC BY-ND 4.0',
+        14 => 'CC BY-NC 4.0',
+        15 => 'CC BY-NC-SA 4.0',
+        16 => 'CC BY-NC-ND 4.0',
     ];
 
     private const LOAD_TIME = '16:00:00';
@@ -1073,5 +1079,47 @@ class FlickrPhotoController extends Controller
             ),
             'show_alert' => true,
         ];
+    }
+
+    public function copyright()
+    {
+        Log::info('Started copyright deletion');
+        $models = FlickrPhoto::where('created_at', '>',  now()->subDay()->toDateTimeString())
+            ->whereIn('status', [
+                FlickrPhotoStatus::CREATED,
+                FlickrPhotoStatus::PENDING_REVIEW,
+                FlickrPhotoStatus::REJECTED_BY_CLASSIFICATION,
+            ]);
+        Log::info('Models count: ' . $models->count());
+
+        foreach ($models->get() as $model) {
+            if ($model->status == FlickrPhotoStatus::REJECTED_BY_CLASSIFICATION && !empty($model->message_id)) {
+                $response = Request::deleteMessage([
+                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                    'message_id' => $model->message_id,
+                ]);
+                if ($response->isOk()) {
+                    Log::info($model->id . ': Copyright message deleted: ' . $model->message_id);
+                }
+
+                $model->message_id = null;
+                $model->save();
+            } else {
+                $errorMessage = $this->checkLicense($model);
+
+                if (!empty($errorMessage) && !empty($model->message_id)) {
+                    $response = Request::deleteMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'message_id' => $model->message_id,
+                    ]);
+                    if ($response->isOk()) {
+                        Log::info($model->id . ': Copyright message deleted: ' . $model->message_id);
+                    }
+
+                    $model->message_id = null;
+                    $model->save();
+                }
+            }
+        }
     }
 }
