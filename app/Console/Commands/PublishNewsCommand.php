@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Log;
 
 class PublishNewsCommand extends Command
 {
-    protected $signature = 'publish:news';
+    protected $signature = 'publish:news {days?}';
 
-    protected $description = 'Publish unpublished new to the website';
+    protected $description = 'Publish unpublished news to the website';
 
     /**
      * @throws Exception
@@ -25,6 +25,7 @@ class PublishNewsCommand extends Command
     {
         $news = News::query()
             ->where('status', NewsStatus::PUBLISHED)
+            ->where('published_at', '>=', now()->subDays($this->argument('days') ?? 7))
             ->whereNull('published_url')
             ->orderBy('published_at')
             ->get();
