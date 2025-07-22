@@ -39,6 +39,10 @@ class GenericmessageCommand extends SystemCommand
     public function execute(): ServerResponse
     {
         $message = $this->getMessage();
+        if (empty($message)) {
+            return Request::emptyResponse();
+        }
+
         if ($message->getType()  == 'photo') {
             $text = $message->getCaption();
             $photoUrl = FileHelper::getTelegramPhotoUrl($message->getPhoto());
