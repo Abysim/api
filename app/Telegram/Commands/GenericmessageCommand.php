@@ -125,7 +125,11 @@ class GenericmessageCommand extends SystemCommand
                     'message_id' => $telegramReplyMessageId,
                 ]);
             }
-            Cache::put('telegramReplyMessageId', $response->getResult()->getMessageId());
+            if ($response->getResult()) {
+                Cache::put('telegramReplyMessageId', $response->getResult()->getMessageId());
+            } else {
+                Log::error('Failed to send reply message: ' . json_encode($response));
+            }
         }
 
         return Request::emptyResponse();
