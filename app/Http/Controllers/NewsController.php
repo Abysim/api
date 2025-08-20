@@ -79,7 +79,6 @@ class NewsController extends Controller
         if (empty($models)) {
             foreach (News::whereIn('status', [
                 NewsStatus::CREATED,
-                NewsStatus::PENDING_REVIEW,
             ])->limit(1000)->get() as $model) {
                 $models[$model->id] = $model;
             }
@@ -428,10 +427,9 @@ class NewsController extends Controller
             if (
                 empty($model->status)
                 || $model->status == NewsStatus::CREATED
-                || $model->status == NewsStatus::PENDING_REVIEW
             ) {
-                //$model->status = NewsStatus::BEING_PROCESSED;
-                //$model->save();
+                $model->status = NewsStatus::BEING_PROCESSED;
+                $model->save();
 
                 if (!isset($model->classification['species'])) {
                     $this->classifyNews($model, 'species');
@@ -493,14 +491,14 @@ class NewsController extends Controller
                     }
                 }
 
-                //if ($model->status == NewsStatus::BEING_PROCESSED) {
-                //    if (empty($model->message_id)) {
-                //        $model->status = NewsStatus::CREATED;
-                //    } else {
-                //        $model->status = NewsStatus::PENDING_REVIEW;
-                //    }
-                //    $model->save();
-                //}
+                if ($model->status == NewsStatus::BEING_PROCESSED) {
+                    if (empty($model->message_id)) {
+                        $model->status = NewsStatus::CREATED;
+                    } else {
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                    }
+                    $model->save();
+                }
             }
 
             unset($models[$modelIndex]);
