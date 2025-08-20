@@ -16,4 +16,5 @@ enum NewsStatus: int
     case REJECTED_AS_OFF_TOPIC = 9;
     case BEING_PROCESSED = 10;
     case REJECTED_BY_DEEPEST_AI = 11;
+    case FAILED = 12;
 }

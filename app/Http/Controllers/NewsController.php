@@ -538,7 +538,7 @@ class NewsController extends Controller
             $model->status = NewsStatus::PENDING_REVIEW;
             $model->save();
         } else {
-            $model->status = NewsStatus::CREATED;
+            $model->status = NewsStatus::FAILED;
             $model->save();
             Log::error("$model->id: News not sent to review: " . $telegramResult->getDescription() . ' ' . $model->getFileUrl());
         }
