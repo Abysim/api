@@ -95,8 +95,8 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
 
-                    $params['max_tokens'] = 64000;
-                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 60000];
+                    $params['max_tokens'] = 128000;
+                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 100000];
                 } else {
                     $params['messages'] = [
                         [
@@ -108,7 +108,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     ];
 
                     if ($model->is_deep || $i > 1 && $isOA) {
-                        $params['max_tokens'] = 64000;
+                        $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
                         $params['reasoning'] = ['effort' => 'high'];
                     } elseif ($isOA) {
@@ -131,6 +131,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         ->withHeaders([
                             'x-api-key' => config('services.anthropic.api_key'),
                             'anthropic-version' => '2023-06-01',
+                            'anthropic-beta' => 'output-128k-2025-02-19',
                         ])
                         ->timeout(config('services.anthropic.api_timeout'))
                         ->post(
