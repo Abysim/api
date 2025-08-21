@@ -70,7 +70,7 @@ class FileHelper
         for ($i = 0; $i < 4; $i++) {
             try {
                 $params = [
-                    'model' => $isDeep ? 'gpt-4.1' : 'gpt-4.1-mini',
+                    'model' => $isDeep ? 'gpt-5' : 'gpt-5-mini',
                     'messages' => [
                         ['role' => 'user', 'content' => [
                             [
