@@ -957,12 +957,12 @@ class FlickrPhotoController extends Controller
      *
      * @return void
      */
-    private function sendPhotoToReview(FlickrPhoto $model): void
+    private function sendPhotoToReview(FlickrPhoto $model, $isRetry = false): void
     {
         $telegramResult = Request::sendPhoto([
             'chat_id' => explode(',', config('telegram.admins'))[0],
             'caption' => $model->getCaption(),
-            'photo' => $model->getFileUrl(),
+            'photo' => $model->getFileUrl() . ($isRetry ? '?t=' . time() : ''),
             'reply_markup' => $model->getInlineKeyboard(),
         ]);
 
@@ -970,6 +970,11 @@ class FlickrPhotoController extends Controller
             $model->message_id = $telegramResult->getResult()->getMessageId();
             $model->status = FlickrPhotoStatus::PENDING_REVIEW;
             $model->save();
+        } else {
+            Log::error($model->id . ': Send to review failed! ' . $telegramResult->getDescription());
+            if (!$isRetry) {
+                $this->sendPhotoToReview($model, true);
+            }
         }
     }
 
