@@ -874,21 +874,27 @@ class FlickrPhotoController extends Controller
         ) {
             $title = $model->description;
         }
+        $this->translateText($model, $title);
+        if (empty($model->publish_title)) {
+            $model->publish_title = Str::ucfirst(trim(explode(' ', $model->publish_tags)[0], '#'));
+            $model->save();
+        }
+    }
 
+    /**
+     * Translate the given text to Ukrainian and update the model's publish_title
+     */
+    public function translateText(FlickrPhoto $model, string $sourceText): void
+    {
         try {
             $translator = new Translator(config('deepl.key'));
             $model->publish_title = trim(
-                (string)$translator->translateText($title, null, 'uk'),
+                (string)$translator->translateText($sourceText, null, 'uk'),
                 ".\n\r\t\v\0"
             );
             $model->save();
         } catch (Exception $e) {
-            Log::error($model->id . ': Translation of ' . $model->title .  ' failed: ' . $e->getMessage());
-        }
-
-        if (empty($model->publish_title)) {
-            $model->publish_title = Str::ucfirst(trim(explode(' ', $model->publish_tags)[0], '#'));
-            $model->save();
+            Log::error($model->id . ': Translation of publish_title failed: ' . $e->getMessage());
         }
     }
 
@@ -980,11 +986,11 @@ class FlickrPhotoController extends Controller
 
     /**
      * @param FlickrPhoto $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function approve(FlickrPhoto $model, Message $message): void
+    public function approve(FlickrPhoto $model, ?Message $message = null): void
     {
         $model->status = FlickrPhotoStatus::APPROVED;
         $model->save();
@@ -993,22 +999,30 @@ class FlickrPhotoController extends Controller
             $this->loadPhotoFile($model);
         }
 
-        Request::editMessageReplyMarkup([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-            'reply_markup' => new InlineKeyboard([
-                ['text' => '❌Cancel Approval', 'callback_data' => 'flickr_cancel ' . $model->id],
-            ]),
-        ]);
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            Request::editMessageReplyMarkup([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => new InlineKeyboard([
+                    [
+                        'text' => '❌Cancel Approval',
+                        'callback_data' => 'flickr_cancel ' . $model->id,
+                    ],
+                ]),
+            ]);
+        }
     }
 
     /**
      * @param FlickrPhoto $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function decline(FlickrPhoto $model, Message $message): void
+    public function decline(FlickrPhoto $model, ?Message $message = null): void
     {
         $model->status = FlickrPhotoStatus::REJECTED_MANUALLY;
         $model->save();
@@ -1018,18 +1032,23 @@ class FlickrPhotoController extends Controller
 
     /**
      * @param FlickrPhoto $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function delete(FlickrPhoto $model, Message $message): void
+    public function delete(FlickrPhoto $model, ?Message $message = null): void
     {
         $model->deleteFile();
 
-        Request::deleteMessage([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-        ]);
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            Request::deleteMessage([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+            ]);
+        }
     }
 
     /**
@@ -1052,19 +1071,24 @@ class FlickrPhotoController extends Controller
 
     /**
      * @param FlickrPhoto $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function review(FlickrPhoto $model, Message $message): void
+    public function review(FlickrPhoto $model, ?Message $message = null): void
     {
         $model->status = FlickrPhotoStatus::PENDING_REVIEW;
         $model->save();
 
-        Request::deleteMessage([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-        ]);
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            Request::deleteMessage([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+            ]);
+        }
 
         $this->processPhotos([$model]);
     }
