@@ -1,6 +1,5 @@
 <datalist id="flickr-tags-datalist">
-    @foreach($allTags as $tag)
-        <option value="{{ $tag }}">{{ $tag }}</option>
-    @endforeach
+@foreach($allTags as $tag)
+<option value="{{ $tag }}">
+@endforeach
 </datalist>
-

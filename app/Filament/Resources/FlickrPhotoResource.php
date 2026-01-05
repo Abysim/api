@@ -6,8 +6,6 @@ use App\Enums\FlickrPhotoStatus;
 use App\Filament\Resources\FlickrPhotoResource\Pages;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Models\FlickrPhoto;
-use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -21,66 +19,59 @@ class FlickrPhotoResource extends Resource
 
     protected static ?string $navigationLabel = 'Flickr Photos';
 
+    private const THUMBNAIL_WIDTH = 80;
+    private const THUMBNAIL_HEIGHT = 60;
+    private const COLLAPSE_DELAY_MS = 50;
+
+    private const EXPANDED_STYLES = [
+        'position' => 'fixed',
+        'left' => '0',
+        'top' => '0',
+        'right' => '0',
+        'bottom' => '0',
+        'margin' => 'auto',
+        'zIndex' => '99999',
+        'background' => 'white',
+        'boxShadow' => '0 4px 16px rgba(0,0,0,0.2)',
+        'width' => 'auto',
+        'height' => 'auto',
+        'maxWidth' => 'calc(100vw - 32px)',
+        'maxHeight' => 'calc(100vh - 32px)',
+        'objectFit' => 'contain',
+    ];
+
+    private const COLLAPSED_STYLES = [
+        'position' => 'static',
+        'left' => '',
+        'top' => '',
+        'right' => '',
+        'bottom' => '',
+        'margin' => '',
+        'zIndex' => 'auto',
+        'background' => 'none',
+        'boxShadow' => 'none',
+        'maxWidth' => 'none',
+        'maxHeight' => 'none',
+        'objectFit' => 'cover',
+    ];
+
     public static function table(Table $table): Table
     {
-        // Use unique values from FlickrPhotoController::TAGS without additional processing
         $allTags = array_unique(array_values(FlickrPhotoController::TAGS));
+
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('source_url')
                     ->label('Preview')
-                    ->width(80)
-                    ->height(60)
+                    ->width(self::THUMBNAIL_WIDTH)
+                    ->height(self::THUMBNAIL_HEIGHT)
                     ->extraImgAttributes(fn (FlickrPhoto $record): array => [
                         'title' => $record->title,
                         'loading' => 'lazy',
-                        'class' => 'w-20 h-15 object-fill transition-all cursor-pointer',
-                        'onmouseover' =>
-                            "this.style.position='fixed';".
-                            "this.style.left='0';".
-                            "this.style.top='0';".
-                            "this.style.right='0';".
-                            "this.style.bottom='0';".
-                            "this.style.margin='auto';".
-                            "this.style.zIndex='1000';".
-                            "this.style.background='white';".
-                            "this.style.boxShadow='0 4px 16px rgba(0,0,0,0.2)';".
-                            "this.style.width='auto';".
-                            "this.style.height='auto';".
-                            "this.style.maxWidth='calc(100vw - 32px)';".
-                            "this.style.maxHeight='calc(100vh - 32px)';",
-                        'onmouseout' =>
-                            "this.style.position='static';".
-                            "this.style.left='';".
-                            "this.style.top='';".
-                            "this.style.right='';".
-                            "this.style.bottom='';".
-                            "this.style.margin='';".
-                            "this.style.zIndex='auto';".
-                            "this.style.background='none';".
-                            "this.style.boxShadow='none';".
-                            "this.style.width='80px';".
-                            "this.style.height='60px';".
-                            "this.style.maxWidth='none';".
-                            "this.style.maxHeight='none';",
-                        'onclick' =>
-                            "if(this.style.position==='fixed'){event.preventDefault();event.stopPropagation();".
-                            "this.style.position='static';".
-                            "this.style.left='';".
-                            "this.style.top='';".
-                            "this.style.right='';".
-                            "this.style.bottom='';".
-                            "this.style.margin='';".
-                            "this.style.zIndex='auto';".
-                            "this.style.background='none';".
-                            "this.style.boxShadow='none';".
-                            "this.style.width='80px';".
-                            "this.style.height='60px';".
-                            "this.style.maxWidth='none';".
-                            "this.style.maxHeight='none';".
-                            // programmatically trigger mouseout to ensure state is reset
-                            "if(typeof Event==='function'){var e=new Event('mouseout',{bubbles:true});this.dispatchEvent(e);}else if(document.createEvent){var e=document.createEvent('Event');e.initEvent('mouseout',true,true);this.dispatchEvent(e);}".
-                            "}",
+                        'class' => 'object-cover transition-all cursor-pointer',
+                        'onmouseover' => self::buildExpandScript(),
+                        'onmouseout' => self::buildCollapseScript(),
+                        'onclick' => self::buildClickScript(),
                     ]),
                 Tables\Columns\TextInputColumn::make('publish_title')
                     ->label('Title')
@@ -119,7 +110,6 @@ class FlickrPhotoResource extends Resource
                     ->dateTime('d.m.Y H:i')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-
                 Tables\Columns\ViewColumn::make('review_actions')
                     ->label('')
                     ->disabledClick()
@@ -131,7 +121,7 @@ class FlickrPhotoResource extends Resource
                     ->options(FlickrPhotoStatus::class)
                     ->default(FlickrPhotoStatus::PENDING_REVIEW->value),
             ])
-            ->recordUrl(fn($record) => $record->url, true)
+            ->recordUrl(fn (FlickrPhoto $record): string => $record->url, true)
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('approve')
@@ -146,10 +136,10 @@ class FlickrPhotoResource extends Resource
                             }
                         })
                         ->deselectRecordsAfterCompletion()
-                        ->visible(function (Tables\Contracts\HasTable $livewire): bool {
-                            return ($livewire->getTableFilterState('status')['value'] ?? null)
-                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value;
-                        }),
+                        ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                            ($livewire->getTableFilterState('status')['value'] ?? null)
+                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                        ),
                     Tables\Actions\BulkAction::make('decline')
                         ->label('Decline')
                         ->icon('heroicon-o-x-circle')
@@ -162,20 +152,55 @@ class FlickrPhotoResource extends Resource
                             }
                         })
                         ->deselectRecordsAfterCompletion()
-                        ->visible(function (Tables\Contracts\HasTable $livewire): bool {
-                            return ($livewire->getTableFilterState('status')['value'] ?? null)
-                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value;
-                        }),
+                        ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                            ($livewire->getTableFilterState('status')['value'] ?? null)
+                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                        ),
                 ]),
             ])
-            ->contentFooter(view('filament.tables.partials.flickr-tags-datalist', ['allTags' => $allTags]));
+;
+    }
+
+    private static function buildStyleAssignments(array $styles, string $target = 'this'): string
+    {
+        $assignments = [];
+        foreach ($styles as $property => $value) {
+            $assignments[] = "{$target}.style.{$property}='{$value}'";
+        }
+
+        return implode(';', $assignments);
+    }
+
+    private static function getCollapsedStyles(): array
+    {
+        return array_merge(self::COLLAPSED_STYLES, [
+            'width' => self::THUMBNAIL_WIDTH . 'px',
+            'height' => self::THUMBNAIL_HEIGHT . 'px',
+        ]);
+    }
+
+    private static function buildExpandScript(): string
+    {
+        return 'clearTimeout(this.collapseTimer);' . self::buildStyleAssignments(self::EXPANDED_STYLES);
+    }
+
+    private static function buildCollapseScript(): string
+    {
+        $styles = self::buildStyleAssignments(self::getCollapsedStyles(), 'el');
+
+        return "var el=this;clearTimeout(el.collapseTimer);el.collapseTimer=setTimeout(function(){{$styles}}," . self::COLLAPSE_DELAY_MS . ")";
+    }
+
+    private static function buildClickScript(): string
+    {
+        $styles = self::buildStyleAssignments(self::getCollapsedStyles());
+
+        return "if(this.style.position==='fixed'){event.preventDefault();event.stopPropagation();clearTimeout(this.collapseTimer);{$styles}}";
     }
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array

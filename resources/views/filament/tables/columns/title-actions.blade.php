@@ -1,22 +1,18 @@
-<div style="display: flex; gap: 4px; align-items: center;">
-    <x-filament::button
-        tabindex="0"
+<div class="flex gap-1 items-center">
+    <button
+        type="button"
         wire:click="translateTitleRecord('{{ $getRecord()->getKey() }}')"
-        size="sm"
-        color="primary"
         title="Translate title to Ukrainian"
-        style="padding:0 6px;font-size:18px;line-height:1;min-width:unset;min-height:unset;background:none;border:none;box-shadow:none;"
+        class="p-0 m-0 border-0 bg-transparent text-base leading-none cursor-pointer hover:opacity-70 transition-opacity"
     >
         🌐
-    </x-filament::button>
-    <x-filament::button
-        tabindex="0"
+    </button>
+    <button
+        type="button"
         wire:click="resetTitleRecord('{{ $getRecord()->getKey() }}')"
-        size="sm"
-        color="secondary"
         title="Reset title to original"
-        style="padding:0 6px;font-size:18px;line-height:1;min-width:unset;min-height:unset;background:none;border:none;box-shadow:none;"
+        class="p-0 m-0 border-0 bg-transparent text-base leading-none cursor-pointer hover:opacity-70 transition-opacity"
     >
         🔄
-    </x-filament::button>
+    </button>
 </div>

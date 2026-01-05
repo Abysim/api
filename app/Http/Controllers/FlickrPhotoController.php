@@ -30,6 +30,7 @@ use Longman\TelegramBot\Request;
 class FlickrPhotoController extends Controller
 {
     private const TEXT_TAGS_COUNT = 12;
+    private const TITLE_TRIM_CHARS = ".\n\r\t\v\0";
 
     public const TAGS = [
         'lion' => '#лев',
@@ -890,7 +891,7 @@ class FlickrPhotoController extends Controller
             $translator = new Translator(config('deepl.key'));
             $model->publish_title = trim(
                 (string)$translator->translateText($sourceText, null, 'uk'),
-                ".\n\r\t\v\0"
+                self::TITLE_TRIM_CHARS
             );
             $model->save();
         } catch (Exception $e) {
