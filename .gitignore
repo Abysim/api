@@ -1,8 +1,11 @@
 /.phpunit.cache
 /node_modules
 /public/build
+/public/css
 /public/hot
+/public/js
 /public/storage
+/public/error_log
 /storage/*.key
 /storage/app/public/telegram
 /vendor
@@ -20,3 +23,4 @@ yarn-error.log
 /.vscode
 .ftpquota
 .claude
+.omc

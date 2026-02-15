@@ -106,3 +106,4 @@ Classify wild cat species into JSON using the following rules:
        - Provide the classification as a JSON object.
        - Format Example: `{"[species]": [score], ...}`
        - Only include species from the Allowed Species List.
+       - Exclude species with a score equal to 0 or 0.00
