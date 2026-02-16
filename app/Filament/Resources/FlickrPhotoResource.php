@@ -6,11 +6,13 @@ use App\Enums\FlickrPhotoStatus;
 use App\Filament\Resources\FlickrPhotoResource\Pages;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Models\FlickrPhoto;
+use Filament\Forms\Components\TextInput as FormTextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class FlickrPhotoResource extends Resource
 {
@@ -23,6 +25,8 @@ class FlickrPhotoResource extends Resource
     private const THUMBNAIL_WIDTH = 80;
     private const THUMBNAIL_HEIGHT = 60;
     private const COLLAPSE_DELAY_MS = 50;
+    private const MAX_TITLE_LENGTH = 255;
+    private const MAX_SEARCH_LENGTH = 100;
 
     private const EXPANDED_STYLES = [
         'position' => 'fixed',
@@ -74,11 +78,12 @@ class FlickrPhotoResource extends Resource
                     ]),
                 Tables\Columns\TextInputColumn::make('publish_title')
                     ->label('Title')
-                    ->rules(['max:255'])
+                    ->rules(['max:' . self::MAX_TITLE_LENGTH])
                     ->extraInputAttributes(fn (FlickrPhoto $record): array => [
                         'title' => $record->title,
                         'class' => 'w-full',
                     ])
+                    ->searchable()
                     ->grow(),
                 Tables\Columns\ViewColumn::make('title_actions')
                     ->label('')
@@ -86,7 +91,8 @@ class FlickrPhotoResource extends Resource
                     ->view('filament.tables.columns.title-actions'),
                 Tables\Columns\TextInputColumn::make('publish_tags')
                     ->label('Tags')
-                    ->rules(['max:255'])
+                    ->rules(['max:' . self::MAX_TITLE_LENGTH])
+                    ->searchable()
                     ->extraInputAttributes(fn (FlickrPhoto $record): array => [
                         'title' => implode(', ', $record->tags ?? []),
                         'class' => 'max-w-xs',
@@ -94,7 +100,9 @@ class FlickrPhotoResource extends Resource
                     ]),
                 Tables\Columns\TextColumn::make('owner_username')
                     ->label('Author')
-                    ->searchable(),
+                    ->searchable()
+                    ->copyable()
+                    ->copyMessage('Copied!'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (FlickrPhotoStatus $state): string => match ($state) {
@@ -170,6 +178,94 @@ class FlickrPhotoResource extends Resource
                         Notification::make()
                             ->title($success > 0 ? "Tag added to {$success} title(s)" : 'No tags available')
                             ->{$success > 0 ? 'success' : 'danger'}()
+                            ->send();
+                    })
+                    ->deselectRecordsAfterCompletion(),
+                Tables\Actions\BulkAction::make('findAndReplace')
+                    ->label('Find & Replace')
+                    ->icon('heroicon-o-magnifying-glass')
+                    ->color('warning')
+                    ->form([
+                        FormTextInput::make('search')
+                            ->label('Find')
+                            ->required()
+                            ->maxLength(self::MAX_SEARCH_LENGTH)
+                            ->placeholder('Search for...')
+                            ->helperText('Literal text match (not regex)'),
+                        FormTextInput::make('replace')
+                            ->label('Replace with')
+                            ->maxLength(self::MAX_SEARCH_LENGTH)
+                            ->placeholder('Replace with...'),
+                    ])
+                    ->action(function (Collection $records, array $data): void {
+                        if (empty($data['search'])) {
+                            Notification::make()
+                                ->title('Search term cannot be empty')
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
+                        $replaced = 0;
+                        $skipped = 0;
+
+                        // Using individual save() calls (not batch update) to fire Eloquent model events.
+                        // These events trigger Telegram notifications that keep the Telegram UI in sync with the website.
+                        DB::transaction(function () use ($records, $data, &$replaced, &$skipped) {
+                            foreach ($records as $record) {
+                                if (blank($record->publish_title)) {
+                                    continue;
+                                }
+
+                                if (!str_contains($record->publish_title, $data['search'])) {
+                                    continue;
+                                }
+
+                                $newTitle = str_replace($data['search'], $data['replace'] ?? '', $record->publish_title);
+
+                                if (mb_strlen($newTitle) > self::MAX_TITLE_LENGTH) {
+                                    $skipped++;
+                                    continue;
+                                }
+
+                                $record->publish_title = $newTitle;
+                                $record->save();
+                                $replaced++;
+                            }
+                        });
+
+                        Notification::make()
+                            ->title($replaced > 0 ? "Replaced in {$replaced} title(s)" : ($skipped > 0 ? 'No replacements made' : 'No matches found'))
+                            ->{$replaced > 0 ? 'success' : 'danger'}()
+                            ->body($skipped > 0 ? "{$skipped} skipped (would exceed max length)" : null)
+                            ->send();
+                    })
+                    ->deselectRecordsAfterCompletion(),
+                Tables\Actions\BulkAction::make('clearTitle')
+                    ->label('Clear Title')
+                    ->icon('heroicon-o-x-mark')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $cleared = 0;
+
+                        // Using individual save() calls (not batch update) to fire Eloquent model events.
+                        // These events trigger Telegram notifications that keep the Telegram UI in sync with the website.
+                        DB::transaction(function () use ($records, &$cleared) {
+                            foreach ($records as $record) {
+                                if (blank($record->publish_title)) {
+                                    continue;
+                                }
+
+                                $record->publish_title = null;
+                                $record->save();
+                                $cleared++;
+                            }
+                        });
+
+                        Notification::make()
+                            ->title($cleared > 0 ? "Cleared {$cleared} title(s)" : 'No titles to clear')
+                            ->{$cleared > 0 ? 'success' : 'danger'}()
                             ->send();
                     })
                     ->deselectRecordsAfterCompletion(),
