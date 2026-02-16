@@ -8,7 +8,6 @@ use App\Models\FlickrPhoto;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Str;
 
 class ListFlickrPhotos extends ListRecords
 {
@@ -124,7 +123,7 @@ class ListFlickrPhotos extends ListRecords
             return;
         }
 
-        if (empty($record->publish_tags)) {
+        if (!$record->addTagToTitle()) {
             Notification::make()
                 ->title('No tags available')
                 ->danger()
@@ -132,10 +131,6 @@ class ListFlickrPhotos extends ListRecords
 
             return;
         }
-
-        $firstTag = Str::ucfirst(trim(explode(' ', $record->publish_tags)[0], '#'));
-        $record->publish_title = ($record->publish_title ?: $record->title) . ' — ' . $firstTag;
-        $record->save();
 
         Notification::make()
             ->title('Tag added to title')

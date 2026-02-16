@@ -6,6 +6,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Filament\Resources\FlickrPhotoResource\Pages;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Models\FlickrPhoto;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -116,6 +117,7 @@ class FlickrPhotoResource extends Resource
                     ->view('filament.tables.columns.flickr-review-actions'),
             ])
             ->defaultSort('created_at', 'desc')
+            ->paginationPageOptions([10, 25, 50, 100])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options(FlickrPhotoStatus::class)
@@ -123,40 +125,53 @@ class FlickrPhotoResource extends Resource
             ])
             ->recordUrl(fn (FlickrPhoto $record): string => $record->url, true)
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\BulkAction::make('approve')
-                        ->label('Approve')
-                        ->icon('heroicon-o-check-circle')
-                        ->color('success')
-                        ->requiresConfirmation()
-                        ->action(function (Collection $records): void {
-                            $controller = new FlickrPhotoController();
-                            foreach ($records as $record) {
-                                $controller->approve($record);
-                            }
-                        })
-                        ->deselectRecordsAfterCompletion()
-                        ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
-                            ($livewire->getTableFilterState('status')['value'] ?? null)
-                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value
-                        ),
-                    Tables\Actions\BulkAction::make('decline')
-                        ->label('Decline')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->action(function (Collection $records): void {
-                            $controller = new FlickrPhotoController();
-                            foreach ($records as $record) {
-                                $controller->decline($record);
-                            }
-                        })
-                        ->deselectRecordsAfterCompletion()
-                        ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
-                            ($livewire->getTableFilterState('status')['value'] ?? null)
-                                === (string) FlickrPhotoStatus::PENDING_REVIEW->value
-                        ),
-                ]),
+                Tables\Actions\BulkAction::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = new FlickrPhotoController();
+                        foreach ($records as $record) {
+                            $controller->approve($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                    ),
+                Tables\Actions\BulkAction::make('decline')
+                    ->label('Decline')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = new FlickrPhotoController();
+                        foreach ($records as $record) {
+                            $controller->decline($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                    ),
+                Tables\Actions\BulkAction::make('addTagToTitle')
+                    ->label('Add Tag to Title')
+                    ->icon('heroicon-o-tag')
+                    ->color('info')
+                    ->action(function (Collection $records): void {
+                        foreach ($records as $record) {
+                            $record->addTagToTitle();
+                        }
+
+                        Notification::make()
+                            ->title('Tag added to titles')
+                            ->success()
+                            ->send();
+                    })
+                    ->deselectRecordsAfterCompletion(),
             ])
 ;
     }

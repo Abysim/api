@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\InputMedia\InputMediaPhoto;
 use Longman\TelegramBot\Request;
@@ -135,6 +136,21 @@ class FlickrPhoto extends Model
             $this->filename = null;
             $this->save();
         }
+    }
+
+    public function addTagToTitle(): bool
+    {
+        if (empty($this->publish_tags)) {
+            return false;
+        }
+
+        $firstTag = Str::ucfirst(trim(explode(' ', $this->publish_tags)[0], '#'));
+        $this->publish_title = $this->publish_title
+            ? $this->publish_title . ' — ' . $firstTag
+            : $firstTag;
+        $this->save();
+
+        return true;
     }
 
     /**
