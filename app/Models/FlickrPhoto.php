@@ -145,6 +145,16 @@ class FlickrPhoto extends Model
         }
 
         $firstTag = Str::ucfirst(trim(explode(' ', $this->publish_tags)[0], '#'));
+
+        if (empty($firstTag)) {
+            return false;
+        }
+
+        // Prevent duplicate appending
+        if ($this->publish_title && Str::contains($this->publish_title, $firstTag)) {
+            return false;
+        }
+
         $this->publish_title = $this->publish_title
             ? $this->publish_title . ' — ' . $firstTag
             : $firstTag;

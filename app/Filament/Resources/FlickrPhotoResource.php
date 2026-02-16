@@ -58,8 +58,6 @@ class FlickrPhotoResource extends Resource
 
     public static function table(Table $table): Table
     {
-        $allTags = array_unique(array_values(FlickrPhotoController::TAGS));
-
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('source_url')
@@ -159,16 +157,19 @@ class FlickrPhotoResource extends Resource
                     ),
                 Tables\Actions\BulkAction::make('addTagToTitle')
                     ->label('Add Tag to Title')
-                    ->icon('heroicon-o-tag')
+                    ->icon('heroicon-o-arrow-left')
                     ->color('info')
                     ->action(function (Collection $records): void {
+                        $success = 0;
                         foreach ($records as $record) {
-                            $record->addTagToTitle();
+                            if ($record->addTagToTitle()) {
+                                $success++;
+                            }
                         }
 
                         Notification::make()
-                            ->title('Tag added to titles')
-                            ->success()
+                            ->title($success > 0 ? "Tag added to {$success} title(s)" : 'No tags available')
+                            ->{$success > 0 ? 'success' : 'danger'}()
                             ->send();
                     })
                     ->deselectRecordsAfterCompletion(),
