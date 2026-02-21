@@ -15,6 +15,12 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Deployment method**: Automatic on file save from IDE (SFTP/sync)
 - **No local or staging environment** — bigcats is the only runtime environment
 
+## Database
+- **Engine**: MySQL
+- **Connection config**: `~/api/.env` on bigcats (contains `DB_*` variables)
+- **Access via CLI**: `ssh bigcats "cd ~/api && php artisan tinker"` or read credentials from `.env` and use `mysql` client
+- **Never expose credentials** in CLAUDE.md, commits, or logs — always read them from `.env` at runtime
+
 ## Logs
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats
 - **PHP error log**: `~/api/error_log` on bigcats

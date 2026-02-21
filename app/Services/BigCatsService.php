@@ -47,7 +47,7 @@ class BigCatsService
         }
         $response = $this->request->post(config('services.bigcats.url') . 'news/create', $data)->json();
 
-        if ($response['status'] == 'success') {
+        if (!empty($response['status']) && $response['status'] == 'success') {
             if (!empty($response['url'])) {
                 Log::info($news->id . ': published successfully to BigCats: ' . $response['url']);
                 $news->published_url = $response['url'];
@@ -57,7 +57,7 @@ class BigCatsService
             } else {
                 Log::error($news->id . ': got empty URL at BigCats publishing');
             }
-        } elseif (!empty(['errors'])) {
+        } elseif (!empty($response['errors'])) {
             Log::error($news->id . ': BigCats publishing error: ' . json_encode($response['errors']));
         } else {
             Log::error($news->id . ': BigCats publishing error: ' . json_encode($response));
