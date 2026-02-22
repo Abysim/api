@@ -136,9 +136,6 @@ class NewsController extends Controller
         }
     }
 
-    /**
-     * @throws Exception
-     */
     private function publish()
     {
         $nowTime = now()->format('H:i:s');
@@ -160,7 +157,20 @@ class NewsController extends Controller
                 ->orderBy('posted_at')
                 ->first();
             if ($news) {
-                $this->publishNews($news);
+                try {
+                    $this->publishNews($news);
+                } catch (Throwable $e) {
+                    Log::error("$news->id: News publish failed: " . $e->getMessage());
+
+                    if ($news->message_id) {
+                        Request::sendMessage([
+                            'chat_id' => explode(',', config('telegram.admins'))[0],
+                            'reply_to_message_id' => $news->message_id,
+                            'text' => 'News not published! ' . $e->getMessage(),
+                            'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                        ]);
+                    }
+                }
             }
         }
     }
