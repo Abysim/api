@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\AI;
 use App\Bluesky;
 use App\Enums\FlickrPhotoStatus;
+use App\Exceptions\NewsCatcherQuotaExceededException;
 use App\Enums\NewsStatus;
 use App\Helpers\FileHelper;
 use App\Jobs\AnalyzeNewsJob;
@@ -318,7 +319,12 @@ class NewsController extends Controller
             }
 
             if ($isSearch) {
-                $news = $this->service->getNews($currentQuery, $lang);
+                try {
+                    $news = $this->service->getNews($currentQuery, $lang);
+                } catch (NewsCatcherQuotaExceededException $e) {
+                    Log::error('NewsCatcher API quota exhausted, skipping remaining queries');
+                    break;
+                }
 
                 foreach ($news as $article) {
                     try {

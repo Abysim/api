@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\NewsCatcherQuotaExceededException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -64,6 +65,10 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
 
             if ($response->status() >= 400) {
                 Log::error('NewsCatcher3 error: ' . $response->body());
+
+                if ($response->status() === 401) {
+                    throw new NewsCatcherQuotaExceededException($response->body());
+                }
 
                 return $result;
             }
