@@ -17,12 +17,14 @@ class FileHelper
      * @param bool $isBinary
      *
      * @return string
+     * @throws \InvalidArgumentException
      * @throws Exception
      */
     public static function getUrl(string $url, bool $isBinary = false): string
     {
-        if (File::isFile($url)) {
-            return File::get($url);
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            throw new \InvalidArgumentException('Only http/https URLs are supported');
         }
 
         try {

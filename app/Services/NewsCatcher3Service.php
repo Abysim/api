@@ -7,7 +7,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInterface
+class NewsCatcher3Service extends NewsCatcherService
 {
     private const NEWS_TYPES = [
         'News and Blogs',
@@ -33,13 +33,12 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
 
     public function __construct()
     {
-        parent::__construct();
         $this->request = Http::withHeader('x-api-token', config('services.newscatcher3.key'))->timeout(300);
     }
 
     public function getNews(string $query, ?string $lang = null): array
     {
-        $excludeCountries = self::EXCLUDE_COUNTRIES;
+        $excludeCountries = NewsServiceInterface::EXCLUDE_COUNTRIES;
         if (empty($lang) || $lang == self::LANG) {
             $excludeCountries[] = 'KZ';
         }
@@ -52,7 +51,7 @@ class NewsCatcher3Service extends NewsCatcherService implements NewsServiceInter
                 'q' => $query,
                 'lang' => $lang ?? self::LANG,
                 'not_countries' => implode(',', $excludeCountries),
-                'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
+                'not_sources' => implode(',', NewsServiceInterface::EXCLUDE_DOMAINS),
                 'ranked_only' => 'False',
                 'sort_by' => 'date',
                 'page_size' => 1000,

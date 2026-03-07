@@ -44,6 +44,11 @@ return [
         'english_handle' => env('BLUESKY_ENGLISH_HANDLE'),
     ],
 
+    'news' => [
+        'driver' => env('NEWS_DRIVER', 'newscatcher3'),
+        'max_enrich' => env('NEWS_MAX_ENRICH', 30),
+    ],
+
     'newscatcher' => [
         'key' => env('NEWSCATCHER_KEY'),
     ],
