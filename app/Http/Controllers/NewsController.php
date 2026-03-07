@@ -16,7 +16,6 @@ use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\BigCatsService;
-use App\Services\NewsCatcher3Service;
 use App\Services\NewsServiceInterface;
 use Exception;
 use Illuminate\Support\Facades\File;
@@ -52,7 +51,7 @@ class NewsController extends Controller
 
     private NewsServiceInterface|null $service;
 
-    public function __construct(NewsCatcher3Service $service)
+    public function __construct(NewsServiceInterface $service)
     {
         $this->service = $service;
     }
