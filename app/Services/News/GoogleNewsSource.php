@@ -18,6 +18,12 @@ class GoogleNewsSource
 
     public function buildQuery(string $baseQuery, string $lang, array $excludeDomains = []): string
     {
+        // Google News RSS breaks when positive search terms contain trailing wildcards (e.g. "lioness*"),
+        // returning 0 results. Strip * from words inside (...OR...) groups but preserve * in exclusions.
+        $baseQuery = preg_replace_callback('/\(([^)]+)\)/', function ($m) {
+            return '(' . preg_replace('/(\w)\*/', '$1', $m[1]) . ')';
+        }, $baseQuery);
+
         $when = ($lang === NewsServiceInterface::DEFAULT_LANG || empty($lang))
             ? NewsServiceInterface::LOOKBACK_HOURS_DEFAULT_LANG . 'h'
             : NewsServiceInterface::LOOKBACK_HOURS_OTHER_LANG . 'h';

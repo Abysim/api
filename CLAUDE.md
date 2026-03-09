@@ -50,6 +50,14 @@ Pet project that supports other projects. Laravel 10 API application.
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
 
+## External API Quirks (News Sources)
+- **GDELT API** has aggressive rate limits (HTTP 429 or plain-text "limit requests" on 200). When testing, minimize live calls, add delays between requests, and if you get 0 results — check logs for 429 before concluding the code is broken. Suggest waiting 60s and retrying rather than assuming the query is wrong.
+- **Google News RSS** does NOT support wildcards (`*`) in positive search terms inside `(... OR ...)` groups — the query silently returns 0 or stale results. Exclusion wildcards (`-horoscop*`) are harmless but don't actually do prefix matching; the PHP-side title filter handles real wildcard exclusion.
+- When debugging news search issues, **always check `storage/logs/laravel.log`** for rate-limit warnings and raw article counts before drawing conclusions about code correctness.
+
+## Running artisan tinker locally (no DB)
+- Local MySQL is not running — use env overrides to bypass DB: `TELEGRAM_API_TOKEN="" DB_CONNECTION=sqlite DB_DATABASE=":memory:" p artisan tinker`
+
 ## Logs
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats
 - **PHP error log**: `~/api/error_log` on bigcats

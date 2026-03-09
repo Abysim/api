@@ -363,6 +363,10 @@ class FreeNewsService implements NewsServiceInterface
             $readability->parse($html);
 
             $content = $readability->getContent();
+            if ($content === null) {
+                Log::warning('FreeNews: readability returned null content for ' . $url);
+                return $this->buildArticleArray($article, $article['title'], $url);
+            }
             $content = strip_tags($content);
             $content = trim(preg_replace('/\s+/', ' ', $content));
 

@@ -84,6 +84,40 @@ class GoogleNewsSourceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // buildQuery – wildcard stripping
+    // -------------------------------------------------------------------------
+
+    public function test_build_query_strips_wildcards_from_positive_terms_in_or_group(): void
+    {
+        $result = $this->source->buildQuery('(lion OR lions OR lioness*) -horoscop* -club*', 'en');
+
+        $this->assertStringContainsString('(lion OR lions OR lioness)', $result);
+    }
+
+    public function test_build_query_preserves_wildcards_in_exclusion_terms(): void
+    {
+        $result = $this->source->buildQuery('(lion OR lions) -horoscop* -club*', 'en');
+
+        $this->assertStringContainsString('-horoscop*', $result);
+        $this->assertStringContainsString('-club*', $result);
+    }
+
+    public function test_build_query_strips_multiple_wildcards_from_positive_terms(): void
+    {
+        $result = $this->source->buildQuery('(tiger* OR tigr*) -shark*', 'en');
+
+        $this->assertStringContainsString('(tiger OR tigr)', $result);
+        $this->assertStringContainsString('-shark*', $result);
+    }
+
+    public function test_build_query_passes_through_query_without_wildcards_unchanged(): void
+    {
+        $result = $this->source->buildQuery('(lion OR lions) -horoscope', 'en');
+
+        $this->assertStringContainsString('(lion OR lions) -horoscope', $result);
+    }
+
+    // -------------------------------------------------------------------------
     // fetch – happy path
     // -------------------------------------------------------------------------
 
