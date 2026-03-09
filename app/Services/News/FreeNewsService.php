@@ -25,7 +25,7 @@ class FreeNewsService implements NewsServiceInterface
     /** @var callable(array): array|null */
     private $titleDedupFilter = null;
 
-    public function setTitleDedupFilter(callable $filter): void
+    public function setTitleDedupFilter(?callable $filter): void
     {
         $this->titleDedupFilter = $filter;
     }
@@ -127,7 +127,6 @@ class FreeNewsService implements NewsServiceInterface
         if ($this->titleDedupFilter !== null) {
             $beforeCount = count($filtered);
             $filtered = ($this->titleDedupFilter)($filtered);
-            $this->titleDedupFilter = null; // one-shot: prevent stale filter leaking across calls
             $skipped = $beforeCount - count($filtered);
             if ($skipped > 0) {
                 Log::info("FreeNews: DB title dedup removed {$skipped} of {$beforeCount} articles");

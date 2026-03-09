@@ -321,17 +321,26 @@ class NewsController extends Controller
                 $this->previousWeekNews[$lang] = News::where('language', $lang)
                     ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
                     ->select('id', 'title')
+                    ->limit(500)
+                    ->orderByDesc('posted_at')
                     ->get();
             }
-            $dbTitles = $this->previousWeekNews[$lang];
-            $this->service->setTitleDedupFilter(function (array $articles) use ($dbTitles): array {
-                return array_values(array_filter($articles, function (array $article) use ($dbTitles) {
+            // Pre-compute normalized titles once to avoid repeated normalization in O(n×m) loop
+            $normalizedDbTitles = [];
+            foreach ($this->previousWeekNews[$lang] as $dbNews) {
+                $normalizedDbTitles[] = [
+                    'id' => $dbNews->id,
+                    'title' => $dbNews->title,
+                    'normalized' => FreeNewsService::normalizeTitle($dbNews->title),
+                ];
+            }
+            $this->service->setTitleDedupFilter(function (array $articles) use ($normalizedDbTitles): array {
+                return array_values(array_filter($articles, function (array $article) use ($normalizedDbTitles) {
                     $normalizedIncoming = FreeNewsService::normalizeTitle($article['title']);
-                    foreach ($dbTitles as $dbNews) {
-                        $normalizedDb = FreeNewsService::normalizeTitle($dbNews->title);
-                        similar_text($normalizedIncoming, $normalizedDb, $percent);
+                    foreach ($normalizedDbTitles as $dbEntry) {
+                        similar_text($normalizedIncoming, $dbEntry['normalized'], $percent);
                         if ($percent >= 80) {
-                            Log::info("FreeNews: pre-extraction dedup skipping '{$article['title']}' (similar to DB #{$dbNews->id}: '{$dbNews->title}' at {$percent}%)");
+                            Log::debug("FreeNews: pre-extraction dedup skipping '{$article['title']}' (similar to DB #{$dbEntry['id']}: '{$dbEntry['title']}' at {$percent}%)");
                             return false;
                         }
                     }
@@ -402,6 +411,11 @@ class NewsController extends Controller
         if (!empty($batchWords)) {
             $query = $this->service->generateSearchQuery($batchWords, []);
             $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
+        }
+
+        // Clear dedup filter after all species queries are done
+        if ($this->service instanceof FreeNewsService) {
+            $this->service->setTitleDedupFilter(null);
         }
 
         Log::info('News loaded for language ' . $lang);

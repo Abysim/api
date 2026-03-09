@@ -58,9 +58,15 @@ class GoogleNewsSource
             }
 
             // LIBXML_NONET prevents network entity loading; PHP 8.0+ disables external entities by default
-            $xml = @simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+            $previousErrors = libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+            $xmlErrors = libxml_get_errors();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousErrors);
+
             if ($xml === false) {
-                Log::error('GoogleNewsSource: failed to parse RSS XML');
+                $errorMessages = array_map(fn($e) => trim($e->message), $xmlErrors);
+                Log::error('GoogleNewsSource: failed to parse RSS XML: ' . implode('; ', $errorMessages));
                 return [];
             }
 
