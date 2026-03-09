@@ -33,6 +33,8 @@ class NewsCatcher3Service extends NewsCatcherService
 
     public function __construct()
     {
+        // Deliberately skip parent::__construct() — parent's $request is private and
+        // uses a different API base URL / auth header (v2 x-api-key vs v3 x-api-token)
         $this->request = Http::withHeader('x-api-token', config('services.newscatcher3.key'))->timeout(300);
     }
 

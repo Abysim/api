@@ -45,7 +45,8 @@ class GoogleNewsUrlDecoder
 
         // URL format: /rss/articles/{base64} or /articles/{base64}
         $articleId = null;
-        for ($i = 0; $i < count($segments) - 1; $i++) {
+        $segmentCount = count($segments);
+        for ($i = 0; $i < $segmentCount - 1; $i++) {
             if ($segments[$i] === 'articles' && isset($segments[$i + 1])) {
                 $articleId = $segments[$i + 1];
                 break;

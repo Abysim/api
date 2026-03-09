@@ -22,6 +22,14 @@ class FreeNewsService implements NewsServiceInterface
     private GoogleNewsUrlDecoder $urlDecoder;
     private array $dnsCache = [];
 
+    /** @var callable(array): array|null */
+    private $titleDedupFilter = null;
+
+    public function setTitleDedupFilter(callable $filter): void
+    {
+        $this->titleDedupFilter = $filter;
+    }
+
     public function __construct(
         GoogleNewsSource $googleSource,
         GdeltSource $gdeltSource,
@@ -34,6 +42,7 @@ class FreeNewsService implements NewsServiceInterface
 
     public function getNews(string $query, ?string $lang = null): array
     {
+        $this->dnsCache = [];
         $effectiveLang = $lang ?: self::LANG;
         $excludeCountries = NewsServiceInterface::EXCLUDE_COUNTRIES;
         if (empty($lang) || $lang === self::LANG) {
@@ -91,10 +100,13 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
-            // 2d. Batch dedup: skip if title too similar to one already accepted
-            $normalizedTitle = $this->normalizeTitle($article['title']);
+            // 2d. Batch dedup: skip exact duplicates via hashmap, then fuzzy via similar_text
+            $normalizedTitle = self::normalizeTitle($article['title']);
+            if (isset($seenTitles[$normalizedTitle])) {
+                continue;
+            }
             $dominated = false;
-            foreach ($seenTitles as $seen) {
+            foreach ($seenTitles as $seen => $_) {
                 similar_text($normalizedTitle, $seen, $percent);
                 if ($percent >= 70) {
                     $dominated = true;
@@ -105,14 +117,22 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
-            $seenTitles[] = $normalizedTitle;
-            if (count($seenTitles) > 50) {
-                $seenTitles = array_slice($seenTitles, -50);
-            }
+            $seenTitles[$normalizedTitle] = true;
             $filtered[] = $article;
         }
 
         Log::info('FreeNews: ' . count($filtered) . ' articles passed title pre-filter');
+
+        // === PHASE 2.5: Cross-run dedup against DB (if filter provided) ===
+        if ($this->titleDedupFilter !== null) {
+            $beforeCount = count($filtered);
+            $filtered = ($this->titleDedupFilter)($filtered);
+            $this->titleDedupFilter = null; // one-shot: prevent stale filter leaking across calls
+            $skipped = $beforeCount - count($filtered);
+            if ($skipped > 0) {
+                Log::info("FreeNews: DB title dedup removed {$skipped} of {$beforeCount} articles");
+            }
+        }
 
         // === PHASE 3: Content extraction ===
         $maxEnrich = (int) config('services.news.max_enrich', 30);
@@ -136,7 +156,13 @@ class FreeNewsService implements NewsServiceInterface
         }
 
         if ($googleDecoded + $googleFailed > 0) {
-            Log::info("FreeNews: Google News decode rate: {$googleDecoded}/" . ($googleDecoded + $googleFailed) . " succeeded");
+            $total = $googleDecoded + $googleFailed;
+            $rate = $googleDecoded / $total;
+            if ($rate < 0.5) {
+                Log::warning("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded — decode rate below 50%, protocol may have changed");
+            } else {
+                Log::info("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded");
+            }
         }
 
         // Sort oldest first (matching NewsCatcher's array_reverse pattern)
@@ -291,7 +317,7 @@ class FreeNewsService implements NewsServiceInterface
         return $this->dnsCache[$host] = true;
     }
 
-    private function normalizeTitle(string $title): string
+    public static function normalizeTitle(string $title): string
     {
         $title = mb_strtolower($title);
         $title = preg_replace('/[^\p{L}\p{N}\s]/u', '', $title);
@@ -305,8 +331,10 @@ class FreeNewsService implements NewsServiceInterface
      */
     private function extractContent(array $article): array
     {
+        $originalUrl = $article['link'];
+        $url = $originalUrl;
+
         try {
-            $url = $article['link'];
             $html = null;
 
             if (!$this->isUrlSafe($url)) {
@@ -320,12 +348,12 @@ class FreeNewsService implements NewsServiceInterface
                 if ($decoded !== null && !str_contains($decoded, 'news.google.com')) {
                     if (!$this->isUrlSafe($decoded)) {
                         Log::warning('FreeNews: decoded Google URL unsafe: ' . $decoded);
-                        return $this->buildArticleArray($article, $article['title'], $article['link']);
+                        return $this->buildArticleArray($article, $article['title'], $originalUrl);
                     }
                     $url = $decoded;
                 } else {
                     Log::info('FreeNews: could not decode Google News URL: ' . $url);
-                    return $this->buildArticleArray($article, $article['title'], $url);
+                    return $this->buildArticleArray($article, $article['title'], $originalUrl);
                 }
             }
 
@@ -361,11 +389,11 @@ class FreeNewsService implements NewsServiceInterface
 
             return $this->buildArticleArray($article, $content, $url, $author, $image);
         } catch (ParseException $e) {
-            Log::warning('FreeNews: readability parse failed for ' . $url . ': ' . $e->getMessage());
-            return $this->buildArticleArray($article, $article['title'], $article['link']);
+            Log::warning('FreeNews: readability parse failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
+            return $this->buildArticleArray($article, $article['title'], $originalUrl);
         } catch (\Throwable $e) {
-            Log::warning('FreeNews: content extraction failed for ' . $url . ': ' . $e->getMessage());
-            return $this->buildArticleArray($article, $article['title'], $article['link']);
+            Log::warning('FreeNews: content extraction failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
+            return $this->buildArticleArray($article, $article['title'], $originalUrl);
         }
     }
 

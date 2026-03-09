@@ -16,6 +16,7 @@ use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\BigCatsService;
+use App\Services\News\FreeNewsService;
 use App\Services\NewsServiceInterface;
 use Exception;
 use Illuminate\Support\Facades\File;
@@ -70,13 +71,10 @@ class NewsController extends Controller
         }
 
         $models = [];
-        if ($force || (
-            $load
-            && now()->format('H:i:s') >= self::LOAD_TIME
-            && now()->format('H:i:s') < self::STOP_TIME
-            && in_array(now()->format('G') % 3, [0, 1])
-        )) {
-            $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
+        // NOTE: if a third driver appears, extract scheduling to a SchedulePolicy interface
+        $isFreeDriver = $this->service instanceof FreeNewsService;
+        if ($force || ($load && $this->shouldLoadNews($isFreeDriver))) {
+            $models = $this->loadNews($lang ?? $this->autoSelectLanguage($isFreeDriver));
         }
 
         if (empty($models)) {
@@ -96,6 +94,29 @@ class NewsController extends Controller
         }
 
         $this->deleteNewsFiles();
+    }
+
+    private function shouldLoadNews(bool $isFreeDriver): bool
+    {
+        if ($isFreeDriver) {
+            return true; // Free driver: run every hour, 24/7
+        }
+
+        // NewsCatcher3: existing evening-window logic
+        return now()->format('H:i:s') >= self::LOAD_TIME
+            && now()->format('H:i:s') < self::STOP_TIME
+            && in_array(now()->format('G') % 3, [0, 1]);
+    }
+
+    private function autoSelectLanguage(bool $isFreeDriver): string
+    {
+        if ($isFreeDriver) {
+            // Alternate every hour: even hours -> uk, odd hours -> en
+            return now()->format('G') % 2 == 0 ? 'uk' : 'en';
+        }
+
+        // NewsCatcher3: existing hour % 3 logic
+        return now()->format('G') % 3 == 1 ? 'en' : 'uk';
     }
 
     private function deleteNewsFiles()
@@ -292,6 +313,33 @@ class NewsController extends Controller
     private function loadNews(string $lang): array
     {
         Log::info('Loading news for language ' . $lang);
+
+        // Set pre-extraction title dedup filter (FreeNewsService only)
+        if ($this->service instanceof FreeNewsService) {
+            // Pre-populate DB title cache for pre-extraction dedup
+            if (empty($this->previousWeekNews[$lang])) {
+                $this->previousWeekNews[$lang] = News::where('language', $lang)
+                    ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                    ->select('id', 'title')
+                    ->get();
+            }
+            $dbTitles = $this->previousWeekNews[$lang];
+            $this->service->setTitleDedupFilter(function (array $articles) use ($dbTitles): array {
+                return array_values(array_filter($articles, function (array $article) use ($dbTitles) {
+                    $normalizedIncoming = FreeNewsService::normalizeTitle($article['title']);
+                    foreach ($dbTitles as $dbNews) {
+                        $normalizedDb = FreeNewsService::normalizeTitle($dbNews->title);
+                        similar_text($normalizedIncoming, $normalizedDb, $percent);
+                        if ($percent >= 80) {
+                            Log::info("FreeNews: pre-extraction dedup skipping '{$article['title']}' (similar to DB #{$dbNews->id}: '{$dbNews->title}' at {$percent}%)");
+                            return false;
+                        }
+                    }
+                    return true;
+                }));
+            });
+        }
+
         $models = [];
         // Circuit breaker counter spans both passes intentionally:
         // if APIs are down, we stop early regardless of which pass we're in

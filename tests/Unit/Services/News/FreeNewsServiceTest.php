@@ -336,57 +336,39 @@ class FreeNewsServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // normalizeTitle (private — via ReflectionMethod)
+    // normalizeTitle (public static)
     // -------------------------------------------------------------------------
 
     public function test_normalize_title_converts_to_lowercase(): void
     {
-        $method = new ReflectionMethod(FreeNewsService::class, 'normalizeTitle');
-        $method->setAccessible(true);
-
-        $result = $method->invoke($this->service, 'UKRAINE NEWS');
-
-        $this->assertSame('ukraine news', $result);
+        $this->assertSame('ukraine news', FreeNewsService::normalizeTitle('UKRAINE NEWS'));
     }
 
     public function test_normalize_title_strips_punctuation(): void
     {
-        $method = new ReflectionMethod(FreeNewsService::class, 'normalizeTitle');
-        $method->setAccessible(true);
-
-        $result = $method->invoke($this->service, 'Hello, World! How are you?');
-
-        $this->assertSame('hello world how are you', $result);
+        $this->assertSame('hello world how are you', FreeNewsService::normalizeTitle('Hello, World! How are you?'));
     }
 
     public function test_normalize_title_collapses_multiple_spaces_to_single_space(): void
     {
-        $method = new ReflectionMethod(FreeNewsService::class, 'normalizeTitle');
-        $method->setAccessible(true);
-
-        $result = $method->invoke($this->service, 'lion   attacks   reported');
-
-        $this->assertSame('lion attacks reported', $result);
+        $this->assertSame('lion attacks reported', FreeNewsService::normalizeTitle('lion   attacks   reported'));
     }
 
     public function test_normalize_title_trims_leading_and_trailing_whitespace(): void
     {
-        $method = new ReflectionMethod(FreeNewsService::class, 'normalizeTitle');
-        $method->setAccessible(true);
-
-        $result = $method->invoke($this->service, '  lion news  ');
-
-        $this->assertSame('lion news', $result);
+        $this->assertSame('lion news', FreeNewsService::normalizeTitle('  lion news  '));
     }
 
     public function test_normalize_title_removes_hyphens_and_special_characters(): void
     {
-        $method = new ReflectionMethod(FreeNewsService::class, 'normalizeTitle');
-        $method->setAccessible(true);
+        $this->assertSame('breaking lionattack at zoo 2024', FreeNewsService::normalizeTitle('Breaking: Lion-attack at zoo (2024)'));
+    }
 
-        $result = $method->invoke($this->service, 'Breaking: Lion-attack at zoo (2024)');
+    public function test_normalize_title_is_callable_as_public_static(): void
+    {
+        $result = FreeNewsService::normalizeTitle('HELLO, World!');
 
-        $this->assertSame('breaking lionattack at zoo 2024', $result);
+        $this->assertSame('hello world', $result);
     }
 
     // -------------------------------------------------------------------------
@@ -799,6 +781,104 @@ class FreeNewsServiceTest extends TestCase
 
         $this->assertCount(1, $result);
         $this->assertSame('Lion spotted', $result[0]['title']);
+    }
+
+    // -------------------------------------------------------------------------
+    // setTitleDedupFilter — pre-extraction DB dedup
+    // -------------------------------------------------------------------------
+
+    public function test_get_news_with_title_dedup_filter_skips_extraction_for_filtered_articles(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        // Titles must be distinct enough to pass the 70% batch dedup
+        $articles = [
+            $this->makeArticle('Lion pride spotted near Nairobi reserve', 'https://example.com/1', '2024-01-15 10:00:00'),
+            $this->makeArticle('Lion cub rescued from poachers in Tanzania', 'https://example.com/2', '2024-01-15 11:00:00'),
+            $this->makeArticle('Mountain lion attacks livestock in Colorado ranch', 'https://example.com/3', '2024-01-15 12:00:00'),
+            $this->makeArticle('Lion conservation program launches in South Africa', 'https://example.com/4', '2024-01-15 13:00:00'),
+            $this->makeArticle('Asiatic lion population grows in Gujarat sanctuary', 'https://example.com/5', '2024-01-15 14:00:00'),
+        ];
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn($articles);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Filter removes articles 2 and 4 (simulating DB duplicates)
+        $this->service->setTitleDedupFilter(function (array $articles): array {
+            return array_values(array_filter($articles, function (array $a) {
+                return !str_contains($a['title'], 'rescued from poachers') && !str_contains($a['title'], 'conservation program');
+            }));
+        });
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(3, $result);
+        $titles = array_column($result, 'title');
+        $this->assertContains('Lion pride spotted near Nairobi reserve', $titles);
+        $this->assertNotContains('Lion cub rescued from poachers in Tanzania', $titles);
+        $this->assertContains('Mountain lion attacks livestock in Colorado ranch', $titles);
+        $this->assertNotContains('Lion conservation program launches in South Africa', $titles);
+        $this->assertContains('Asiatic lion population grows in Gujarat sanctuary', $titles);
+    }
+
+    public function test_get_news_without_title_dedup_filter_passes_all_articles_to_extraction(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        // Titles must be distinct enough to pass the 70% batch dedup
+        $articles = [
+            $this->makeArticle('Lion pride spotted near Nairobi reserve', 'https://example.com/1', '2024-01-15 10:00:00'),
+            $this->makeArticle('Mountain lion attacks livestock in Colorado ranch', 'https://example.com/2', '2024-01-15 11:00:00'),
+            $this->makeArticle('Asiatic lion population grows in Gujarat sanctuary', 'https://example.com/3', '2024-01-15 12:00:00'),
+        ];
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn($articles);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // No filter set — all should proceed
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(3, $result);
+    }
+
+    public function test_get_news_title_dedup_filter_receives_only_phase2_survivors(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $matchingArticle = $this->makeArticle('Lion spotted in Africa', 'https://example.com/1', '2024-01-15 10:00:00');
+        $nonMatchingArticle = $this->makeArticle('Weather forecast for Tuesday', 'https://example.com/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$matchingArticle, $nonMatchingArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Spy callable to capture what the filter receives
+        $receivedArticles = null;
+        $this->service->setTitleDedupFilter(function (array $articles) use (&$receivedArticles): array {
+            $receivedArticles = $articles;
+            return $articles; // pass-through
+        });
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        // Filter should only receive the matching article (non-matching was removed in Phase 2)
+        $this->assertNotNull($receivedArticles);
+        $this->assertCount(1, $receivedArticles);
+        $this->assertSame('Lion spotted in Africa', $receivedArticles[0]['title']);
     }
 
     // -------------------------------------------------------------------------
