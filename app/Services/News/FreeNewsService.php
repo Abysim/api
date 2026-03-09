@@ -27,9 +27,28 @@ class FreeNewsService implements NewsServiceInterface
     /** @var callable(array): array|null */
     private $titleDedupFilter = null;
 
+    /** @var (callable(string): bool)|null */
+    private $urlSeenChecker = null;
+
+    /** @var (callable(string): void)|null */
+    private $urlSeenMarker = null;
+
     public function setTitleDedupFilter(?callable $filter): void
     {
         $this->titleDedupFilter = $filter;
+    }
+
+    public function setUrlSeenCache(?callable $checker, ?callable $marker): void
+    {
+        $this->urlSeenChecker = $checker;
+        $this->urlSeenMarker = $marker;
+    }
+
+    private function markUrlSeen(array $article): void
+    {
+        if ($this->urlSeenMarker !== null && !empty($article['link'])) {
+            ($this->urlSeenMarker)($article['link']);
+        }
     }
 
     public function __construct(
@@ -80,28 +99,41 @@ class FreeNewsService implements NewsServiceInterface
         $excludeWords = $this->extractExcludeWords($query);
         $filtered = [];
         $seenTitles = [];
+        $urlCacheHits = 0;
 
         foreach ($articles as $article) {
             if (empty($article['title'])) {
                 continue;
             }
 
+            // 2.0 URL cache: skip articles whose link was already processed in a recent run
+            if ($this->urlSeenChecker !== null && !empty($article['link']) && ($this->urlSeenChecker)($article['link'])) {
+                $urlCacheHits++;
+                continue;
+            }
+
             // 2a. Domain filter: skip articles from excluded domains
             if (in_array($article['clean_url'] ?? '', NewsServiceInterface::EXCLUDE_DOMAINS, true)) {
+                $this->markUrlSeen($article);
                 continue;
             }
 
             // 2b. Keyword relevance: title must contain at least one search keyword
             if (!empty($keywords) && !$this->titleMatchesKeywords($article['title'], $keywords)) {
+                $this->markUrlSeen($article);
                 continue;
             }
 
             // 2c. Exclude word filter: reject titles containing exclusion terms
             if (!empty($excludeWords) && $this->titleMatchesExcludeWords($article['title'], $excludeWords)) {
+                $this->markUrlSeen($article);
                 continue;
             }
 
             // 2d. Batch dedup: skip exact duplicates via hashmap, then fuzzy via similar_text
+            // Note: duplicates are deliberately NOT marked as URL-seen. The "other" variant
+            // (which was kept) may fail extraction, and we want the duplicate URL available
+            // for retry on the next run rather than permanently cached as processed.
             $normalizedTitle = self::normalizeTitle($article['title']);
             if (isset($seenTitles[$normalizedTitle])) {
                 continue;
@@ -124,6 +156,10 @@ class FreeNewsService implements NewsServiceInterface
 
         Log::info('FreeNews: ' . count($filtered) . ' articles passed title pre-filter');
 
+        if ($urlCacheHits > 0) {
+            Log::info('FreeNews: ' . $urlCacheHits . ' articles skipped by URL cache');
+        }
+
         // === PHASE 2.5: Cross-run dedup against DB (if filter provided) ===
         if ($this->titleDedupFilter !== null) {
             $beforeCount = count($filtered);
@@ -144,6 +180,16 @@ class FreeNewsService implements NewsServiceInterface
         foreach ($filtered as $article) {
             $isGoogleUrl = str_contains($article['link'], 'news.google.com');
             $enriched = $this->extractContent($article);
+
+            // Cache the original URL if content extraction produced real content
+            // (not just the title fallback). Failed extractions remain uncached for retry.
+            // Edge case: if Readability extracts content that exactly equals the title
+            // (extremely unlikely given the 50-char minimum), the article will be retried
+            // next run — this is the safe-side failure mode.
+            if ($this->urlSeenMarker !== null && $enriched['content'] !== $article['title']) {
+                ($this->urlSeenMarker)($article['link']);
+            }
+
             if ($isGoogleUrl) {
                 if (!str_contains($enriched['link'], 'news.google.com')) {
                     $googleDecoded++;

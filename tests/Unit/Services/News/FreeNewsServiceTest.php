@@ -882,6 +882,257 @@ class FreeNewsServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // setUrlSeenCache — URL-based cross-run dedup
+    // -------------------------------------------------------------------------
+
+    public function test_get_news_skips_article_when_url_seen_checker_returns_true(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/seen', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markerCalled = false;
+        $this->service->setUrlSeenCache(
+            fn(string $url) => true, // all URLs are "seen"
+            function (string $url) use (&$markerCalled) { $markerCalled = true; },
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(0, $result);
+        $this->assertFalse($markerCalled, 'Marker should not be called for cached (skipped) articles');
+    }
+
+    public function test_get_news_proceeds_normally_when_url_seen_checker_returns_false(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion population grows across Africa', 'https://example.com/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false, // nothing is "seen"
+            fn(string $url) => null,
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(2, $result);
+    }
+
+    public function test_get_news_marks_title_excluded_articles_as_seen(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/good', '2024-01-15 10:00:00');
+        $excludedArticle = $this->makeArticle('Lions horoscope reading for March', 'https://example.com/excluded', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $excludedArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markedUrls = [];
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false,
+            function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions) !horoscop*');
+
+        $this->assertContains('https://example.com/excluded', $markedUrls);
+    }
+
+    public function test_get_news_marks_keyword_irrelevant_articles_as_seen(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $matchingArticle = $this->makeArticle('Lion attacks villager', 'https://example.com/match', '2024-01-15 10:00:00');
+        $irrelevantArticle = $this->makeArticle('Weather forecast for Tuesday', 'https://example.com/irrelevant', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$matchingArticle, $irrelevantArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markedUrls = [];
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false,
+            function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertContains('https://example.com/irrelevant', $markedUrls);
+    }
+
+    public function test_get_news_does_not_mark_failed_extraction_as_seen(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/fail', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markedUrls = [];
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false,
+            function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
+        );
+
+        // 404 causes extractContent to fall back to title-as-content
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        // The marker should NOT be called for articles with failed extraction
+        // (content == title fallback means extraction failed)
+        $this->assertNotContains('https://example.com/fail', $markedUrls);
+    }
+
+    public function test_get_news_marks_successfully_extracted_article_as_seen(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article = $this->makeArticle(
+            'Lion spotted in Kenya',
+            'https://example.com/success',
+            '2024-01-15 10:00:00'
+        );
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markedUrls = [];
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false,
+            function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
+        );
+
+        // Return valid HTML with enough content for Readability to extract
+        $html = '<html><head><title>Lion spotted in Kenya</title></head>'
+            . '<body><article><p>' . str_repeat('Lion conservation efforts in Kenya are bearing fruit. ', 20) . '</p></article></body></html>';
+        Http::fake(['https://example.com/success' => Http::response($html, 200)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertContains('https://example.com/success', $markedUrls);
+    }
+
+    public function test_get_news_without_url_cache_works_identically_to_before(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion population grows across Africa', 'https://example.com/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // No setUrlSeenCache call — callables are null (default)
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // Should work exactly as before — both articles pass through
+        $this->assertCount(2, $result);
+        $titles = array_column($result, 'title');
+        $this->assertContains('Lion spotted in Kenya', $titles);
+        $this->assertContains('Lion population grows across Africa', $titles);
+    }
+
+    public function test_get_news_does_not_check_url_cache_for_empty_link(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $article = $this->makeArticle('Lion spotted in Kenya', '', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $checkerCalled = false;
+        $this->service->setUrlSeenCache(
+            function (string $url) use (&$checkerCalled) { $checkerCalled = true; return true; },
+            fn(string $url) => null,
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertFalse($checkerCalled, 'URL cache checker should not be called for articles with empty links');
+    }
+
+    public function test_get_news_marks_domain_filtered_articles_as_seen(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/good', '2024-01-15 10:00:00');
+        $domainArticle = [
+            'title' => 'Lion news from blocked domain',
+            'link' => 'https://champion.com.ua/blocked',
+            'published_date' => '2024-01-15 11:00:00',
+            'language' => 'en',
+            'name_source' => 'Test Source',
+            'clean_url' => 'champion.com.ua',
+            'media' => null,
+        ];
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $domainArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $markedUrls = [];
+        $this->service->setUrlSeenCache(
+            fn(string $url) => false,
+            function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
+        );
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertContains('https://champion.com.ua/blocked', $markedUrls);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

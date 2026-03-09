@@ -48,6 +48,7 @@ return [
         'driver' => env('NEWS_DRIVER', 'newscatcher3'),
         'max_enrich' => env('NEWS_MAX_ENRICH', 30),
         'inter_species_delay' => env('NEWS_INTER_SPECIES_DELAY', 0),
+        'url_cache_ttl' => env('NEWS_URL_CACHE_TTL', 48),
     ],
 
     'newscatcher' => [

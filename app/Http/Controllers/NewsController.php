@@ -19,6 +19,7 @@ use App\Services\BigCatsService;
 use App\Services\News\FreeNewsService;
 use App\Services\NewsServiceInterface;
 use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -347,6 +348,15 @@ class NewsController extends Controller
                     return true;
                 }));
             });
+
+            // Set URL-seen cache for cross-run dedup
+            $cachePrefix = 'free_news_seen_url:' . $lang . ':';
+            $cacheTtlSeconds = (int) config('services.news.url_cache_ttl', 48) * 3600;
+
+            $this->service->setUrlSeenCache(
+                fn(string $url) => Cache::has($cachePrefix . md5($url)),
+                fn(string $url) => Cache::put($cachePrefix . md5($url), true, $cacheTtlSeconds),
+            );
         }
 
         $models = [];
@@ -413,9 +423,10 @@ class NewsController extends Controller
             $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
         }
 
-        // Clear dedup filter after all species queries are done
+        // Clear dedup filter and URL cache after all species queries are done
         if ($this->service instanceof FreeNewsService) {
             $this->service->setTitleDedupFilter(null);
+            $this->service->setUrlSeenCache(null, null);
         }
 
         Log::info('News loaded for language ' . $lang);
