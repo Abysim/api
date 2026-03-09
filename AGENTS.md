@@ -18,12 +18,12 @@ A Laravel 10 API application that aggregates, classifies, translates, and publis
 
 | Directory | Purpose |
 |-----------|---------|
-| `app/` | Application source code: models, controllers, services, jobs (see `app/AGENTS.md`) |
-| `config/` | Laravel and third-party service configuration (see `config/AGENTS.md`) |
-| `routes/` | API, web, Telegram webhook, and social media route definitions (see `routes/AGENTS.md`) |
-| `database/` | Migrations, factories, and seeders (see `database/AGENTS.md`) |
-| `resources/` | Views, AI prompts, species/tag JSON data (see `resources/AGENTS.md`) |
-| `tests/` | PHPUnit feature and unit tests (see `tests/AGENTS.md`) |
+| `app/` | Application source code: models, controllers, services, jobs |
+| `config/` | Laravel and third-party service configuration |
+| `routes/` | API, web, Telegram webhook, and social media route definitions |
+| `database/` | Migrations, factories, and seeders |
+| `resources/` | Views, AI prompts, species/tag JSON data |
+| `tests/` | PHPUnit feature and unit tests |
 | `bootstrap/` | Laravel bootstrap and framework cache |
 | `public/` | Web root with Filament admin assets |
 

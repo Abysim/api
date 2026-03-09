@@ -257,15 +257,8 @@ class FreeNewsService implements NewsServiceInterface
     private function titleMatchesExcludeWords(string $title, array $excludeWords): bool
     {
         foreach ($excludeWords as $word) {
-            if (str_ends_with($word, '*')) {
-                $prefix = substr($word, 0, -1);
-                if (mb_stripos($title, $prefix) !== false) {
-                    return true;
-                }
-            } else {
-                if (mb_stripos($title, $word) !== false) {
-                    return true;
-                }
+            if (mb_stripos($title, rtrim($word, '*')) !== false) {
+                return true;
             }
         }
 
