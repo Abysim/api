@@ -19,9 +19,7 @@ class GdeltSourceTest extends TestCase
         Log::shouldReceive('info', 'warning', 'error')->andReturnNull()->byDefault();
     }
 
-    // -------------------------------------------------------------------------
     // buildQuery
-    // -------------------------------------------------------------------------
 
     public function test_buildQuery_appends_sourcelang_mapped_to_gdelt_format(): void
     {
@@ -83,9 +81,7 @@ class GdeltSourceTest extends TestCase
         $this->assertStringContainsString(' sourcelang:fr', $result);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – happy path
-    // -------------------------------------------------------------------------
 
     public function test_fetch_parses_articles_with_all_required_keys(): void
     {
@@ -105,68 +101,17 @@ class GdeltSourceTest extends TestCase
         $this->assertArrayHasKey('clean_url', $first);
         $this->assertArrayHasKey('language', $first);
         $this->assertArrayHasKey('media', $first);
-    }
 
-    public function test_fetch_maps_url_field_to_link(): void
-    {
-        Http::fake([
-            '*' => Http::response($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war sourcelang:en', 'en');
-
-        $this->assertSame('https://www.bbc.com/news/world-europe-12345678', $articles[0]['link']);
-    }
-
-    public function test_fetch_maps_domain_field_to_name_source_and_clean_url(): void
-    {
-        Http::fake([
-            '*' => Http::response($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war sourcelang:en', 'en');
-
-        $this->assertSame('bbc.com', $articles[0]['name_source']);
-        $this->assertSame('bbc.com', $articles[0]['clean_url']);
-    }
-
-    public function test_fetch_maps_seendate_to_published_date(): void
-    {
-        Http::fake([
-            '*' => Http::response($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war sourcelang:en', 'en');
-
-        $this->assertSame('2026-03-07 12:00:00', $articles[0]['published_date']);
-    }
-
-    public function test_fetch_maps_socialimage_to_media(): void
-    {
-        Http::fake([
-            '*' => Http::response($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war sourcelang:en', 'en');
-
-        $this->assertSame('https://ichef.bbci.co.uk/news/1024/branded_news/image.jpg', $articles[0]['media']);
-    }
-
-    public function test_fetch_sets_language_from_parameter(): void
-    {
-        Http::fake([
-            '*' => Http::response($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war sourcelang:en', 'en');
-
-        $this->assertSame('en', $articles[0]['language']);
+        $this->assertSame('https://www.bbc.com/news/world-europe-12345678', $first['link']);
+        $this->assertSame('bbc.com', $first['name_source']);
+        $this->assertSame('bbc.com', $first['clean_url']);
+        $this->assertSame('2026-03-07 12:00:00', $first['published_date']);
+        $this->assertSame('https://ichef.bbci.co.uk/news/1024/branded_news/image.jpg', $first['media']);
+        $this->assertSame('en', $first['language']);
         $this->assertSame('en', $articles[1]['language']);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – error cases
-    // -------------------------------------------------------------------------
 
     public function test_fetch_returns_empty_array_on_http_400(): void
     {
@@ -212,9 +157,7 @@ class GdeltSourceTest extends TestCase
         $this->assertSame([], $articles);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – rate limit detection (HTTP 200 with text body)
-    // -------------------------------------------------------------------------
 
     public function test_fetch_retries_on_rate_limit_and_returns_data_on_second_attempt(): void
     {
@@ -247,9 +190,7 @@ class GdeltSourceTest extends TestCase
         $this->assertSame([], $articles);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – retry on HTTP 429
-    // -------------------------------------------------------------------------
 
     public function test_fetch_retries_on_http_429_and_returns_data_on_second_attempt(): void
     {
@@ -282,9 +223,7 @@ class GdeltSourceTest extends TestCase
         $this->assertSame([], $articles);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – retry on HTTP 500
-    // -------------------------------------------------------------------------
 
     public function test_fetch_retries_once_on_http_500_and_returns_data_on_second_attempt(): void
     {
@@ -316,9 +255,7 @@ class GdeltSourceTest extends TestCase
         $this->assertSame([], $articles);
     }
 
-    // -------------------------------------------------------------------------
     // fetch – time window
-    // -------------------------------------------------------------------------
 
     public function test_fetch_uses_50h_window_for_uk_language(): void
     {
@@ -358,36 +295,7 @@ class GdeltSourceTest extends TestCase
         $this->assertGreaterThanOrEqual(-27, $diffHours);
     }
 
-    // -------------------------------------------------------------------------
-    // parseDate (tested indirectly via fetch)
-    // -------------------------------------------------------------------------
-
-    public function test_parseDate_parses_gdelt_format_20260307T120000Z_to_Y_m_d_H_i_s(): void
-    {
-        $payload = [
-            'articles' => [
-                [
-                    'title' => 'Test Article',
-                    'url' => 'https://example.com/article',
-                    'seendate' => '20260307T120000Z',
-                    'domain' => 'example.com',
-                    'socialimage' => null,
-                ],
-            ],
-        ];
-
-        Http::fake([
-            '*' => Http::response($payload, 200),
-        ]);
-
-        $articles = $this->source->fetch('test', 'en');
-
-        $this->assertSame('2026-03-07 12:00:00', $articles[0]['published_date']);
-    }
-
-    // -------------------------------------------------------------------------
     // fetch – maxrecords
-    // -------------------------------------------------------------------------
 
     public function test_fetch_uses_maxrecords_250(): void
     {
@@ -401,9 +309,7 @@ class GdeltSourceTest extends TestCase
         $this->assertSame(250, $request->data()['maxrecords']);
     }
 
-    // -------------------------------------------------------------------------
     // Helpers
-    // -------------------------------------------------------------------------
 
     private function gdeltPayload(): array
     {

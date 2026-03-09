@@ -7,6 +7,7 @@ use App\Services\NewsServiceInterface;
 use Carbon\Carbon;
 use Illuminate\Support\Sleep;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -44,151 +45,77 @@ class NewsControllerSchedulingTest extends TestCase
         return $method->invoke($this->controller, $isFreeDriver);
     }
 
-    // -------------------------------------------------------------------------
-    // shouldLoadNews — free driver (always true)
-    // -------------------------------------------------------------------------
-
-    public function test_free_driver_should_load_at_hour_0(): void
+    public static function freeDriverShouldLoadNewsProvider(): array
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 0, 0, 0));
+        return [
+            'hour 0'  => [0],
+            'hour 6'  => [6],
+            'hour 12' => [12],
+            'hour 18' => [18],
+            'hour 23' => [23],
+        ];
+    }
+
+    #[DataProvider('freeDriverShouldLoadNewsProvider')]
+    public function test_free_driver_should_load_news(int $hour): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 3, 9, $hour, 0, 0));
         $this->assertTrue($this->callShouldLoadNews(true));
     }
 
-    public function test_free_driver_should_load_at_hour_6(): void
+    public static function newscatcher3ShouldLoadNewsProvider(): array
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 6, 0, 0));
-        $this->assertTrue($this->callShouldLoadNews(true));
+        return [
+            'hour 18 (18%3==0)' => [18, true],
+            'hour 19 (19%3==1)' => [19, true],
+            'hour 20 (20%3==2)' => [20, false],
+            'hour 21 (21%3==0)' => [21, true],
+            'hour 8'            => [8,  false],
+            'hour 16'           => [16, false],
+            'hour 23'           => [23, false],
+        ];
     }
 
-    public function test_free_driver_should_load_at_hour_12(): void
+    #[DataProvider('newscatcher3ShouldLoadNewsProvider')]
+    public function test_newscatcher3_should_load_news(int $hour, bool $expected): void
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 12, 0, 0));
-        $this->assertTrue($this->callShouldLoadNews(true));
+        Carbon::setTestNow(Carbon::create(2026, 3, 9, $hour, 0, 0));
+        $this->assertSame($expected, $this->callShouldLoadNews(false));
     }
 
-    public function test_free_driver_should_load_at_hour_18(): void
+    public static function freeDriverAutoSelectLanguageProvider(): array
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 18, 0, 0));
-        $this->assertTrue($this->callShouldLoadNews(true));
+        return [
+            'hour 0'  => [0,  'uk'],
+            'hour 1'  => [1,  'en'],
+            'hour 10' => [10, 'uk'],
+            'hour 15' => [15, 'en'],
+            'hour 22' => [22, 'uk'],
+            'hour 23' => [23, 'en'],
+        ];
     }
 
-    public function test_free_driver_should_load_at_hour_23(): void
+    #[DataProvider('freeDriverAutoSelectLanguageProvider')]
+    public function test_free_driver_auto_select_language(int $hour, string $expected): void
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 23, 0, 0));
-        $this->assertTrue($this->callShouldLoadNews(true));
+        Carbon::setTestNow(Carbon::create(2026, 3, 9, $hour, 0, 0));
+        $this->assertSame($expected, $this->callAutoSelectLanguage(true));
     }
 
-    // -------------------------------------------------------------------------
-    // shouldLoadNews — newscatcher3 driver (evening window only)
-    // -------------------------------------------------------------------------
-
-    public function test_newscatcher3_should_load_at_18(): void
+    public static function newscatcher3AutoSelectLanguageProvider(): array
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 18, 0, 0)); // 18 % 3 == 0
-        $this->assertTrue($this->callShouldLoadNews(false));
+        return [
+            'hour 18 (18%3==0)' => [18, 'uk'],
+            'hour 19 (19%3==1)' => [19, 'en'],
+            'hour 20 (20%3==2)' => [20, 'uk'],
+            'hour 21 (21%3==0)' => [21, 'uk'],
+        ];
     }
 
-    public function test_newscatcher3_should_load_at_19(): void
+    #[DataProvider('newscatcher3AutoSelectLanguageProvider')]
+    public function test_newscatcher3_auto_select_language(int $hour, string $expected): void
     {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 19, 0, 0)); // 19 % 3 == 1
-        $this->assertTrue($this->callShouldLoadNews(false));
-    }
-
-    public function test_newscatcher3_should_not_load_at_20(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 20, 0, 0)); // 20 % 3 == 2
-        $this->assertFalse($this->callShouldLoadNews(false));
-    }
-
-    public function test_newscatcher3_should_load_at_21(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 21, 0, 0)); // 21 % 3 == 0
-        $this->assertTrue($this->callShouldLoadNews(false));
-    }
-
-    public function test_newscatcher3_should_not_load_at_08(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 8, 0, 0));
-        $this->assertFalse($this->callShouldLoadNews(false));
-    }
-
-    public function test_newscatcher3_should_not_load_at_16(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 16, 0, 0));
-        $this->assertFalse($this->callShouldLoadNews(false));
-    }
-
-    public function test_newscatcher3_should_not_load_at_23(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 23, 0, 0));
-        $this->assertFalse($this->callShouldLoadNews(false));
-    }
-
-    // -------------------------------------------------------------------------
-    // autoSelectLanguage — free driver (hour % 2)
-    // -------------------------------------------------------------------------
-
-    public function test_free_driver_language_even_hour_0_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 0, 0, 0));
-        $this->assertSame('uk', $this->callAutoSelectLanguage(true));
-    }
-
-    public function test_free_driver_language_odd_hour_1_returns_en(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 1, 0, 0));
-        $this->assertSame('en', $this->callAutoSelectLanguage(true));
-    }
-
-    public function test_free_driver_language_even_hour_10_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 10, 0, 0));
-        $this->assertSame('uk', $this->callAutoSelectLanguage(true));
-    }
-
-    public function test_free_driver_language_odd_hour_15_returns_en(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 15, 0, 0));
-        $this->assertSame('en', $this->callAutoSelectLanguage(true));
-    }
-
-    public function test_free_driver_language_even_hour_22_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 22, 0, 0));
-        $this->assertSame('uk', $this->callAutoSelectLanguage(true));
-    }
-
-    public function test_free_driver_language_odd_hour_23_returns_en(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 23, 0, 0));
-        $this->assertSame('en', $this->callAutoSelectLanguage(true));
-    }
-
-    // -------------------------------------------------------------------------
-    // autoSelectLanguage — newscatcher3 driver (hour % 3)
-    // -------------------------------------------------------------------------
-
-    public function test_newscatcher3_language_hour_18_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 18, 0, 0)); // 18 % 3 == 0
-        $this->assertSame('uk', $this->callAutoSelectLanguage(false));
-    }
-
-    public function test_newscatcher3_language_hour_19_returns_en(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 19, 0, 0)); // 19 % 3 == 1
-        $this->assertSame('en', $this->callAutoSelectLanguage(false));
-    }
-
-    public function test_newscatcher3_language_hour_20_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 20, 0, 0)); // 20 % 3 == 2
-        $this->assertSame('uk', $this->callAutoSelectLanguage(false));
-    }
-
-    public function test_newscatcher3_language_hour_21_returns_uk(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 3, 9, 21, 0, 0)); // 21 % 3 == 0
-        $this->assertSame('uk', $this->callAutoSelectLanguage(false));
+        Carbon::setTestNow(Carbon::create(2026, 3, 9, $hour, 0, 0));
+        $this->assertSame($expected, $this->callAutoSelectLanguage(false));
     }
 }

@@ -69,8 +69,7 @@ class FreeNewsService implements NewsServiceInterface
             $excludeCountries[] = 'KZ';
         }
 
-        // === PHASE 1: Fetch metadata from both sources ===
-        // Convert exclusion syntax once: ! (used by generateSearchQuery) -> - (used by APIs)
+        // Convert exclusion syntax: ! (generateSearchQuery) -> - (APIs)
         $apiQuery = str_replace(' !', ' -', $query);
         $articles = [];
 
@@ -94,7 +93,6 @@ class FreeNewsService implements NewsServiceInterface
 
         Log::info('FreeNews: fetched ' . count($articles) . ' article metadata for ' . $effectiveLang);
 
-        // === PHASE 2: Title pre-filter ===
         $keywords = $this->extractKeywords($query);
         $excludeWords = $this->extractExcludeWords($query);
         $filtered = [];
@@ -106,34 +104,27 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
-            // 2.0 URL cache: skip articles whose link was already processed in a recent run
             if ($this->urlSeenChecker !== null && !empty($article['link']) && ($this->urlSeenChecker)($article['link'])) {
                 $urlCacheHits++;
                 continue;
             }
 
-            // 2a. Domain filter: skip articles from excluded domains
             if (in_array($article['clean_url'] ?? '', NewsServiceInterface::EXCLUDE_DOMAINS, true)) {
                 $this->markUrlSeen($article);
                 continue;
             }
 
-            // 2b. Keyword relevance: title must contain at least one search keyword
             if (!empty($keywords) && !$this->titleMatchesKeywords($article['title'], $keywords)) {
                 $this->markUrlSeen($article);
                 continue;
             }
 
-            // 2c. Exclude word filter: reject titles containing exclusion terms
             if (!empty($excludeWords) && $this->titleMatchesExcludeWords($article['title'], $excludeWords)) {
                 $this->markUrlSeen($article);
                 continue;
             }
 
-            // 2d. Batch dedup: skip exact duplicates via hashmap, then fuzzy via similar_text
-            // Note: duplicates are deliberately NOT marked as URL-seen. The "other" variant
-            // (which was kept) may fail extraction, and we want the duplicate URL available
-            // for retry on the next run rather than permanently cached as processed.
+            // Duplicates are NOT marked as URL-seen so the other variant can retry next run
             $normalizedTitle = self::normalizeTitle($article['title']);
             if (isset($seenTitles[$normalizedTitle])) {
                 continue;
@@ -160,7 +151,6 @@ class FreeNewsService implements NewsServiceInterface
             Log::info('FreeNews: ' . $urlCacheHits . ' articles skipped by URL cache');
         }
 
-        // === PHASE 2.5: Cross-run dedup against DB (if filter provided) ===
         if ($this->titleDedupFilter !== null) {
             $beforeCount = count($filtered);
             $filtered = ($this->titleDedupFilter)($filtered);
@@ -170,7 +160,6 @@ class FreeNewsService implements NewsServiceInterface
             }
         }
 
-        // === PHASE 3: Content extraction ===
         $maxEnrich = (int) config('services.news.max_enrich', 30);
         $filtered = array_slice($filtered, 0, $maxEnrich);
 
@@ -181,11 +170,7 @@ class FreeNewsService implements NewsServiceInterface
             $isGoogleUrl = str_contains($article['link'], 'news.google.com');
             $enriched = $this->extractContent($article);
 
-            // Cache the original URL if content extraction produced real content
-            // (not just the title fallback). Failed extractions remain uncached for retry.
-            // Edge case: if Readability extracts content that exactly equals the title
-            // (extremely unlikely given the 50-char minimum), the article will be retried
-            // next run — this is the safe-side failure mode.
+            // Mark URL as seen only if extraction succeeded (content != title fallback)
             if ($this->urlSeenMarker !== null && $enriched['content'] !== $article['title']) {
                 ($this->urlSeenMarker)($article['link']);
             }
@@ -227,11 +212,7 @@ class FreeNewsService implements NewsServiceInterface
         return 'FreeNews';
     }
 
-    /**
-     * Extract positive keywords from the query string.
-     * Input: "(lion OR lions OR lioness*) !horoscop*"
-     * Output: ['lion', 'lions', 'lioness']
-     */
+    /** Input: "(lion OR lions OR lioness*) !horoscop*" → ['lion', 'lions', 'lioness'] */
     private function extractKeywords(string $query): array
     {
         // Assumes generateSearchQuery() produces a single parenthesized group
@@ -256,11 +237,7 @@ class FreeNewsService implements NewsServiceInterface
         return false;
     }
 
-    /**
-     * Extract exclusion words from the query string.
-     * Input: "(lion OR lions) !horoscop* !"sea lion" !football*"
-     * Output: ['horoscop*', 'sea lion', 'football*']
-     */
+    /** Input: "(lion OR lions) !horoscop* !"sea lion" !football*" → ['horoscop*', 'sea lion', 'football*'] */
     private function extractExcludeWords(string $query): array
     {
         preg_match_all('/!("([^"]+)"|(\S+))/', $query, $matches);
@@ -277,10 +254,6 @@ class FreeNewsService implements NewsServiceInterface
         return $excludeWords;
     }
 
-    /**
-     * Check if a title contains any of the exclusion words.
-     * Supports trailing wildcard (*) for prefix matching.
-     */
     private function titleMatchesExcludeWords(string $title, array $excludeWords): bool
     {
         foreach ($excludeWords as $word) {
@@ -299,15 +272,7 @@ class FreeNewsService implements NewsServiceInterface
         return false;
     }
 
-    /**
-     * Validate URL targets a public IP (not internal/reserved).
-     *
-     * Note: TOCTOU/DNS-rebinding risk accepted. The DNS lookup here and the
-     * actual HTTP fetch in FileHelper::getUrl() resolve independently, so a
-     * malicious domain could theoretically return a public IP here then rebind
-     * to 127.0.0.1. This is acceptable because all URLs originate from trusted
-     * sources (Google News RSS feed, GDELT API) — not direct user input.
-     */
+    /** Validate URL targets a public IP. TOCTOU risk accepted: URLs are from trusted RSS/API sources. */
     private function isUrlSafe(string $url): bool
     {
         $parsed = parse_url($url);
@@ -358,10 +323,6 @@ class FreeNewsService implements NewsServiceInterface
         return trim(preg_replace('/\s+/', ' ', $title));
     }
 
-    /**
-     * Fetch article page and extract full content using Readability.
-     * Uses FileHelper::getUrl() which provides ScraperAPI fallback.
-     */
     private function extractContent(array $article): array
     {
         $originalUrl = $article['link'];
@@ -375,7 +336,6 @@ class FreeNewsService implements NewsServiceInterface
                 return $this->buildArticleArray($article, $article['title'], $url);
             }
 
-            // Step 1: Decode Google News URLs to real article URLs
             if (str_contains($url, 'news.google.com')) {
                 $decoded = $this->urlDecoder->decode($url);
                 if ($decoded !== null && !str_contains($decoded, 'news.google.com')) {
@@ -390,7 +350,6 @@ class FreeNewsService implements NewsServiceInterface
                 }
             }
 
-            // Step 2: Fetch HTML using FileHelper (direct HTTP + ScraperAPI fallback)
             $html = FileHelper::getUrl($url);
 
             if (empty($html)) {
@@ -398,12 +357,10 @@ class FreeNewsService implements NewsServiceInterface
                 return $this->buildArticleArray($article, $article['title'], $url);
             }
 
-            // Cap HTML size at 2MB to prevent OOM from oversized responses
             if (strlen($html) > 2 * 1024 * 1024) {
                 $html = substr($html, 0, 2 * 1024 * 1024);
             }
 
-            // Step 3: Extract content using Readability
             $config = new Configuration();
             $readability = new Readability($config);
             $readability->parse($html);
