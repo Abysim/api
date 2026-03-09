@@ -486,6 +486,7 @@ class NewsController extends Controller
                 ]);
                 if (empty($model->media)) {
                     $model->media = $article['media'];
+                    $model->save();
                 }
 
                 $this->mapSpecies($model, $speciesKeys);

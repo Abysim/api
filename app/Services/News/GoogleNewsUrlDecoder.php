@@ -208,6 +208,10 @@ class GoogleNewsUrlDecoder
                 $params['signature']
             );
 
+            if ($payload === null) {
+                return null;
+            }
+
             $response = Http::asForm()
                 ->withHeaders([
                     'Referer' => 'https://news.google.com/',
@@ -293,21 +297,21 @@ class GoogleNewsUrlDecoder
         return null;
     }
 
-    private function buildBatchExecutePayload(string $articleId, string $timestamp, string $signature): string
+    private function buildBatchExecutePayload(string $articleId, string $timestamp, string $signature): ?string
     {
         // Validate inputs to prevent payload corruption from unexpected characters.
         // articleId: URL-safe base64 (alphanumeric, -, _); timestamp: numeric; signature: base64-like.
         if (!preg_match('/^[\w\-]+$/', $articleId)) {
             Log::warning('GoogleNewsUrlDecoder: invalid articleId format: ' . $articleId);
-            return json_encode([[['Fbv4je', '[]', null, 'generic']]]);
+            return null;
         }
         if (!preg_match('/^\d+$/', $timestamp)) {
             Log::warning('GoogleNewsUrlDecoder: invalid timestamp format: ' . $timestamp);
-            return json_encode([[['Fbv4je', '[]', null, 'generic']]]);
+            return null;
         }
         if (!preg_match('/^[\w\-=+\/]+$/', $signature)) {
             Log::warning('GoogleNewsUrlDecoder: invalid signature format: ' . $signature);
-            return json_encode([[['Fbv4je', '[]', null, 'generic']]]);
+            return null;
         }
 
         // The inner payload is reverse-engineered from Google's DotsSplashUi batchexecute RPC.

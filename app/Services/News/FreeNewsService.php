@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 
 class FreeNewsService implements NewsServiceInterface
 {
+    use GeneratesSearchQuery;
+
     private const SEARCH_QUERY_LIMIT = 400;
 
     private const LANG = NewsServiceInterface::DEFAULT_LANG;
@@ -42,7 +44,6 @@ class FreeNewsService implements NewsServiceInterface
 
     public function getNews(string $query, ?string $lang = null): array
     {
-        $this->dnsCache = [];
         $effectiveLang = $lang ?: self::LANG;
         $excludeCountries = NewsServiceInterface::EXCLUDE_COUNTRIES;
         if (empty($lang) || $lang === self::LANG) {
@@ -173,19 +174,6 @@ class FreeNewsService implements NewsServiceInterface
     public function getSearchQueryLimit(): int
     {
         return self::SEARCH_QUERY_LIMIT;
-    }
-
-    public function generateSearchQuery(array $words, array $excludeWords): string
-    {
-        $query = '(' . implode(' OR ', $words) . ')';
-        foreach ($excludeWords as $exclude) {
-            if (str_contains($exclude, ' ')) {
-                $exclude = '"' . $exclude . '"';
-            }
-            $query .= ' !' . $exclude;
-        }
-
-        return $query;
     }
 
     public function getName(): string

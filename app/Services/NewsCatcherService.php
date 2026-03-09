@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\News\GeneratesSearchQuery;
 use Exception;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 class NewsCatcherService implements NewsServiceInterface
 {
+    use GeneratesSearchQuery;
+
     private const URL = 'https://api.newscatcherapi.com/v2/';
 
     protected const SEARCH_QUERY_LIMIT = 1000;
@@ -66,19 +69,6 @@ class NewsCatcherService implements NewsServiceInterface
     public function getSearchQueryLimit(): int
     {
         return self::SEARCH_QUERY_LIMIT;
-    }
-
-    public function generateSearchQuery(array $words, array $excludeWords): string
-    {
-        $query = '(' . implode(' OR ', $words) . ')';
-        foreach ($excludeWords as $exclude) {
-            if (str_contains($exclude, ' ')) {
-                $exclude = '"' . $exclude . '"';
-            }
-            $query .= ' !' . $exclude;
-        }
-
-        return $query;
     }
 
     public function getName(): string
