@@ -46,7 +46,7 @@ class FreeNewsService implements NewsServiceInterface
         $articles = [];
 
         try {
-            $googleQuery = $this->googleSource->buildQuery($apiQuery, $effectiveLang);
+            $googleQuery = $this->googleSource->buildQuery($apiQuery, $effectiveLang, NewsServiceInterface::EXCLUDE_DOMAINS);
             $articles = array_merge($articles, $this->googleSource->fetch($googleQuery, $effectiveLang));
         } catch (\Throwable $e) {
             Log::error('GoogleNewsSource error: ' . $e->getMessage());
@@ -67,6 +67,7 @@ class FreeNewsService implements NewsServiceInterface
 
         // === PHASE 2: Title pre-filter ===
         $keywords = $this->extractKeywords($query);
+        $excludeWords = $this->extractExcludeWords($query);
         $filtered = [];
         $seenTitles = [];
 
@@ -75,12 +76,22 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
-            // 2a. Keyword relevance: title must contain at least one search keyword
+            // 2a. Domain filter: skip articles from excluded domains
+            if (in_array($article['clean_url'] ?? '', NewsServiceInterface::EXCLUDE_DOMAINS, true)) {
+                continue;
+            }
+
+            // 2b. Keyword relevance: title must contain at least one search keyword
             if (!empty($keywords) && !$this->titleMatchesKeywords($article['title'], $keywords)) {
                 continue;
             }
 
-            // 2b. Batch dedup: skip if title too similar to one already accepted
+            // 2c. Exclude word filter: reject titles containing exclusion terms
+            if (!empty($excludeWords) && $this->titleMatchesExcludeWords($article['title'], $excludeWords)) {
+                continue;
+            }
+
+            // 2d. Batch dedup: skip if title too similar to one already accepted
             $normalizedTitle = $this->normalizeTitle($article['title']);
             $dominated = false;
             foreach ($seenTitles as $seen) {
@@ -180,6 +191,49 @@ class FreeNewsService implements NewsServiceInterface
         foreach ($keywords as $keyword) {
             if (mb_stripos($title, $keyword) !== false) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extract exclusion words from the query string.
+     * Input: "(lion OR lions) !horoscop* !"sea lion" !football*"
+     * Output: ['horoscop*', 'sea lion', 'football*']
+     */
+    private function extractExcludeWords(string $query): array
+    {
+        preg_match_all('/!("([^"]+)"|(\S+))/', $query, $matches);
+
+        $excludeWords = [];
+        foreach ($matches[0] as $i => $fullMatch) {
+            if (!empty($matches[2][$i])) {
+                $excludeWords[] = $matches[2][$i];
+            } else {
+                $excludeWords[] = $matches[3][$i];
+            }
+        }
+
+        return $excludeWords;
+    }
+
+    /**
+     * Check if a title contains any of the exclusion words.
+     * Supports trailing wildcard (*) for prefix matching.
+     */
+    private function titleMatchesExcludeWords(string $title, array $excludeWords): bool
+    {
+        foreach ($excludeWords as $word) {
+            if (str_ends_with($word, '*')) {
+                $prefix = substr($word, 0, -1);
+                if (mb_stripos($title, $prefix) !== false) {
+                    return true;
+                }
+            } else {
+                if (mb_stripos($title, $word) !== false) {
+                    return true;
+                }
             }
         }
 

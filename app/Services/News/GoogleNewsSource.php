@@ -16,13 +16,19 @@ class GoogleNewsSource
         'en' => ['hl' => 'en-US', 'gl' => 'US', 'ceid' => 'US:en'],
     ];
 
-    public function buildQuery(string $baseQuery, string $lang): string
+    public function buildQuery(string $baseQuery, string $lang, array $excludeDomains = []): string
     {
         $when = ($lang === NewsServiceInterface::DEFAULT_LANG || empty($lang))
             ? NewsServiceInterface::LOOKBACK_HOURS_DEFAULT_LANG . 'h'
             : NewsServiceInterface::LOOKBACK_HOURS_OTHER_LANG . 'h';
 
-        return $baseQuery . ' when:' . $when;
+        $query = $baseQuery . ' when:' . $when;
+
+        foreach ($excludeDomains as $domain) {
+            $query .= ' -site:' . $domain;
+        }
+
+        return $query;
     }
 
     public function fetch(string $query, string $lang): array

@@ -57,6 +57,33 @@ class GoogleNewsSourceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // buildQuery – domain exclusions
+    // -------------------------------------------------------------------------
+
+    public function test_build_query_appends_site_exclusions_when_domains_provided(): void
+    {
+        $result = $this->source->buildQuery('lion when:26h', 'en', ['champion.com.ua', 'sport.ua']);
+
+        $this->assertStringContainsString(' -site:champion.com.ua', $result);
+        $this->assertStringContainsString(' -site:sport.ua', $result);
+    }
+
+    public function test_build_query_does_not_append_site_exclusions_for_empty_array(): void
+    {
+        $result = $this->source->buildQuery('lion', 'en', []);
+
+        $this->assertStringNotContainsString('-site:', $result);
+    }
+
+    public function test_build_query_without_domains_parameter_behaves_identically(): void
+    {
+        $withEmpty = $this->source->buildQuery('lion', 'en', []);
+        $without = $this->source->buildQuery('lion', 'en');
+
+        $this->assertSame($withEmpty, $without);
+    }
+
+    // -------------------------------------------------------------------------
     // fetch – happy path
     // -------------------------------------------------------------------------
 

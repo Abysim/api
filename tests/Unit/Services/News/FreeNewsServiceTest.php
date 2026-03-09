@@ -208,6 +208,134 @@ class FreeNewsServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // extractExcludeWords (private — via ReflectionMethod)
+    // -------------------------------------------------------------------------
+
+    public function test_extract_exclude_words_parses_single_word_exclusion(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '(lion OR lions) !horoscope');
+
+        $this->assertSame(['horoscope'], array_values($result));
+    }
+
+    public function test_extract_exclude_words_parses_wildcard_exclusion(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '(lion OR lions) !horoscop*');
+
+        $this->assertSame(['horoscop*'], array_values($result));
+    }
+
+    public function test_extract_exclude_words_parses_quoted_multi_word_exclusion(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '(lion OR lions) !"sea lion"');
+
+        $this->assertSame(['sea lion'], array_values($result));
+    }
+
+    public function test_extract_exclude_words_parses_mixed_exclusions(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '(lion OR lions) !horoscop* !"sea lion" !football*');
+
+        $this->assertSame(['horoscop*', 'sea lion', 'football*'], array_values($result));
+    }
+
+    public function test_extract_exclude_words_returns_empty_for_no_exclusions(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '(lion OR lions)');
+
+        $this->assertSame([], $result);
+    }
+
+    public function test_extract_exclude_words_returns_empty_for_empty_string(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'extractExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, '');
+
+        $this->assertSame([], $result);
+    }
+
+    // -------------------------------------------------------------------------
+    // titleMatchesExcludeWords (private — via ReflectionMethod)
+    // -------------------------------------------------------------------------
+
+    public function test_title_matches_exclude_words_rejects_matching_title(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'Lions defeat Bears in NFL showdown', ['nfl*']);
+
+        $this->assertTrue($result);
+    }
+
+    public function test_title_matches_exclude_words_handles_wildcard_prefix_match(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'Your horoscope for today', ['horoscop*']);
+
+        $this->assertTrue($result);
+    }
+
+    public function test_title_matches_exclude_words_passes_non_matching_title(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'Lion spotted in Kenya wildlife reserve', ['horoscop*', 'nfl*']);
+
+        $this->assertFalse($result);
+    }
+
+    public function test_title_matches_exclude_words_is_case_insensitive(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'NFL Football Championship', ['football*']);
+
+        $this->assertTrue($result);
+    }
+
+    public function test_title_matches_exclude_words_matches_multi_word_exclude(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'The Lion King returns to Broadway', ['the lion king']);
+
+        $this->assertTrue($result);
+    }
+
+    public function test_title_matches_exclude_words_returns_false_for_empty_exclude_list(): void
+    {
+        $method = new ReflectionMethod(FreeNewsService::class, 'titleMatchesExcludeWords');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->service, 'Lion spotted in the wild', []);
+
+        $this->assertFalse($result);
+    }
+
+    // -------------------------------------------------------------------------
     // normalizeTitle (private — via ReflectionMethod)
     // -------------------------------------------------------------------------
 
@@ -587,6 +715,69 @@ class FreeNewsServiceTest extends TestCase
         $this->assertCount(2, $result);
         $this->assertSame('2024-01-15 08:00:00', $result[0]['published_date']);
         $this->assertSame('2024-01-15 12:00:00', $result[1]['published_date']);
+    }
+
+    public function test_get_news_filters_articles_from_excluded_domains(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $excludedArticle = $this->makeArticle('Lion in sport news', 'https://sport.ua/news/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $excludedArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_exclude_words_filter_rejects_title_with_exclude_term(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');
+        $badArticle = $this->makeArticle('Lions horoscope reading for March', 'https://example.com/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $badArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions) !horoscop*');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_exclude_words_filter_with_wildcard_rejects_matching_title(): void
+    {
+        Sleep::fake();
+        config(['services.news.max_enrich' => 10]);
+
+        $goodArticle = $this->makeArticle('Tiger seen in national park', 'https://example.com/1', '2024-01-15 10:00:00');
+        $badArticle = $this->makeArticle('Tiger football championship game', 'https://example.com/2', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $badArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(tiger OR tigers) !football*');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Tiger seen in national park', $result[0]['title']);
     }
 
     public function test_get_news_skips_articles_with_empty_title(): void

@@ -386,6 +386,22 @@ class GdeltSourceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // fetch – maxrecords
+    // -------------------------------------------------------------------------
+
+    public function test_fetch_uses_maxrecords_250(): void
+    {
+        Http::fake([
+            '*' => Http::response(['articles' => []], 200),
+        ]);
+
+        $this->source->fetch('ukraine war', 'en');
+
+        $request = Http::recorded()[0][0];
+        $this->assertSame(250, $request->data()['maxrecords']);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

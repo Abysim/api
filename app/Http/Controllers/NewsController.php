@@ -21,6 +21,7 @@ use Exception;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
@@ -40,6 +41,8 @@ class NewsController extends Controller
     private const PUBLISH_AFTER = '06:00:00';
 
     private const PUBLISH_BEFORE = '21:00:00';
+
+    private const MAX_CONSECUTIVE_FAILURES = 3;
 
     private array $species = [];
 
@@ -290,95 +293,147 @@ class NewsController extends Controller
     {
         Log::info('Loading news for language ' . $lang);
         $models = [];
+        // Circuit breaker counter spans both passes intentionally:
+        // if APIs are down, we stop early regardless of which pass we're in
+        $consecutiveFailures = 0;
+        $interSpeciesDelay = (int) config('services.news.inter_species_delay', 0);
 
-        $query = '';
-        $specieses = [];
-        $words = [];
-        $exclude = [];
+        // Classify species into SEPARATE (has exclusions) and BATCH (no exclusions)
+        $separateSpecies = [];
+        $batchSpecies = [];
         foreach ($this->getSpecies($lang) as $species => $data) {
-            $isSearch = false;
-            $currentSpecieses = array_merge($specieses, [$species]);
-            $currentWords = array_merge($words, $data['words']);
-            $currentExclude = array_unique(array_merge($exclude, $data['exclude']));
-
-            $currentQuery = $this->service->generateSearchQuery($currentWords, $currentExclude);
-
-            if (Str::length($currentQuery) > $this->service->getSearchQueryLimit()) {
-                $isSearch = true;
-
-                $currentSpecieses = $specieses;
-                $currentWords = $words;
-                $currentExclude = $exclude;
-
-                $currentQuery = $query;
-            }
-
-            if (array_key_last($this->getSpecies($lang)) == $species) {
-                $isSearch = true;
-            }
-
-            if ($isSearch) {
-                try {
-                    $news = $this->service->getNews($currentQuery, $lang);
-                } catch (NewsCatcherQuotaExceededException $e) {
-                    Log::error('NewsCatcher API quota exhausted, skipping remaining queries');
-                    break;
-                }
-
-                foreach ($news as $article) {
-                    try {
-                        $content = $article['content'] ?? $article['summary'];
-                        if (Str::length($content) > 65535) {
-                            continue;
-                        }
-
-                        if (Str::length($article['title']) > 1000) {
-                            $article['title'] = Str::substr($article['title'], 0, 1000);
-                        }
-
-                        $model = News::updateOrCreate([
-                            'platform' => $this->service->getName(),
-                            'external_id' => $article['id'] ?? $article['_id']
-                        ], [
-                            'date' => explode(' ', $article['published_date'])[0],
-                            'author' => $article['author'],
-                            'title' => $article['title'],
-                            'content' => $content,
-                            'link' => $article['link'],
-                            'source' => !empty($article['name_source'])
-                                ? $article['name_source']
-                                : ($article['rights'] ?? $article['clean_url'] ?? $article['domain_url']),
-                            'language' => $article['language'],
-                            'posted_at' => $article['published_date'],
-                        ]);
-                        if (empty($model->media)) {
-                            $model->media = $article['media'];
-                        }
-
-                        $this->mapSpecies($model, $currentSpecieses);
-                        $models[$model->id] = $model;
-                    } catch (Exception $e) {
-                        Log::error('News load error: ' . $e->getMessage());
-
-                        continue;
-                    }
-                }
-
-                $specieses = [$species];
-                $words = $data['words'];
-                $exclude = $data['exclude'];
-
-                $query = $this->service->generateSearchQuery($words, $exclude);
+            if (!empty($data['exclude'])) {
+                $separateSpecies[$species] = $data;
             } else {
-                $specieses = $currentSpecieses;
-                $words = $currentWords;
-                $exclude = $currentExclude;
-
-                $query = $currentQuery;
+                $batchSpecies[$species] = $data;
             }
         }
 
+        // Pass 1: SEPARATE species — one query each (isolated exclusions)
+        foreach ($separateSpecies as $species => $data) {
+            $query = $this->service->generateSearchQuery($data['words'], $data['exclude']);
+
+            if (!$this->fetchAndSave($query, $lang, [$species], $models, $consecutiveFailures)) {
+                return $models;
+            }
+
+            if ($interSpeciesDelay > 0) {
+                Sleep::for($interSpeciesDelay)->seconds();
+            }
+        }
+
+        // Pass 2: BATCH species — group by query length limit (no exclusions)
+        $batchWords = [];
+        $batchKeys = [];
+        foreach ($batchSpecies as $species => $data) {
+            $candidateWords = array_merge($batchWords, $data['words']);
+            $candidateQuery = $this->service->generateSearchQuery($candidateWords, []);
+
+            if (!empty($batchWords) && Str::length($candidateQuery) > $this->service->getSearchQueryLimit()) {
+                // Fire current batch before it overflows
+                $query = $this->service->generateSearchQuery($batchWords, []);
+
+                if (!$this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures)) {
+                    return $models;
+                }
+
+                if ($interSpeciesDelay > 0) {
+                    Sleep::for($interSpeciesDelay)->seconds();
+                }
+
+                // Start new batch with current species
+                $batchWords = $data['words'];
+                $batchKeys = [$species];
+            } else {
+                $batchWords = $candidateWords;
+                $batchKeys[] = $species;
+            }
+        }
+
+        // Fire remaining batch (no delay needed: this is the last query)
+        if (!empty($batchWords)) {
+            $query = $this->service->generateSearchQuery($batchWords, []);
+            $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
+        }
+
         Log::info('News loaded for language ' . $lang);
+
+        return $models;
+    }
+
+    /**
+     * Fetch news for a query, apply circuit breaker, and save articles.
+     * Returns false if the loop should stop (quota exhausted or circuit breaker tripped).
+     */
+    private function fetchAndSave(
+        string $query,
+        string $lang,
+        array $speciesKeys,
+        array &$models,
+        int &$consecutiveFailures
+    ): bool {
+        try {
+            $news = $this->service->getNews($query, $lang);
+        } catch (NewsCatcherQuotaExceededException $e) {
+            Log::error('NewsCatcher API quota exhausted, skipping remaining queries');
+            return false;
+        }
+
+        if (empty($news)) {
+            $consecutiveFailures++;
+            if ($consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES) {
+                Log::warning('loadNews: ' . self::MAX_CONSECUTIVE_FAILURES . ' consecutive empty results, stopping for ' . $lang);
+                return false;
+            }
+        } else {
+            $consecutiveFailures = 0;
+        }
+
+        $models = $this->saveArticles($news, $speciesKeys, $models);
+
+        return true;
+    }
+
+    private function saveArticles(array $news, array $speciesKeys, array $models): array
+    {
+        foreach ($news as $article) {
+            try {
+                $content = $article['content'] ?? $article['summary'];
+                if (Str::length($content) > 65535) {
+                    continue;
+                }
+
+                if (Str::length($article['title']) > 1000) {
+                    $article['title'] = Str::substr($article['title'], 0, 1000);
+                }
+
+                $model = News::updateOrCreate([
+                    'platform' => $this->service->getName(),
+                    'external_id' => $article['id'] ?? $article['_id']
+                ], [
+                    'date' => explode(' ', $article['published_date'])[0],
+                    'author' => $article['author'],
+                    'title' => $article['title'],
+                    'content' => $content,
+                    'link' => $article['link'],
+                    'source' => !empty($article['name_source'])
+                        ? $article['name_source']
+                        : ($article['rights'] ?? $article['clean_url'] ?? $article['domain_url']),
+                    'language' => $article['language'],
+                    'posted_at' => $article['published_date'],
+                ]);
+                if (empty($model->media)) {
+                    $model->media = $article['media'];
+                }
+
+                $this->mapSpecies($model, $speciesKeys);
+                $models[$model->id] = $model;
+            } catch (Exception $e) {
+                Log::error('News load error: ' . $e->getMessage());
+
+                continue;
+            }
+        }
 
         return $models;
     }
@@ -890,10 +945,7 @@ class NewsController extends Controller
      */
     private function excludeByTags(News $model)
     {
-        $text = $model->content;
-        if ($model->language != 'en') {
-            $text = $model->title . "\n\n" . $text;
-        }
+        $text = $model->title . "\n\n" . $model->content;
 
         if (empty($model->species)) {
             $model->status = NewsStatus::REJECTED_BY_KEYWORD;

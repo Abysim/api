@@ -51,7 +51,7 @@ class GdeltSource
         $params = [
             'query' => $query,
             'mode' => 'artlist',
-            'maxrecords' => 75,
+            'maxrecords' => 250,
             'format' => 'json',
             'startdatetime' => $startDate->format('YmdHis'),
             'enddatetime' => now()->format('YmdHis'),
