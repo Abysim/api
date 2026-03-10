@@ -47,6 +47,14 @@ Pet project that supports other projects. Laravel 10 API application.
 - Unit tests do NOT require DB — they mock HTTP via `Http::fake()` and dependencies via Mockery
 - `phpunit.xml` sets `TELEGRAM_API_TOKEN=""` to prevent TelegramServiceProvider from connecting to DB during tests
 
+## AI Client Patterns
+- **OpenAI GPT models** (`gpt-4.1-nano`, `gpt-4.1-mini`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
+- **Via OpenRouter** (alternating with OpenAI): `AI::client('openrouter')->chat()->create($params)` with `openai/` model prefix. Config: `services.openrouter.*` → `OPENROUTER_API_KEY`
+- **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen2.5-32B-Instruct`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
+- **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Config: `services.gemini.*` → `GEMINI_API_KEY`
+- **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
+- **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
+
 ## Gotchas
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
