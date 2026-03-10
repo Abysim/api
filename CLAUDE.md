@@ -2,6 +2,7 @@
 
 ## Overview
 Pet project that supports other projects. Laravel 10 API application.
+- **Target language**: Ukrainian (`uk`) — all foreign-language news articles are translated INTO Ukrainian. Articles already in Ukrainian skip translation. This is core domain logic, not a bug.
 
 ## Tech Stack
 - **Framework**: Laravel 10.48.28
