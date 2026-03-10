@@ -23,6 +23,9 @@ class FreeNewsService implements NewsServiceInterface
     private GdeltSource $gdeltSource;
     private GoogleNewsUrlDecoder $urlDecoder;
     private array $dnsCache = [];
+    private int $lastDecodeTotal = 0;
+    private int $lastDecodeSuccess = 0;
+    private bool $gdeltRateLimited = false;
 
     /** @var callable(array): array|null */
     private $titleDedupFilter = null;
@@ -63,6 +66,7 @@ class FreeNewsService implements NewsServiceInterface
 
     public function getNews(string $query, ?string $lang = null): array
     {
+        $this->resetMetrics();
         $effectiveLang = $lang ?: self::LANG;
         $excludeCountries = NewsServiceInterface::EXCLUDE_COUNTRIES;
         if (empty($lang) || $lang === self::LANG) {
@@ -83,6 +87,7 @@ class FreeNewsService implements NewsServiceInterface
         try {
             $gdeltQuery = $this->gdeltSource->buildQuery($apiQuery, $effectiveLang, $excludeCountries, NewsServiceInterface::EXCLUDE_DOMAINS);
             $articles = array_merge($articles, $this->gdeltSource->fetch($gdeltQuery, $effectiveLang));
+            $this->gdeltRateLimited = $this->gdeltSource->wasRateLimited();
         } catch (\Throwable $e) {
             Log::error('GdeltSource error: ' . $e->getMessage());
         }
@@ -166,6 +171,7 @@ class FreeNewsService implements NewsServiceInterface
         $result = [];
         $googleDecoded = 0;
         $googleFailed = 0;
+        $titleOnlySkipped = 0;
         foreach ($filtered as $article) {
             $isGoogleUrl = str_contains($article['link'], 'news.google.com');
             $enriched = $this->extractContent($article);
@@ -182,18 +188,31 @@ class FreeNewsService implements NewsServiceInterface
                     $googleFailed++;
                 }
             }
+
+            // Skip articles where content extraction failed (content == title fallback)
+            if ($enriched['content'] === $article['title']) {
+                $titleOnlySkipped++;
+                continue;
+            }
+
             $result[] = $enriched;
             Sleep::for(1)->second(); // polite crawling delay
         }
 
         if ($googleDecoded + $googleFailed > 0) {
             $total = $googleDecoded + $googleFailed;
+            $this->lastDecodeTotal = $total;
+            $this->lastDecodeSuccess = $googleDecoded;
             $rate = $googleDecoded / $total;
             if ($rate < 0.5) {
                 Log::warning("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded — decode rate below 50%, protocol may have changed");
             } else {
                 Log::info("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded");
             }
+        }
+
+        if ($titleOnlySkipped > 0) {
+            Log::info('FreeNews: ' . $titleOnlySkipped . ' articles skipped (title-only content)');
         }
 
         // Sort oldest first (matching NewsCatcher's array_reverse pattern)
@@ -355,6 +374,7 @@ class FreeNewsService implements NewsServiceInterface
             }
 
             $config = new Configuration();
+            $config->setSubstituteEntities(true);
             $readability = new Readability($config);
             $readability->parse($html);
 
@@ -369,7 +389,7 @@ class FreeNewsService implements NewsServiceInterface
             $author = $readability->getAuthor();
             $image = $readability->getImage();
 
-            if (empty($content) || mb_strlen($content) < 50) {
+            if (empty($content) || mb_strlen($content) < 200) {
                 Log::warning('FreeNews: readability extracted too little for ' . $url);
                 return $this->buildArticleArray($article, $article['title'], $url);
             }
@@ -409,5 +429,27 @@ class FreeNewsService implements NewsServiceInterface
             'domain_url' => parse_url($link, PHP_URL_HOST),
             'media' => $image ?? $metadata['media'] ?? null,
         ];
+    }
+
+    private function resetMetrics(): void
+    {
+        $this->lastDecodeTotal = 0;
+        $this->lastDecodeSuccess = 0;
+        $this->gdeltRateLimited = false;
+    }
+
+    public function getLastDecodeTotal(): int
+    {
+        return $this->lastDecodeTotal;
+    }
+
+    public function getLastDecodeSuccess(): int
+    {
+        return $this->lastDecodeSuccess;
+    }
+
+    public function wasGdeltRateLimited(): bool
+    {
+        return $this->gdeltRateLimited;
     }
 }

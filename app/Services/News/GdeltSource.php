@@ -12,6 +12,8 @@ class GdeltSource
 {
     private const BASE_URL = 'https://api.gdeltproject.org/api/v2/doc/doc';
 
+    private bool $rateLimited = false;
+
     private const GDELT_LANG_MAP = [
         'uk' => 'ukrainian',
         'en' => 'english',
@@ -58,12 +60,14 @@ class GdeltSource
         ];
 
         Log::info('GdeltSource: fetching ' . $lang . ': ' . $query);
+        $this->rateLimited = false;
 
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             try {
                 $response = Http::timeout(30)->get(self::BASE_URL, $params);
 
                 if ($response->status() === 429 && $attempt === 1) {
+                    $this->rateLimited = true;
                     Log::warning('GdeltSource: rate limited (HTTP 429), retrying...');
                     Sleep::for(6)->seconds();
                     continue;
@@ -86,6 +90,7 @@ class GdeltSource
                 if (!is_array($data)) {
                     $body = $response->body();
                     if (str_contains($body, 'limit requests')) {
+                        $this->rateLimited = true;
                         Log::warning('GdeltSource: rate limited by GDELT API' . ($attempt === 1 ? ', retrying...' : ''));
                         if ($attempt === 1) {
                             Sleep::for(6)->seconds();
@@ -134,6 +139,11 @@ class GdeltSource
         }
 
         return [];
+    }
+
+    public function wasRateLimited(): bool
+    {
+        return $this->rateLimited;
     }
 
     private function parseDate(string $dateStr): string

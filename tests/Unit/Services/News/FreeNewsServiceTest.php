@@ -28,7 +28,7 @@ class FreeNewsServiceTest extends TestCase
         $this->urlDecoder = Mockery::mock(GoogleNewsUrlDecoder::class);
         $this->service = new FreeNewsService($this->googleSource, $this->gdeltSource, $this->urlDecoder);
         Sleep::fake();
-        Http::fake(['*' => Http::response('', 404)]);
+        Http::fake(['*' => Http::response($this->readableHtml(), 200)]);
         config(['services.news.max_enrich' => 10]);
     }
 
@@ -795,7 +795,7 @@ class FreeNewsServiceTest extends TestCase
             function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
         );
 
-        // 404 causes extractContent to fall back to title-as-content
+        $this->overrideHttpFake(['*' => Http::response('', 404)]);
 
         $this->service->getNews('(lion OR lions)');
 
@@ -823,18 +823,7 @@ class FreeNewsServiceTest extends TestCase
             function (string $url) use (&$markedUrls) { $markedUrls[] = $url; },
         );
 
-        // Return valid HTML with enough content for Readability to extract.
-        // Reset the Http factory's stub callbacks so our specific URL stub takes priority
-        // over the wildcard stub registered in setUp().
-        $html = '<html><head><title>Lion spotted in Kenya</title></head>'
-            . '<body><article><p>' . str_repeat('Lion conservation efforts in Kenya are bearing fruit. ', 20) . '</p></article></body></html>';
-        $factory = Http::getFacadeRoot();
-        $prop = new ReflectionProperty($factory, 'stubCallbacks');
-        $prop->setValue($factory, collect());
-        Http::fake([
-            'https://example.com/success' => Http::response($html, 200),
-            '*' => Http::response('', 404),
-        ]);
+        // setUp provides valid HTML for all URLs — extraction succeeds
 
         $result = $this->service->getNews('(lion OR lions)');
 
@@ -890,6 +879,71 @@ class FreeNewsServiceTest extends TestCase
         $this->assertContains('https://champion.com.ua/blocked', $markedUrls);
     }
 
+    // Metrics
+
+    public function test_get_last_decode_total_and_success_default_to_zero(): void
+    {
+        $this->assertSame(0, $this->service->getLastDecodeTotal());
+        $this->assertSame(0, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_was_gdelt_rate_limited_defaults_to_false(): void
+    {
+        $this->assertFalse($this->service->wasGdeltRateLimited());
+    }
+
+    public function test_was_gdelt_rate_limited_propagates_from_gdelt_source(): void
+    {
+        config(['services.news.max_enrich' => 0]);
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+        $this->gdeltSource->shouldReceive('wasRateLimited')->once()->andReturn(true);
+
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertTrue($this->service->wasGdeltRateLimited());
+    }
+
+    public function test_get_news_resets_metrics_on_each_call(): void
+    {
+        config(['services.news.max_enrich' => 0]);
+
+        // First call: GDELT rate limited
+        $this->googleSource->shouldReceive('buildQuery')->twice()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->twice()->andReturn([]);
+        $this->gdeltSource->shouldReceive('buildQuery')->twice()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->twice()->andReturn([]);
+        $this->gdeltSource->shouldReceive('wasRateLimited')->twice()->andReturn(true, false);
+
+        $this->service->getNews('(lion OR lions)');
+        $this->assertTrue($this->service->wasGdeltRateLimited());
+
+        // Second call: no rate limit — metrics should reflect only this call
+        $this->service->getNews('(lion OR lions)');
+        $this->assertSame(0, $this->service->getLastDecodeTotal());
+        $this->assertSame(0, $this->service->getLastDecodeSuccess());
+        $this->assertFalse($this->service->wasGdeltRateLimited());
+    }
+
+    public function test_get_news_skips_articles_with_title_only_content(): void
+    {
+        $article = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/fail', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->overrideHttpFake(['*' => Http::response('', 404)]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(0, $result);
+    }
+
     // Helpers
 
     private function callExtractKeywords(string $query): array
@@ -926,6 +980,21 @@ class FreeNewsServiceTest extends TestCase
     {
         $method = new ReflectionMethod(FreeNewsService::class, 'isUrlSafe');
         return $method->invoke($this->service, $url);
+    }
+
+    private function overrideHttpFake(array $stubs): void
+    {
+        $factory = Http::getFacadeRoot();
+        $prop = new ReflectionProperty($factory, 'stubCallbacks');
+        $prop->setValue($factory, collect());
+        Http::fake($stubs);
+    }
+
+    private function readableHtml(): string
+    {
+        return '<html><head><title>Article</title></head><body><article><p>'
+            . str_repeat('This is a substantial test article body with enough content for readability extraction purposes. ', 10)
+            . '</p></article></body></html>';
     }
 
     private function makeArticle(string $title, string $link, string $publishedDate, string $lang = 'en'): array

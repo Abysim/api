@@ -309,6 +309,64 @@ class GdeltSourceTest extends TestCase
         $this->assertSame(250, $request->data()['maxrecords']);
     }
 
+    // wasRateLimited
+
+    public function test_wasRateLimited_returns_false_after_successful_fetch(): void
+    {
+        Http::fake(['*' => Http::response($this->gdeltPayload(), 200)]);
+
+        $this->source->fetch('ukraine war', 'en');
+
+        $this->assertFalse($this->source->wasRateLimited());
+    }
+
+    public function test_wasRateLimited_returns_true_after_http_429(): void
+    {
+        Sleep::fake();
+        Http::fake([
+            '*' => Http::sequence()
+                ->push('Rate limited', 429)
+                ->push('Rate limited', 429),
+        ]);
+
+        $this->source->fetch('ukraine war', 'en');
+
+        $this->assertTrue($this->source->wasRateLimited());
+    }
+
+    public function test_wasRateLimited_returns_true_after_text_rate_limit(): void
+    {
+        Sleep::fake();
+        Http::fake([
+            '*' => Http::sequence()
+                ->push('Please limit requests to one every 5 seconds', 200)
+                ->push('Please limit requests to one every 5 seconds', 200),
+        ]);
+
+        $this->source->fetch('ukraine war', 'en');
+
+        $this->assertTrue($this->source->wasRateLimited());
+    }
+
+    public function test_wasRateLimited_resets_to_false_on_next_successful_fetch(): void
+    {
+        Sleep::fake();
+
+        // First fetch: rate limited
+        Http::fake([
+            '*' => Http::sequence()
+                ->push('Rate limited', 429)
+                ->push('Rate limited', 429),
+        ]);
+        $this->source->fetch('ukraine war', 'en');
+        $this->assertTrue($this->source->wasRateLimited());
+
+        // Second fetch: success
+        Http::fake(['*' => Http::response($this->gdeltPayload(), 200)]);
+        $this->source->fetch('ukraine war', 'en');
+        $this->assertFalse($this->source->wasRateLimited());
+    }
+
     // Helpers
 
     private function gdeltPayload(): array

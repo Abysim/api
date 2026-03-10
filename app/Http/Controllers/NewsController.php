@@ -11,6 +11,7 @@ use App\Helpers\FileHelper;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
+use App\Jobs\CleanFreeNewsContentJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
@@ -179,6 +180,10 @@ class NewsController extends Controller
 
         if (empty($lastPublishedTime) || $lastPublishedTime->diffInMinutes(now()) >= $publishInterval) {
             $news = News::where('status', NewsStatus::APPROVED)
+                ->where(function ($q) {
+                    $q->where('platform', '!=', 'FreeNews')
+                      ->orWhere('is_content_cleaned', true);
+                })
                 ->orderBy('posted_at')
                 ->first();
             if ($news) {
@@ -363,7 +368,15 @@ class NewsController extends Controller
         // Circuit breaker counter spans both passes intentionally:
         // if APIs are down, we stop early regardless of which pass we're in
         $consecutiveFailures = 0;
-        $interSpeciesDelay = (int) config('services.news.inter_species_delay', 0);
+        $interSpeciesDelay = (int) config('services.news.inter_species_delay', 2);
+        $accDecodeTotal = 0;
+        $accDecodeSuccess = 0;
+        $accumulateMetrics = function () use (&$accDecodeTotal, &$accDecodeSuccess) {
+            if ($this->service instanceof FreeNewsService) {
+                $accDecodeTotal += $this->service->getLastDecodeTotal();
+                $accDecodeSuccess += $this->service->getLastDecodeSuccess();
+            }
+        };
 
         // Classify species into SEPARATE (has exclusions) and BATCH (no exclusions)
         $separateSpecies = [];
@@ -383,6 +396,8 @@ class NewsController extends Controller
             if (!$this->fetchAndSave($query, $lang, [$species], $models, $consecutiveFailures)) {
                 return $models;
             }
+
+            $accumulateMetrics();
 
             if ($interSpeciesDelay > 0) {
                 Sleep::for($interSpeciesDelay)->seconds();
@@ -404,6 +419,8 @@ class NewsController extends Controller
                     return $models;
                 }
 
+                $accumulateMetrics();
+
                 if ($interSpeciesDelay > 0) {
                     Sleep::for($interSpeciesDelay)->seconds();
                 }
@@ -421,10 +438,32 @@ class NewsController extends Controller
         if (!empty($batchWords)) {
             $query = $this->service->generateSearchQuery($batchWords, []);
             $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
+            $accumulateMetrics();
         }
 
-        // Clear dedup filter and URL cache after all species queries are done
+        // Rate-limited Telegram alerts for FreeNews
         if ($this->service instanceof FreeNewsService) {
+            $cooldown = (int) config('services.news.alert_cooldown', 3600);
+
+            if ($accDecodeTotal > 0 && ($accDecodeSuccess / $accDecodeTotal) < 0.5) {
+                if (Cache::add('alert:google_decode_low', true, $cooldown)) {
+                    $rate = round(($accDecodeSuccess / $accDecodeTotal) * 100);
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'text' => "FreeNews [{$lang}]: Google News decode rate {$rate}% ({$accDecodeSuccess}/{$accDecodeTotal}). Check SOCS cookies or batchexecute protocol.",
+                    ]);
+                }
+            }
+
+            if ($this->service->wasGdeltRateLimited()) {
+                if (Cache::add('alert:gdelt_rate_limit', true, $cooldown)) {
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'text' => "FreeNews [{$lang}]: GDELT rate limit hit. Consider increasing NEWS_INTER_SPECIES_DELAY (currently " . config('services.news.inter_species_delay', 2) . "s).",
+                    ]);
+                }
+            }
+
             $this->service->setTitleDedupFilter(null);
             $this->service->setUrlSeenCache(null, null);
         }
@@ -1074,6 +1113,15 @@ class NewsController extends Controller
         $model->status = NewsStatus::APPROVED;
         $model->save();
 
+        // Clean Ukrainian FreeNews articles before publish (deferred, best-effort)
+        if (
+            $model->platform === 'FreeNews'
+            && $model->language === 'uk'
+            && !$model->is_content_cleaned
+        ) {
+            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+        }
+
         if (empty($model->filename)) {
             $model->loadMediaFile();
         }
@@ -1195,7 +1243,7 @@ class NewsController extends Controller
             return;
         }
 
-        TranslateNewsJob::dispatch($model->id);
+        $this->dispatchTranslationPipeline($model);
     }
 
     public function auto(News $model, Message $message): void
@@ -1207,7 +1255,8 @@ class NewsController extends Controller
 
         $model->is_auto = true;
         $model->save();
-        TranslateNewsJob::dispatch($model->id);
+
+        $this->dispatchTranslationPipeline($model);
     }
 
     public function analyze(News $model, Message $message): void
@@ -1218,6 +1267,15 @@ class NewsController extends Controller
         }
 
         AnalyzeNewsJob::dispatch($model->id);
+    }
+
+    private function dispatchTranslationPipeline(News $model): void
+    {
+        if ($model->platform === 'FreeNews') {
+            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+        } else {
+            TranslateNewsJob::dispatch($model->id)->afterResponse();
+        }
     }
 
     /**
