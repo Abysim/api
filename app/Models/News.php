@@ -154,6 +154,9 @@ class News extends Model
             'text' => '🛠️Tags',
             'switch_inline_query_current_chat' => 'news_tags ' . $this->id . ' ' . $this->publish_tags,
         ];
+        if (!$this->is_content_cleaned && $this->status !== NewsStatus::BEING_PROCESSED) {
+            $firstLine[] = ['text' => "\xF0\x9F\xA7\xB9Clean", 'callback_data' => 'news_clean ' . $this->id];
+        }
 
         $secondLine = [];
         $reset = [

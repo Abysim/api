@@ -12,6 +12,7 @@ use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
 use App\Jobs\CleanFreeNewsContentJob;
+use App\Jobs\CleanNewsContentJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
@@ -1234,6 +1235,16 @@ class NewsController extends Controller
                 $text = $newText;
             }
         }
+    }
+
+    public function clean(News $model, Message $message): void
+    {
+        if ($model->is_content_cleaned || $model->status === NewsStatus::BEING_PROCESSED) {
+            $model->updateReplyMarkup();
+            return;
+        }
+
+        CleanNewsContentJob::dispatch($model->id)->afterResponse();
     }
 
     public function translate(News $model, Message $message): void
