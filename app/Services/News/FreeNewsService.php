@@ -422,10 +422,15 @@ class FreeNewsService implements NewsServiceInterface
         ?string $author = null,
         ?string $image = null
     ): array {
+        $title = $metadata['title'];
+        if (!empty($metadata['name_source'])) {
+            $title = preg_replace('/ [-–—]\s*' . preg_quote($metadata['name_source'], '/') . '$/u', '', $title);
+        }
+
         $hash = substr(hash('sha256', $link . '|' . $metadata['title']), 0, 32);
 
         return [
-            'title' => $metadata['title'],
+            'title' => $title,
             'link' => $link,
             'published_date' => $metadata['published_date'],
             'author' => $author ?? '',

@@ -75,10 +75,10 @@ class AnalyzeNewsJob implements ShouldQueue
                 Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
                     'model' => $model->is_deep
-                        ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
+                        ? ($i > 1 ? 'anthropic/claude-opus-4-6' : 'claude-opus-4-6')
                         : ($i > 1
-                            ? ($isOA ? 'openai/o3' : 'gemini-2.5-pro')
-                            : ($isOA ? 'o3' : 'gemini-2.5-pro')
+                            ? ($isOA ? 'openai/o3' : 'gemini-3.1-pro-preview')
+                            : ($isOA ? 'o3' : 'gemini-3.1-pro-preview')
                         ),
                 ];
 

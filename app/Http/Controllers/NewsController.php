@@ -891,8 +891,8 @@ class NewsController extends Controller
                 Log::info("$model->id: News $term classification $i");
                 $params = [
                     'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
-                        ? ($i % 2 ? 'openai/gpt-4.1-mini' : 'gpt-4.1-mini')
-                        : ($i % 2 ? 'gpt-4.1-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507')
+                        ? ($i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini')
+                        : ($i % 2 ? 'gpt-5-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507')
                     ),
                     'messages' => [
                         [

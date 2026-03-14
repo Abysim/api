@@ -41,7 +41,7 @@ class CleanNewsContentJob implements ShouldQueue
 
         try {
             $response = OpenAI::chat()->create([
-                'model' => 'gpt-4.1-nano',
+                'model' => 'gpt-5-mini',
                 'messages' => [
                     ['role' => 'system', 'content' => 'Clean this news article text. Remove advertisements, cookie consent notices, navigation elements, subscription prompts, related article links, social media buttons text, and any text not part of the actual news article. Return only the clean article body text, preserving paragraph structure. Do not add any commentary.'],
                     ['role' => 'user', 'content' => $textToClean],

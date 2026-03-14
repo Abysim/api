@@ -49,12 +49,18 @@ Pet project that supports other projects. Laravel 10 API application.
 - `phpunit.xml` sets `TELEGRAM_API_TOKEN=""` to prevent TelegramServiceProvider from connecting to DB during tests
 
 ## AI Client Patterns
-- **OpenAI GPT models** (`gpt-4.1-nano`, `gpt-4.1-mini`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
+- **OpenAI GPT models** (`gpt-5-nano`, `gpt-5-mini`, `gpt-5.4`, `o3`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
 - **Via OpenRouter** (alternating with OpenAI): `AI::client('openrouter')->chat()->create($params)` with `openai/` model prefix. Config: `services.openrouter.*` → `OPENROUTER_API_KEY`
-- **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen2.5-32B-Instruct`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
-- **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Config: `services.gemini.*` → `GEMINI_API_KEY`
+- **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen3-30B-A3B-Instruct-2507`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
+- **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Model: `gemini-3.1-pro-preview`. Config: `services.gemini.*` → `GEMINI_API_KEY`
+- **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-6`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
 - **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
 - **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
+
+## AI Cost Management
+- **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.4`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5-mini`, `gpt-5-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
+- **Daily token tracking**: `AiUsage` model tracks daily OpenAI token consumption. `AnalyzeNewsJob` checks `AiUsage.total_tokens` against the 1M daily limit before using large OpenAI models (`o3`). When limit is reached, `$isOA` is set to `false` and the job falls back to **Gemini** (`gemini-3.1-pro-preview`) instead — this is the cost-control mechanism to stay within the free tier
+- **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
 ## Gotchas
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
@@ -78,6 +84,41 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ## Running artisan tinker locally (no DB)
 - Local MySQL is not running — use env overrides to bypass DB: `TELEGRAM_API_TOKEN="" DB_CONNECTION=sqlite DB_DATABASE=":memory:" p artisan tinker`
+
+## News Processing Pipeline (Jobs)
+- **Pipeline order**: `CleanFreeNewsContentJob`/`CleanNewsContentJob` → `TranslateNewsJob` → `AnalyzeNewsJob` ↔ `ApplyNewsAnalysisJob` (cycle)
+- **`CleanFreeNewsContentJob` / `CleanNewsContentJob`**: Content cleanup via `gpt-4.1-nano` (OpenAI facade). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
+- **`TranslateNewsJob`**: Translates via Gemini (`gemini-3.1-pro-preview`). 4-iteration inner retry loop, `$tries=2`, `$timeout=3600`. On success dispatches `AnalyzeNewsJob` if `is_auto`
+- **`AnalyzeNewsJob`**: Quality analysis. 4-iteration inner retry loop with model alternation. `$tries=2`, `$timeout=7200`
+- **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `o4-mini` (OpenAI) / `openai/o4-mini-high` (OpenRouter). `$tries=2`, `$timeout=360`
+
+### Analyze ↔ Apply auto-cycle (when `is_auto=true`)
+1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
+2. `ApplyNewsAnalysisJob` applies edits, clears `analysis`, increments `analysis_count` → dispatches `AnalyzeNewsJob`
+3. Steps 1-2 repeat. Cycle limit checked in `ApplyNewsAnalysisJob`: **32** for `platform=='article'`, **16** for others
+4. **Escalation to deep**: two paths trigger `is_deep=true` + `analysis_count=0` + re-dispatch:
+   - `AnalyzeNewsJob`: analysis says "Ні" (No) → escalates to deep immediately
+   - `ApplyNewsAnalysisJob`: cycle limit exceeded → escalates to deep
+5. **Deep cycle** runs the same loop but with Claude Opus instead of o3/Gemini. If deep also hits "Ні" → sets `is_deepest=true`, `is_auto=false`, notifies admin
+6. If deep cycle limit also exceeded → sets `is_auto=false`, notifies admin ("Deepest analysis limit reached")
+
+### AnalyzeNewsJob model routing
+- `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
+- `is_deep` + `$i<=1`: `claude-opus-4-6` via Anthropic Batches API (polls for result with 30s sleep loop)
+- `is_deep` + `$i>1`: `anthropic/claude-opus-4-6` via OpenRouter
+- `!is_deep` + `$isOA` + `$i<=1`: `o3` via OpenAI facade
+- `!is_deep` + `$isOA` + `$i>1`: `openai/o3` via OpenRouter
+- `!is_deep` + `!$isOA` (all `$i`): `gemini-3.1-pro-preview` via direct Gemini HTTP
+
+### Job inner retry pattern
+- Most AI jobs use `for ($i = 0; $i < 4; $i++)` with provider alternation: direct API for `$i<=1`, OpenRouter fallback for `$i>1` (or odd/even alternation in ApplyNewsAnalysisJob)
+- This is separate from Laravel's `$tries` (queue-level retries on job failure). Both layers provide resilience
+- When changing AI models: update BOTH the direct API model name AND the OpenRouter-prefixed variant in the same ternary
+
+### Other jobs (no AI models)
+- **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`
+- **`ProcessTelegramChannelPost`**: Media group coordination via Cache. Photo download retry (5 attempts), media group wait loop (4 iterations with sleep)
+- **`PostToSocial`**: Posts to social platforms. No loops. `$timeout=180`
 
 ## Logs
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats

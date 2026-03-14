@@ -23,7 +23,14 @@ class FileHelper
     public static function getUrl(string $url, bool $isBinary = false): string
     {
         $scheme = parse_url($url, PHP_URL_SCHEME);
-        if (!in_array($scheme, ['http', 'https'], true)) {
+        if (!in_array($scheme, ['http', 'https', null], true)) {
+            throw new \InvalidArgumentException('Only http/https URLs are supported');
+        }
+
+        if ($scheme === null) {
+            if (File::isFile($url)) {
+                return File::get($url);
+            }
             throw new \InvalidArgumentException('Only http/https URLs are supported');
         }
 
@@ -74,7 +81,7 @@ class FileHelper
         for ($i = 0; $i < 4; $i++) {
             try {
                 $params = [
-                    'model' => $isDeep ? 'gpt-5' : 'gpt-5-mini',
+                    'model' => $isDeep ? 'gpt-5.4' : 'gpt-5-mini',
                     'messages' => [
                         ['role' => 'user', 'content' => [
                             [
