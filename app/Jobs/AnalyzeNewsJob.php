@@ -77,8 +77,8 @@ class AnalyzeNewsJob implements ShouldQueue
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-opus-4-6' : 'claude-opus-4-6')
                         : ($i > 1
-                            ? ($isOA ? 'openai/o3' : 'gemini-3.1-pro-preview')
-                            : ($isOA ? 'o3' : 'gemini-3.1-pro-preview')
+                            ? ($isOA ? 'openai/gpt-5.4' : 'gemini-3.1-pro-preview')
+                            : ($isOA ? 'gpt-5.4' : 'gemini-3.1-pro-preview')
                         ),
                 ];
 
@@ -107,12 +107,17 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
                     ];
 
-                    if ($model->is_deep || $i > 1 && $isOA) {
+                    if ($model->is_deep) {
                         $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
                         $params['reasoning'] = ['effort' => 'high'];
                     } elseif ($isOA) {
-                        $params['reasoning_effort'] = 'high';
+                        if ($i > 1) {
+                            $params['provider'] = ['require_parameters' => true];
+                            $params['reasoning'] = ['effort' => 'xhigh'];
+                        } else {
+                            $params['reasoning_effort'] = 'xhigh';
+                        }
                     }
                 }
 

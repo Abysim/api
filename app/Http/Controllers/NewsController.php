@@ -890,10 +890,9 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification $i");
                 $params = [
-                    'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
+                    'model' => $isDeep
                         ? ($i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini')
-                        : ($i % 2 ? 'gpt-5-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507')
-                    ),
+                        : ($i % 2 ? 'gpt-5-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
                     'messages' => [
                         [
                             'role' => 'system',
@@ -919,6 +918,10 @@ class NewsController extends Controller
                             $params['presence_penalty'] = 2;
                         }
                         $params['provider'] = ['require_parameters' => true];
+                    }
+                    if ($isDeepest) {
+                        $params['provider'] = ['require_parameters' => true];
+                        $params['reasoning'] = ['effort' => 'high'];
                     }
                     $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
                 }

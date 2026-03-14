@@ -90,7 +90,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **`CleanFreeNewsContentJob` / `CleanNewsContentJob`**: Content cleanup via `gpt-4.1-nano` (OpenAI facade). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
 - **`TranslateNewsJob`**: Translates via Gemini (`gemini-3.1-pro-preview`). 4-iteration inner retry loop, `$tries=2`, `$timeout=3600`. On success dispatches `AnalyzeNewsJob` if `is_auto`
 - **`AnalyzeNewsJob`**: Quality analysis. 4-iteration inner retry loop with model alternation. `$tries=2`, `$timeout=7200`
-- **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `o4-mini` (OpenAI) / `openai/o4-mini-high` (OpenRouter). `$tries=2`, `$timeout=360`
+- **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `gpt-5-mini` (OpenAI) / `openai/gpt-5-mini` (OpenRouter), both with `reasoning_effort: high`. `$tries=2`, `$timeout=360`
 
 ### Analyze ↔ Apply auto-cycle (when `is_auto=true`)
 1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
@@ -106,8 +106,8 @@ Pet project that supports other projects. Laravel 10 API application.
 - `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
 - `is_deep` + `$i<=1`: `claude-opus-4-6` via Anthropic Batches API (polls for result with 30s sleep loop)
 - `is_deep` + `$i>1`: `anthropic/claude-opus-4-6` via OpenRouter
-- `!is_deep` + `$isOA` + `$i<=1`: `o3` via OpenAI facade
-- `!is_deep` + `$isOA` + `$i>1`: `openai/o3` via OpenRouter
+- `!is_deep` + `$isOA` + `$i<=1`: `gpt-5.4` via OpenAI facade
+- `!is_deep` + `$isOA` + `$i>1`: `openai/gpt-5.4` via OpenRouter
 - `!is_deep` + `!$isOA` (all `$i`): `gemini-3.1-pro-preview` via direct Gemini HTTP
 
 ### Job inner retry pattern
