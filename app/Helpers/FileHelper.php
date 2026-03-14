@@ -28,7 +28,9 @@ class FileHelper
         }
 
         try {
-            $res = Http::timeout(4)->get($url);
+            $res = Http::timeout(4)
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'])
+                ->get($url);
             if ($res->status() >= 400) {
                 throw new Exception($res->body());
             }
@@ -45,7 +47,7 @@ class FileHelper
                 $params['binary_target'] = true;
             }
 
-            $res = Http::timeout(8)->get(config('scraper.url'), $params);
+            $res = Http::timeout(30)->get(config('scraper.url'), $params);
             Log::info('Response code: ' . $res->status());
             if ($res->status() >= 400) {
                 throw new Exception($res->body());

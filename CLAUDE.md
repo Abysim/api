@@ -15,6 +15,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Server path**: `~/api`
 - **Deployment method**: Automatic on file save from IDE (SFTP/sync)
 - **New files** created outside the IDE (e.g. by Claude) do NOT auto-sync — manually `scp` them to bigcats
+- **Modified files** edited by Claude (not via IDE save) also may not auto-sync — verify with `md5sum` comparison between local and remote
 - **No local or staging environment** — bigcats is the only runtime environment
 
 ## Database
@@ -58,6 +59,10 @@ Pet project that supports other projects. Laravel 10 API application.
 ## Gotchas
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
+- **Single cron entry on bigcats**: `* * * * * php artisan schedule:run` — ALL scheduling is inside Laravel `Kernel.php`, no external cron entries
+- **`NewsStatus` is an int-backed enum** (`app/Enums/NewsStatus.php`) — use integer values (not strings) in tinker/raw queries: CREATED=0, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, BEING_PROCESSED=10
+- **`FlickrPhotoController::process()` chains into `NewsController::process()`** — the `flickr-photo` hourly scheduler command is the trigger for automated news loading, not a separate cron. Trace: `Kernel.php` → `flickr-photo` (hourly) → `FlickrPhotoController::process()` → `app(NewsController::class)->process()`
+- **When `.env` changes on bigcats**, always run `php artisan config:cache` (not just `config:clear`) — Laravel may serve cached config otherwise
 
 ## News Search Architecture
 - **Species query routing** (NewsController lines ~358-414): species with `exclude` terms in `resources/json/news/species/{lang}.json` get **separate queries** (one per species with their exclusions). Species with empty `exclude` arrays get **batched into one combined query** (grouped by query length limit).

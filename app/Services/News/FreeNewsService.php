@@ -84,6 +84,8 @@ class FreeNewsService implements NewsServiceInterface
             Log::error('GoogleNewsSource error: ' . $e->getMessage());
         }
 
+        Sleep::for(2)->seconds(); // space out GDELT from Google News to reduce rate limits
+
         try {
             $gdeltQuery = $this->gdeltSource->buildQuery($apiQuery, $effectiveLang, $excludeCountries, NewsServiceInterface::EXCLUDE_DOMAINS);
             $articles = array_merge($articles, $this->gdeltSource->fetch($gdeltQuery, $effectiveLang));
@@ -213,6 +215,15 @@ class FreeNewsService implements NewsServiceInterface
 
         if ($titleOnlySkipped > 0) {
             Log::info('FreeNews: ' . $titleOnlySkipped . ' articles skipped (title-only content)');
+        }
+
+        // Discard articles older than 1 month (Google News can resurface old content)
+        $cutoff = now()->subMonth()->format('Y-m-d H:i:s');
+        $beforeCount = count($result);
+        $result = array_values(array_filter($result, fn($a) => $a['published_date'] >= $cutoff));
+        $filtered = $beforeCount - count($result);
+        if ($filtered > 0) {
+            Log::info("FreeNews: {$filtered} articles filtered (older than 1 month)");
         }
 
         // Sort oldest first (matching NewsCatcher's array_reverse pattern)
@@ -417,7 +428,7 @@ class FreeNewsService implements NewsServiceInterface
             'title' => $metadata['title'],
             'link' => $link,
             'published_date' => $metadata['published_date'],
-            'author' => $author,
+            'author' => $author ?? '',
             'content' => $content,
             'summary' => Str::limit($content, 500),
             'id' => $hash,

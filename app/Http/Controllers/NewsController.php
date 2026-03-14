@@ -494,7 +494,7 @@ class NewsController extends Controller
 
         if (empty($news)) {
             $consecutiveFailures++;
-            if ($consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES) {
+            if ($consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES && !($this->service instanceof FreeNewsService)) {
                 Log::warning('loadNews: ' . self::MAX_CONSECUTIVE_FAILURES . ' consecutive empty results, stopping for ' . $lang);
                 return false;
             }
@@ -892,7 +892,7 @@ class NewsController extends Controller
                 $params = [
                     'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
                         ? ($i % 2 ? 'openai/gpt-4.1-mini' : 'gpt-4.1-mini')
-                        : ($i % 2 ? 'openai/gpt-4.1-nano' : 'Qwen/Qwen2.5-32B-Instruct')
+                        : ($i % 2 ? 'gpt-4.1-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507')
                     ),
                     'messages' => [
                         [
@@ -908,7 +908,7 @@ class NewsController extends Controller
                 if (!$isDeepest) {
                     $params['temperature'] = 0;
                 }
-                if ($isDeep && !($i % 2)) {
+                if (($isDeep && !($i % 2)) || (!$isDeep && ($i % 2))) {
                     if ($isDeepest) {
                         $params['reasoning_effort'] = 'high';
                     }
