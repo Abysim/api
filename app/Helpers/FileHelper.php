@@ -17,16 +17,27 @@ class FileHelper
      * @param bool $isBinary
      *
      * @return string
+     * @throws \InvalidArgumentException
      * @throws Exception
      */
     public static function getUrl(string $url, bool $isBinary = false): string
     {
-        if (File::isFile($url)) {
-            return File::get($url);
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        if (!in_array($scheme, ['http', 'https', null], true)) {
+            throw new \InvalidArgumentException('Only http/https URLs are supported');
+        }
+
+        if ($scheme === null) {
+            if (File::isFile($url)) {
+                return File::get($url);
+            }
+            throw new \InvalidArgumentException('Only http/https URLs are supported');
         }
 
         try {
-            $res = Http::timeout(4)->get($url);
+            $res = Http::timeout(4)
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'])
+                ->get($url);
             if ($res->status() >= 400) {
                 throw new Exception($res->body());
             }
@@ -43,7 +54,7 @@ class FileHelper
                 $params['binary_target'] = true;
             }
 
-            $res = Http::timeout(8)->get(config('scraper.url'), $params);
+            $res = Http::timeout(30)->get(config('scraper.url'), $params);
             Log::info('Response code: ' . $res->status());
             if ($res->status() >= 400) {
                 throw new Exception($res->body());
@@ -70,7 +81,7 @@ class FileHelper
         for ($i = 0; $i < 4; $i++) {
             try {
                 $params = [
-                    'model' => $isDeep ? 'gpt-5' : 'gpt-5-mini',
+                    'model' => $isDeep ? 'gpt-5.4' : 'gpt-5-mini',
                     'messages' => [
                         ['role' => 'user', 'content' => [
                             [

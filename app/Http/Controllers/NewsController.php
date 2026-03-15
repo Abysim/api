@@ -11,17 +11,21 @@ use App\Helpers\FileHelper;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
+use App\Jobs\CleanFreeNewsContentJob;
+use App\Jobs\CleanNewsContentJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\BigCatsService;
-use App\Services\NewsCatcher3Service;
+use App\Services\News\FreeNewsService;
 use App\Services\NewsServiceInterface;
 use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
@@ -42,6 +46,8 @@ class NewsController extends Controller
 
     private const PUBLISH_BEFORE = '21:00:00';
 
+    private const MAX_CONSECUTIVE_FAILURES = 3;
+
     private array $species = [];
 
     private array $tags = [];
@@ -52,7 +58,7 @@ class NewsController extends Controller
 
     private NewsServiceInterface|null $service;
 
-    public function __construct(NewsCatcher3Service $service)
+    public function __construct(NewsServiceInterface $service)
     {
         $this->service = $service;
     }
@@ -68,13 +74,10 @@ class NewsController extends Controller
         }
 
         $models = [];
-        if ($force || (
-            $load
-            && now()->format('H:i:s') >= self::LOAD_TIME
-            && now()->format('H:i:s') < self::STOP_TIME
-            && in_array(now()->format('G') % 3, [0, 1])
-        )) {
-            $models = $this->loadNews($lang ?? ((now()->format('G') % 3 == 1) ? 'en' : 'uk'));
+        // NOTE: if a third driver appears, extract scheduling to a SchedulePolicy interface
+        $isFreeDriver = $this->service instanceof FreeNewsService;
+        if ($force || ($load && $this->shouldLoadNews($isFreeDriver))) {
+            $models = $this->loadNews($lang ?? $this->autoSelectLanguage($isFreeDriver));
         }
 
         if (empty($models)) {
@@ -94,6 +97,29 @@ class NewsController extends Controller
         }
 
         $this->deleteNewsFiles();
+    }
+
+    private function shouldLoadNews(bool $isFreeDriver): bool
+    {
+        if ($isFreeDriver) {
+            return true; // Free driver: run every hour, 24/7
+        }
+
+        // NewsCatcher3: existing evening-window logic
+        return now()->format('H:i:s') >= self::LOAD_TIME
+            && now()->format('H:i:s') < self::STOP_TIME
+            && in_array(now()->format('G') % 3, [0, 1]);
+    }
+
+    private function autoSelectLanguage(bool $isFreeDriver): string
+    {
+        if ($isFreeDriver) {
+            // Alternate every hour: even hours -> uk, odd hours -> en
+            return now()->format('G') % 2 == 0 ? 'uk' : 'en';
+        }
+
+        // NewsCatcher3: existing hour % 3 logic
+        return now()->format('G') % 3 == 1 ? 'en' : 'uk';
     }
 
     private function deleteNewsFiles()
@@ -155,6 +181,10 @@ class NewsController extends Controller
 
         if (empty($lastPublishedTime) || $lastPublishedTime->diffInMinutes(now()) >= $publishInterval) {
             $news = News::where('status', NewsStatus::APPROVED)
+                ->where(function ($q) {
+                    $q->where('platform', '!=', 'FreeNews')
+                      ->orWhere('is_content_cleaned', true);
+                })
                 ->orderBy('posted_at')
                 ->first();
             if ($news) {
@@ -290,96 +320,236 @@ class NewsController extends Controller
     private function loadNews(string $lang): array
     {
         Log::info('Loading news for language ' . $lang);
-        $models = [];
 
-        $query = '';
-        $specieses = [];
-        $words = [];
-        $exclude = [];
-        foreach ($this->getSpecies($lang) as $species => $data) {
-            $isSearch = false;
-            $currentSpecieses = array_merge($specieses, [$species]);
-            $currentWords = array_merge($words, $data['words']);
-            $currentExclude = array_unique(array_merge($exclude, $data['exclude']));
-
-            $currentQuery = $this->service->generateSearchQuery($currentWords, $currentExclude);
-
-            if (Str::length($currentQuery) > $this->service->getSearchQueryLimit()) {
-                $isSearch = true;
-
-                $currentSpecieses = $specieses;
-                $currentWords = $words;
-                $currentExclude = $exclude;
-
-                $currentQuery = $query;
+        // Set pre-extraction title dedup filter (FreeNewsService only)
+        if ($this->service instanceof FreeNewsService) {
+            // Pre-populate DB title cache for pre-extraction dedup
+            if (empty($this->previousWeekNews[$lang])) {
+                $this->previousWeekNews[$lang] = News::where('language', $lang)
+                    ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                    ->select('id', 'title')
+                    ->limit(500)
+                    ->orderByDesc('posted_at')
+                    ->get();
             }
-
-            if (array_key_last($this->getSpecies($lang)) == $species) {
-                $isSearch = true;
+            // Pre-compute normalized titles once to avoid repeated normalization in O(n×m) loop
+            $normalizedDbTitles = [];
+            foreach ($this->previousWeekNews[$lang] as $dbNews) {
+                $normalizedDbTitles[] = [
+                    'id' => $dbNews->id,
+                    'title' => $dbNews->title,
+                    'normalized' => FreeNewsService::normalizeTitle($dbNews->title),
+                ];
             }
-
-            if ($isSearch) {
-                try {
-                    $news = $this->service->getNews($currentQuery, $lang);
-                } catch (NewsCatcherQuotaExceededException $e) {
-                    Log::error('NewsCatcher API quota exhausted, skipping remaining queries');
-                    break;
-                }
-
-                foreach ($news as $article) {
-                    try {
-                        $content = $article['content'] ?? $article['summary'];
-                        if (Str::length($content) > 65535) {
-                            continue;
+            $this->service->setTitleDedupFilter(function (array $articles) use ($normalizedDbTitles): array {
+                return array_values(array_filter($articles, function (array $article) use ($normalizedDbTitles) {
+                    $normalizedIncoming = FreeNewsService::normalizeTitle($article['title']);
+                    foreach ($normalizedDbTitles as $dbEntry) {
+                        similar_text($normalizedIncoming, $dbEntry['normalized'], $percent);
+                        if ($percent >= 80) {
+                            Log::debug("FreeNews: pre-extraction dedup skipping '{$article['title']}' (similar to DB #{$dbEntry['id']}: '{$dbEntry['title']}' at {$percent}%)");
+                            return false;
                         }
-
-                        if (Str::length($article['title']) > 1000) {
-                            $article['title'] = Str::substr($article['title'], 0, 1000);
-                        }
-
-                        $model = News::updateOrCreate([
-                            'platform' => $this->service->getName(),
-                            'external_id' => $article['id'] ?? $article['_id']
-                        ], [
-                            'date' => explode(' ', $article['published_date'])[0],
-                            'author' => $article['author'],
-                            'title' => $article['title'],
-                            'content' => $content,
-                            'link' => $article['link'],
-                            'source' => !empty($article['name_source'])
-                                ? $article['name_source']
-                                : ($article['rights'] ?? $article['clean_url'] ?? $article['domain_url']),
-                            'language' => $article['language'],
-                            'posted_at' => $article['published_date'],
-                        ]);
-                        if (empty($model->media)) {
-                            $model->media = $article['media'];
-                        }
-
-                        $this->mapSpecies($model, $currentSpecieses);
-                        $models[$model->id] = $model;
-                    } catch (Exception $e) {
-                        Log::error('News load error: ' . $e->getMessage());
-
-                        continue;
                     }
-                }
+                    return true;
+                }));
+            });
 
-                $specieses = [$species];
-                $words = $data['words'];
-                $exclude = $data['exclude'];
+            // Set URL-seen cache for cross-run dedup
+            $cachePrefix = 'free_news_seen_url:' . $lang . ':';
+            $cacheTtlSeconds = (int) config('services.news.url_cache_ttl', 48) * 3600;
 
-                $query = $this->service->generateSearchQuery($words, $exclude);
+            $this->service->setUrlSeenCache(
+                fn(string $url) => Cache::has($cachePrefix . md5($url)),
+                fn(string $url) => Cache::put($cachePrefix . md5($url), true, $cacheTtlSeconds),
+            );
+        }
+
+        $models = [];
+        // Circuit breaker counter spans both passes intentionally:
+        // if APIs are down, we stop early regardless of which pass we're in
+        $consecutiveFailures = 0;
+        $interSpeciesDelay = (int) config('services.news.inter_species_delay', 2);
+        $accDecodeTotal = 0;
+        $accDecodeSuccess = 0;
+        $accumulateMetrics = function () use (&$accDecodeTotal, &$accDecodeSuccess) {
+            if ($this->service instanceof FreeNewsService) {
+                $accDecodeTotal += $this->service->getLastDecodeTotal();
+                $accDecodeSuccess += $this->service->getLastDecodeSuccess();
+            }
+        };
+
+        // Classify species into SEPARATE (has exclusions) and BATCH (no exclusions)
+        $separateSpecies = [];
+        $batchSpecies = [];
+        foreach ($this->getSpecies($lang) as $species => $data) {
+            if (!empty($data['exclude'])) {
+                $separateSpecies[$species] = $data;
             } else {
-                $specieses = $currentSpecieses;
-                $words = $currentWords;
-                $exclude = $currentExclude;
-
-                $query = $currentQuery;
+                $batchSpecies[$species] = $data;
             }
         }
 
+        // Pass 1: SEPARATE species — one query each (isolated exclusions)
+        foreach ($separateSpecies as $species => $data) {
+            $query = $this->service->generateSearchQuery($data['words'], $data['exclude']);
+
+            if (!$this->fetchAndSave($query, $lang, [$species], $models, $consecutiveFailures)) {
+                return $models;
+            }
+
+            $accumulateMetrics();
+
+            if ($interSpeciesDelay > 0) {
+                Sleep::for($interSpeciesDelay)->seconds();
+            }
+        }
+
+        // Pass 2: BATCH species — group by query length limit (no exclusions)
+        $batchWords = [];
+        $batchKeys = [];
+        foreach ($batchSpecies as $species => $data) {
+            $candidateWords = array_merge($batchWords, $data['words']);
+            $candidateQuery = $this->service->generateSearchQuery($candidateWords, []);
+
+            if (!empty($batchWords) && Str::length($candidateQuery) > $this->service->getSearchQueryLimit()) {
+                // Fire current batch before it overflows
+                $query = $this->service->generateSearchQuery($batchWords, []);
+
+                if (!$this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures)) {
+                    return $models;
+                }
+
+                $accumulateMetrics();
+
+                if ($interSpeciesDelay > 0) {
+                    Sleep::for($interSpeciesDelay)->seconds();
+                }
+
+                // Start new batch with current species
+                $batchWords = $data['words'];
+                $batchKeys = [$species];
+            } else {
+                $batchWords = $candidateWords;
+                $batchKeys[] = $species;
+            }
+        }
+
+        // Fire remaining batch (no delay needed: this is the last query)
+        if (!empty($batchWords)) {
+            $query = $this->service->generateSearchQuery($batchWords, []);
+            $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
+            $accumulateMetrics();
+        }
+
+        // Rate-limited Telegram alerts for FreeNews
+        if ($this->service instanceof FreeNewsService) {
+            $cooldown = (int) config('services.news.alert_cooldown', 3600);
+
+            if ($accDecodeTotal > 0 && ($accDecodeSuccess / $accDecodeTotal) < 0.5) {
+                if (Cache::add('alert:google_decode_low', true, $cooldown)) {
+                    $rate = round(($accDecodeSuccess / $accDecodeTotal) * 100);
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'text' => "FreeNews [{$lang}]: Google News decode rate {$rate}% ({$accDecodeSuccess}/{$accDecodeTotal}). Check SOCS cookies or batchexecute protocol.",
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
+                }
+            }
+
+            if ($this->service->wasGdeltRateLimited()) {
+                if (Cache::add('alert:gdelt_rate_limit', true, $cooldown)) {
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'text' => "FreeNews [{$lang}]: GDELT rate limit hit. Consider increasing NEWS_INTER_SPECIES_DELAY (currently " . config('services.news.inter_species_delay', 2) . "s).",
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
+                }
+            }
+
+            $this->service->setTitleDedupFilter(null);
+            $this->service->setUrlSeenCache(null, null);
+        }
+
         Log::info('News loaded for language ' . $lang);
+
+        return $models;
+    }
+
+    /**
+     * Fetch news for a query, apply circuit breaker, and save articles.
+     * Returns false if the loop should stop (quota exhausted or circuit breaker tripped).
+     */
+    private function fetchAndSave(
+        string $query,
+        string $lang,
+        array $speciesKeys,
+        array &$models,
+        int &$consecutiveFailures
+    ): bool {
+        try {
+            $news = $this->service->getNews($query, $lang);
+        } catch (NewsCatcherQuotaExceededException $e) {
+            Log::error('NewsCatcher API quota exhausted, skipping remaining queries');
+            return false;
+        }
+
+        if (empty($news)) {
+            $consecutiveFailures++;
+            if ($consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES && !($this->service instanceof FreeNewsService)) {
+                Log::warning('loadNews: ' . self::MAX_CONSECUTIVE_FAILURES . ' consecutive empty results, stopping for ' . $lang);
+                return false;
+            }
+        } else {
+            $consecutiveFailures = 0;
+        }
+
+        $models = $this->saveArticles($news, $speciesKeys, $models);
+
+        return true;
+    }
+
+    private function saveArticles(array $news, array $speciesKeys, array $models): array
+    {
+        foreach ($news as $article) {
+            try {
+                $content = $article['content'] ?? $article['summary'];
+                if (Str::length($content) > 65535) {
+                    continue;
+                }
+
+                if (Str::length($article['title']) > 1000) {
+                    $article['title'] = Str::substr($article['title'], 0, 1000);
+                }
+
+                $model = News::updateOrCreate([
+                    'platform' => $this->service->getName(),
+                    'external_id' => $article['id'] ?? $article['_id']
+                ], [
+                    'date' => explode(' ', $article['published_date'])[0],
+                    'author' => $article['author'],
+                    'title' => $article['title'],
+                    'content' => $content,
+                    'link' => $article['link'],
+                    'source' => !empty($article['name_source'])
+                        ? $article['name_source']
+                        : ($article['rights'] ?? $article['clean_url'] ?? $article['domain_url']),
+                    'language' => $article['language'],
+                    'posted_at' => $article['published_date'],
+                ]);
+                if (empty($model->media)) {
+                    $model->media = $article['media'];
+                    $model->save();
+                }
+
+                $this->mapSpecies($model, $speciesKeys);
+                $models[$model->id] = $model;
+            } catch (Exception $e) {
+                Log::error('News load error: ' . $e->getMessage());
+
+                continue;
+            }
+        }
 
         return $models;
     }
@@ -722,10 +892,9 @@ class NewsController extends Controller
             try {
                 Log::info("$model->id: News $term classification $i");
                 $params = [
-                    'model' => $isDeepest ? ($i % 2 ? 'openai/o4-mini-high' : 'o4-mini') : ($isDeep
-                        ? ($i % 2 ? 'openai/gpt-4.1-mini' : 'gpt-4.1-mini')
-                        : ($i % 2 ? 'openai/gpt-4.1-nano' : 'Qwen/Qwen2.5-32B-Instruct')
-                    ),
+                    'model' => $isDeep
+                        ? ($i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini')
+                        : ($i % 2 ? 'gpt-5-nano' : 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
                     'messages' => [
                         [
                             'role' => 'system',
@@ -737,20 +906,24 @@ class NewsController extends Controller
                 if ($i < 2) {
                     $params['response_format'] = ['type' => 'json_object'];
                 }
-                if (!$isDeepest) {
-                    $params['temperature'] = 0;
-                }
-                if ($isDeep && !($i % 2)) {
+                if (($isDeep && !($i % 2)) || (!$isDeep && ($i % 2))) {
                     if ($isDeepest) {
                         $params['reasoning_effort'] = 'high';
                     }
                     $classificationResponse = OpenAI::chat()->create($params);
                 } else {
+                    if (!$isDeep) {
+                        $params['temperature'] = 0;
+                    }
                     if ($i < 2) {
                         if (!$isDeep) {
                             $params['presence_penalty'] = 2;
                         }
                         $params['provider'] = ['require_parameters' => true];
+                    }
+                    if ($isDeepest) {
+                        $params['provider'] = ['require_parameters' => true];
+                        $params['reasoning'] = ['effort' => 'high'];
                     }
                     $classificationResponse = AI::client(($i % 2) ? 'openrouter' : 'nebius')->chat()->create($params);
                 }
@@ -891,10 +1064,7 @@ class NewsController extends Controller
      */
     private function excludeByTags(News $model)
     {
-        $text = $model->content;
-        if ($model->language != 'en') {
-            $text = $model->title . "\n\n" . $text;
-        }
+        $text = $model->title . "\n\n" . $model->content;
 
         if (empty($model->species)) {
             $model->status = NewsStatus::REJECTED_BY_KEYWORD;
@@ -948,6 +1118,15 @@ class NewsController extends Controller
     {
         $model->status = NewsStatus::APPROVED;
         $model->save();
+
+        // Clean Ukrainian FreeNews articles before publish (deferred, best-effort)
+        if (
+            $model->platform === 'FreeNews'
+            && $model->language === 'uk'
+            && !$model->is_content_cleaned
+        ) {
+            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+        }
 
         if (empty($model->filename)) {
             $model->loadMediaFile();
@@ -1063,6 +1242,16 @@ class NewsController extends Controller
         }
     }
 
+    public function clean(News $model, Message $message): void
+    {
+        if ($model->is_content_cleaned || $model->status === NewsStatus::BEING_PROCESSED) {
+            $model->updateReplyMarkup();
+            return;
+        }
+
+        CleanNewsContentJob::dispatch($model->id)->afterResponse();
+    }
+
     public function translate(News $model, Message $message): void
     {
         if ($model->language == 'uk' || $model->is_translated || $model->is_deepest) {
@@ -1070,7 +1259,7 @@ class NewsController extends Controller
             return;
         }
 
-        TranslateNewsJob::dispatch($model->id);
+        $this->dispatchTranslationPipeline($model);
     }
 
     public function auto(News $model, Message $message): void
@@ -1082,7 +1271,8 @@ class NewsController extends Controller
 
         $model->is_auto = true;
         $model->save();
-        TranslateNewsJob::dispatch($model->id);
+
+        $this->dispatchTranslationPipeline($model);
     }
 
     public function analyze(News $model, Message $message): void
@@ -1093,6 +1283,15 @@ class NewsController extends Controller
         }
 
         AnalyzeNewsJob::dispatch($model->id);
+    }
+
+    private function dispatchTranslationPipeline(News $model): void
+    {
+        if ($model->platform === 'FreeNews') {
+            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+        } else {
+            TranslateNewsJob::dispatch($model->id)->afterResponse();
+        }
     }
 
     /**
@@ -1121,6 +1320,7 @@ class NewsController extends Controller
         } else {
             $model->is_deep = false;
         }
+        $model->previous_analysis = null;
 
         $this->cancel($model, $message);
     }
@@ -1128,6 +1328,8 @@ class NewsController extends Controller
     public function counter(News $model, Message $message): void
     {
         $model->analysis_count = 0;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
         Request::editMessageReplyMarkup([
             'chat_id' => $message->getChat()->getId(),
@@ -1145,6 +1347,8 @@ class NewsController extends Controller
         $model->is_deepest = false;
         $model->is_deep = false;
         $model->is_translated = false;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
 
         $this->reset($model, $message);
     }
@@ -1169,6 +1373,8 @@ class NewsController extends Controller
         $model->analysis_count = 0;
         $model->is_deep = true;
         $model->analysis = null;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
     }
 
@@ -1180,6 +1386,8 @@ class NewsController extends Controller
         }
 
         $model->is_deepest = true;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
     }
 }

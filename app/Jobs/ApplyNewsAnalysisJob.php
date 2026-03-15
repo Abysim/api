@@ -52,7 +52,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => $i % 2 ? 'openai/o4-mini-high' : 'o4-mini',
+                    'model' => $i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -71,6 +71,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 ];
 
                 if ($i % 2) {
+                    $params['provider'] = ['require_parameters' => true];
+                    $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
                 } else {
                     $params['reasoning_effort'] = 'high';
@@ -79,17 +81,66 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 Log::info(
                     "$model->id: News applying analysis $model->analysis_count $i result: "
-                    . json_encode($response, JSON_UNESCAPED_UNICODE + JSON_PRETTY_PRINT)
+                    . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->refresh();
                     $content = trim(Str::after($response->choices[0]->message->content, '```markdown'));
                     [$title, $content] = explode("\n", $content, 2);
+                    $newTitle = trim($title, '*# ');
+                    $newContent = trim(trim($content, '`'));
+
+                    // Compute content hash for oscillation detection
+                    $hash = md5(mb_strtolower(preg_replace('/\s+/', ' ', $newTitle . "\n" . $newContent)));
+                    $hashes = $model->content_hashes ?? [];
+
+                    if (in_array($hash, $hashes, true)) {
+                        // Oscillation detected: content reverted to a previously seen state
+                        // Escalate to next tier (same as "Ні") — do NOT apply reverted content
+                        Log::info("$model->id: Oscillation detected at analysis_count $model->analysis_count, escalating");
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis = null;
+                        $model->previous_analysis = null;
+                        $model->content_hashes = null;
+
+                        if (!$model->is_deep) {
+                            $model->is_deep = true;
+                            $model->analysis_count = 0;
+                            $model->save();
+
+                            Request::sendMessage([
+                                'chat_id' => explode(',', config('telegram.admins'))[0],
+                                'reply_to_message_id' => $model->message_id,
+                                'text' => 'Oscillation detected, escalating to deep analysis',
+                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                            ]);
+
+                            AnalyzeNewsJob::dispatch($model->id);
+                        } else {
+                            $model->is_deepest = true;
+                            $model->is_auto = false;
+                            $model->save();
+
+                            Request::sendMessage([
+                                'chat_id' => explode(',', config('telegram.admins'))[0],
+                                'reply_to_message_id' => $model->message_id,
+                                'text' => 'Deep oscillation detected, auto analysis completed ' . $model->analysis_count,
+                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                            ]);
+                        }
+
+                        break;
+                    }
+
+                    $hashes[] = $hash;
+                    $model->content_hashes = $hashes;
+                    $model->previous_analysis = $model->analysis;
+
                     $model->status = NewsStatus::PENDING_REVIEW;
                     $model->analysis = null;
-                    $model->publish_title = trim($title, '*# ');
-                    $model->publish_content = trim(trim($content, '`'));
+                    $model->publish_title = $newTitle;
+                    $model->publish_content = $newContent;
                     $model->save();
                 }
             } catch (Exception $e) {
@@ -104,6 +155,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                        if (!$model->is_deep) {
                            $model->is_deep = true;
                            $model->analysis_count = 0;
+                           $model->content_hashes = null;
+                           $model->previous_analysis = null;
                            $model->save();
 
                            Request::sendMessage([
@@ -116,6 +169,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                            AnalyzeNewsJob::dispatch($model->id);
                        } else {
                            $model->is_auto = false;
+                           $model->content_hashes = null;
+                           $model->previous_analysis = null;
                            $model->save();
 
                            Request::sendMessage([

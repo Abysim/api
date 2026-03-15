@@ -52,7 +52,10 @@
             "langley",
             "captain",
             "lion city",
-            "cafe"
+            "cafe",
+            "marketbeat",
+            "lion street",
+            "quarterback*"
         ],
         "excludeCase": [
             "Lion",
@@ -79,7 +82,13 @@
             "tiger woods",
             "detroit tigers",
             "yankees",
-            "paper tiger"
+            "paper tiger",
+            "onitsuka tiger",
+            "tiger eye",
+            "kenzo",
+            "soccer",
+            "muay thai",
+            "flipkart"
         ],
         "excludeCase": [
             "Tiger"
@@ -90,6 +99,12 @@
             "leopard*"
         ],
         "exclude": [
+            "leopard print",
+            "sneaker*",
+            "leopard 2",
+            "war thunder",
+            "catahoula leopard",
+            "lululemon"
         ],
         "excludeCase": [
             "Leopard",
@@ -101,6 +116,18 @@
             "jaguar*"
         ],
         "exclude": [
+            "nfl*",
+            "free agenc*",
+            "trade",
+            "xj",
+            "xke",
+            "e-type",
+            "e-pace",
+            "autotrader",
+            "jaguar health",
+            "carpet",
+            "cartier",
+            "tejas"
         ],
         "excludeCase": [
             "Jaguar"
@@ -111,7 +138,11 @@
             "cheetah*"
         ],
         "exclude": [
-            "armor*"
+            "armor*",
+            "cheetah print",
+            "sneaker*",
+            "amazfit",
+            "cheetah fc"
         ],
         "excludeCase": [
             "Cheetah",
@@ -131,7 +162,17 @@
             "pink panther",
             "panther civil",
             "cathedral*",
-            "panther party"
+            "panther party",
+            "panther lake",
+            "cartier",
+            "carolina panthers",
+            "steel panther",
+            "panther industrial",
+            "nba",
+            "hoodie",
+            "treadmill",
+            "chassis",
+            "disney"
         ],
         "excludeCase": [
             "Black Panther",
@@ -145,7 +186,16 @@
         ],
         "exclude": [
             "houston cougars",
-            "sklenar"
+            "sklenar",
+            "sneaker*",
+            "shoe*",
+            "derby",
+            "puma suede",
+            "puma property",
+            "trainer*",
+            "lamelo ball",
+            "sandal*",
+            "racehorse"
         ],
         "excludeCase": [
             "Puma",
@@ -158,6 +208,13 @@
             "lynx*"
         ],
         "exclude": [
+            "lynx machinery",
+            "minnesota lynx",
+            "kittens for sale",
+            "kittens for adoption",
+            "varsity",
+            "snowmobile*",
+            "deodorant"
         ],
         "excludeCase": [
             "Lynx"
