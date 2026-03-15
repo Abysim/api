@@ -6,6 +6,7 @@ use App\Services\News\FreeNewsService;
 use App\Services\News\GdeltSource;
 use App\Services\News\GoogleNewsSource;
 use App\Services\News\GoogleNewsUrlDecoder;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Mockery;
@@ -27,6 +28,7 @@ class FreeNewsServiceTest extends TestCase
         $this->gdeltSource = Mockery::mock(GdeltSource::class);
         $this->urlDecoder = Mockery::mock(GoogleNewsUrlDecoder::class);
         $this->service = new FreeNewsService($this->googleSource, $this->gdeltSource, $this->urlDecoder);
+        $this->travelTo(Carbon::parse('2024-01-16 12:00:00'));
         Sleep::fake();
         Http::fake(['*' => Http::response($this->readableHtml(), 200)]);
         config(['services.news.max_enrich' => 10]);
@@ -504,6 +506,71 @@ class FreeNewsServiceTest extends TestCase
         $this->assertCount(1, $result);
     }
 
+    public function test_get_news_deduplicates_cross_source_when_google_has_source_suffix(): void
+    {
+        // Google returns title WITH source suffix, GDELT returns the same title WITHOUT suffix
+        $googleArticle = [
+            'title' => 'Lion spotted in Kenya - Reuters',
+            'link' => 'https://reuters.com/world/lion-kenya',
+            'published_date' => '2024-01-15 10:00:00',
+            'language' => 'en',
+            'name_source' => 'Reuters',
+            'clean_url' => 'reuters.com',
+            'media' => null,
+        ];
+        $gdeltArticle = [
+            'title' => 'Lion spotted in Kenya',
+            'link' => 'https://reuters.com/world/lion-kenya-2',
+            'published_date' => '2024-01-15 10:30:00',
+            'language' => 'en',
+            'name_source' => 'reuters.com',
+            'clean_url' => 'reuters.com',
+            'media' => null,
+        ];
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$googleArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([$gdeltArticle]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // Both refer to the same article — only one should survive dedup
+        $this->assertCount(1, $result);
+    }
+
+    public function test_get_news_title_dedup_filter_receives_stripped_titles(): void
+    {
+        // Google article with source suffix — the filter should receive the STRIPPED title
+        $googleArticle = [
+            'title' => 'Lion rescued from poachers - BBC News',
+            'link' => 'https://bbc.com/news/lion-rescued',
+            'published_date' => '2024-01-15 10:00:00',
+            'language' => 'en',
+            'name_source' => 'BBC News',
+            'clean_url' => 'bbc.com',
+            'media' => null,
+        ];
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$googleArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $receivedArticles = null;
+        $this->service->setTitleDedupFilter(function (array $articles) use (&$receivedArticles): array {
+            $receivedArticles = $articles;
+            return $articles;
+        });
+
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertNotNull($receivedArticles);
+        $this->assertCount(1, $receivedArticles);
+        // Title must be stripped BEFORE reaching the DB dedup filter
+        $this->assertSame('Lion rescued from poachers', $receivedArticles[0]['title']);
+    }
+
     public function test_get_news_keeps_articles_with_sufficiently_different_titles(): void
     {
         $article1 = $this->makeArticle('Lion attacks villager in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');
@@ -887,6 +954,132 @@ class FreeNewsServiceTest extends TestCase
         $this->assertSame(0, $this->service->getLastDecodeSuccess());
     }
 
+    public function test_decode_rate_counts_successful_url_resolution(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('https://example.com/real-article');
+
+        $this->seedDnsCache(['news.google.com' => true, 'example.com' => true]);
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertSame(1, $this->service->getLastDecodeTotal());
+        $this->assertSame(1, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_decode_rate_counts_success_even_when_content_fetch_fails(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('https://example.com/real-article');
+
+        $this->seedDnsCache(['news.google.com' => true, 'example.com' => true]);
+        $this->overrideHttpFake(['*' => Http::response('', 404)]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        // Decode succeeded (URL resolved to valid https), even though content fetch failed
+        $this->assertSame(1, $this->service->getLastDecodeTotal());
+        $this->assertSame(1, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_decode_rate_counts_success_even_when_decoded_url_is_unsafe(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Decode to a private IP (unsafe) — decode still succeeded
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('https://192.168.1.1/internal-article');
+
+        $this->seedDnsCache(['news.google.com' => true, '192.168.1.1' => false]);
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertSame(1, $this->service->getLastDecodeTotal());
+        $this->assertSame(1, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_decode_rate_counts_failure_when_decoder_returns_null(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn(null);
+
+        $this->seedDnsCache(['news.google.com' => true]);
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertSame(1, $this->service->getLastDecodeTotal());
+        $this->assertSame(0, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_decode_rate_does_not_count_non_google_urls(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://bbc.com/lion-article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->seedDnsCache(['bbc.com' => true]);
+        $this->service->getNews('(lion OR lions)');
+
+        $this->assertSame(0, $this->service->getLastDecodeTotal());
+        $this->assertSame(0, $this->service->getLastDecodeSuccess());
+    }
+
+    public function test_decode_rate_counts_failure_for_non_http_decoded_url(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('ftp://files.example.com/article');
+
+        $this->seedDnsCache(['news.google.com' => true]);
+        $this->service->getNews('(lion OR lions)');
+
+        // ftp:// is not http/https — counts as decode failure
+        $this->assertSame(1, $this->service->getLastDecodeTotal());
+        $this->assertSame(0, $this->service->getLastDecodeSuccess());
+    }
+
     public function test_was_gdelt_rate_limited_defaults_to_false(): void
     {
         $this->assertFalse($this->service->wasGdeltRateLimited());
@@ -976,10 +1169,240 @@ class FreeNewsServiceTest extends TestCase
         return $method->invoke($this->service, $metadata, $content, $link, $author, $image);
     }
 
+    // --- Fallback chain tests ---
+
+    public function test_extract_content_raw_http_success_uses_readability(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Default Http::fake returns readableHtml for all URLs (step 1 succeeds)
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+        Http::assertSentCount(1); // Only raw HTTP, no Jina/Scrape.do/ScraperAPI
+    }
+
+    public function test_extract_content_raw_fail_jina_success_skips_readability(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $jinaBody = "Title: Lion found\nURL Source: https://example.com/article\n\n"
+            . "![Image 1: A lion](https://example.com/lion.jpg)\n\n"
+            . str_repeat('A lion was found in the wild savanna of Kenya by researchers. ', 10);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response($jinaBody, 200),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertStringContainsString('lion was found in the wild savanna', $result[0]['content']);
+        $this->assertSame('https://example.com/lion.jpg', $result[0]['media']);
+        // Should not contain HTML tags or markdown syntax (Readability was skipped)
+        $this->assertStringNotContainsString('<', $result[0]['content']);
+        $this->assertStringNotContainsString('](', $result[0]['content']);
+    }
+
+    public function test_extract_content_raw_and_jina_fail_scrapedo_success_uses_readability(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        config(['scraper.scrapedo_key' => 'test-key']);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response('', 500),
+            'https://api.scrape.do*' => Http::response($this->readableHtml(), 200),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+    }
+
+    public function test_extract_content_all_fail_returns_title_only(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $this->overrideHttpFake([
+            '*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // Article skipped because content == title (extraction failed)
+        $this->assertCount(0, $result);
+    }
+
+    public function test_extract_content_jina_under_200_chars_falls_through(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        config(['scraper.scrapedo_key' => 'test-key']);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response("Title: Short\n\nToo short.", 200),
+            'https://api.scrape.do*' => Http::response($this->readableHtml(), 200),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        // Should have used Scrape.do HTML via Readability, not Jina's short content
+        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+    }
+
+    public function test_extract_content_scraperapi_success_uses_readability(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        config(['scraper.scrapedo_key' => '', 'scraper.key' => 'test-scraper-key', 'scraper.url' => 'https://api.scraperapi.com']);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response('', 500),
+            'https://api.scraperapi.com*' => Http::response($this->readableHtml(), 200),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+    }
+
+    public function test_extract_content_empty_api_key_skips_step(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Ensure Scrape.do and ScraperAPI keys are empty (should be skipped)
+        config(['scraper.scrapedo_key' => '', 'scraper.key' => '']);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response('', 500),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // All steps failed or skipped → no articles
+        $this->assertCount(0, $result);
+        // Scrape.do and ScraperAPI should NOT have been called
+        Http::assertNotSent(fn($req) => str_contains($req->url(), 'api.scrape.do'));
+        Http::assertNotSent(fn($req) => str_contains($req->url(), 'scraperapi.com'));
+    }
+
+    public function test_parse_jina_response_extracts_content_and_image(): void
+    {
+        $response = "Title: Test Article\nURL Source: https://example.com\nPublished Time: 2024-01-15\n\n"
+            . "![Image 1: A photo](https://example.com/photo.jpg)\n\n"
+            . str_repeat('This is the article body with substantial content for extraction. ', 10);
+
+        $method = new ReflectionMethod(FreeNewsService::class, 'parseJinaResponse');
+        $result = $method->invoke($this->service, $response);
+
+        $this->assertNotNull($result['content']);
+        $this->assertStringContainsString('article body with substantial content', $result['content']);
+        $this->assertSame('https://example.com/photo.jpg', $result['image']);
+        $this->assertStringNotContainsString('Title:', $result['content']);
+        $this->assertStringNotContainsString('URL Source:', $result['content']);
+        // Markdown link/image syntax must be stripped
+        $this->assertStringNotContainsString('](', $result['content']);
+    }
+
+    public function test_parse_jina_response_without_headers_returns_content(): void
+    {
+        $response = str_repeat('This is plain article content without any Jina metadata headers present. ', 10);
+
+        $method = new ReflectionMethod(FreeNewsService::class, 'parseJinaResponse');
+        $result = $method->invoke($this->service, $response);
+
+        $this->assertNotNull($result['content']);
+        $this->assertStringContainsString('plain article content', $result['content']);
+    }
+
+    public function test_parse_jina_response_returns_null_for_short_content(): void
+    {
+        $response = "Title: Short\nURL Source: https://example.com\n\nToo short.";
+
+        $method = new ReflectionMethod(FreeNewsService::class, 'parseJinaResponse');
+        $result = $method->invoke($this->service, $response);
+
+        $this->assertNull($result['content']);
+        $this->assertNull($result['image']);
+    }
+
+    public function test_jina_success_triggers_sleep(): void
+    {
+        $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $jinaBody = "Title: Lion found\n\n"
+            . str_repeat('A lion was found in the wild savanna of Kenya by researchers. ', 10);
+
+        $this->overrideHttpFake([
+            'https://r.jina.ai/*' => Http::response($jinaBody, 200),
+            'https://example.com/*' => Http::response('', 500),
+        ]);
+
+        $this->service->getNews('(lion OR lions)');
+
+        Sleep::assertSleptTimes(3); // 2s between sources + 2s Jina delay + 1s polite crawl delay
+    }
+
     private function callIsUrlSafe(string $url): bool
     {
         $method = new ReflectionMethod(FreeNewsService::class, 'isUrlSafe');
         return $method->invoke($this->service, $url);
+    }
+
+    private function seedDnsCache(array $entries): void
+    {
+        $prop = new ReflectionProperty(FreeNewsService::class, 'dnsCache');
+        $prop->setValue($this->service, $entries);
     }
 
     private function overrideHttpFake(array $stubs): void

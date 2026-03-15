@@ -43,6 +43,8 @@ use Longman\TelegramBot\Request;
  * @property bool $is_auto
  * @property string $analysis
  * @property int $analysis_count
+ * @property array|null $content_hashes
+ * @property string|null $previous_analysis
  * @property bool $is_deep
  * @property bool $is_deepest
  * @property bool $is_content_cleaned
@@ -87,6 +89,7 @@ class News extends Model
         'status' => NewsStatus::class,
         'classification' => AsArrayObject::class,
         'published_at' => 'datetime',
+        'content_hashes' => 'array',
         'is_content_cleaned' => 'boolean',
         'posted_at' => 'datetime',
         'created_at' => 'datetime',

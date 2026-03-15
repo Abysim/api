@@ -2,11 +2,11 @@
 
 namespace App\Services\News;
 
-use App\Helpers\FileHelper;
 use App\Services\NewsServiceInterface;
 use fivefilters\Readability\Configuration;
 use fivefilters\Readability\ParseException;
 use fivefilters\Readability\Readability;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
@@ -111,6 +111,15 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
+            // Strip source suffix early so dedup comparisons use clean titles
+            if (!empty($article['name_source'])) {
+                $article['title'] = preg_replace(
+                    '/ [-–—]\s*' . preg_quote($article['name_source'], '/') . '$/u',
+                    '',
+                    $article['title']
+                );
+            }
+
             if ($this->urlSeenChecker !== null && !empty($article['link']) && ($this->urlSeenChecker)($article['link'])) {
                 $urlCacheHits++;
                 continue;
@@ -167,28 +176,26 @@ class FreeNewsService implements NewsServiceInterface
             }
         }
 
+        // Discard articles older than 1 month before fetching (Google News can resurface old content)
+        $cutoff = now()->subMonth()->format('Y-m-d H:i:s');
+        $beforeAge = count($filtered);
+        $filtered = array_values(array_filter($filtered, fn($a) => $a['published_date'] >= $cutoff));
+        $ageFiltered = $beforeAge - count($filtered);
+        if ($ageFiltered > 0) {
+            Log::info("FreeNews: {$ageFiltered} articles filtered (older than 1 month)");
+        }
+
         $maxEnrich = (int) config('services.news.max_enrich', 30);
         $filtered = array_slice($filtered, 0, $maxEnrich);
 
         $result = [];
-        $googleDecoded = 0;
-        $googleFailed = 0;
         $titleOnlySkipped = 0;
         foreach ($filtered as $article) {
-            $isGoogleUrl = str_contains($article['link'], 'news.google.com');
             $enriched = $this->extractContent($article);
 
             // Mark URL as seen only if extraction succeeded (content != title fallback)
             if ($this->urlSeenMarker !== null && $enriched['content'] !== $article['title']) {
                 ($this->urlSeenMarker)($article['link']);
-            }
-
-            if ($isGoogleUrl) {
-                if (!str_contains($enriched['link'], 'news.google.com')) {
-                    $googleDecoded++;
-                } else {
-                    $googleFailed++;
-                }
             }
 
             // Skip articles where content extraction failed (content == title fallback)
@@ -201,29 +208,17 @@ class FreeNewsService implements NewsServiceInterface
             Sleep::for(1)->second(); // polite crawling delay
         }
 
-        if ($googleDecoded + $googleFailed > 0) {
-            $total = $googleDecoded + $googleFailed;
-            $this->lastDecodeTotal = $total;
-            $this->lastDecodeSuccess = $googleDecoded;
-            $rate = $googleDecoded / $total;
+        if ($this->lastDecodeTotal > 0) {
+            $rate = $this->lastDecodeSuccess / $this->lastDecodeTotal;
             if ($rate < 0.5) {
-                Log::warning("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded — decode rate below 50%, protocol may have changed");
+                Log::warning("FreeNews: Google News decode rate: {$this->lastDecodeSuccess}/{$this->lastDecodeTotal} succeeded — decode rate below 50%, protocol may have changed");
             } else {
-                Log::info("FreeNews: Google News decode rate: {$googleDecoded}/{$total} succeeded");
+                Log::info("FreeNews: Google News decode rate: {$this->lastDecodeSuccess}/{$this->lastDecodeTotal} succeeded");
             }
         }
 
         if ($titleOnlySkipped > 0) {
             Log::info('FreeNews: ' . $titleOnlySkipped . ' articles skipped (title-only content)');
-        }
-
-        // Discard articles older than 1 month (Google News can resurface old content)
-        $cutoff = now()->subMonth()->format('Y-m-d H:i:s');
-        $beforeCount = count($result);
-        $result = array_values(array_filter($result, fn($a) => $a['published_date'] >= $cutoff));
-        $filtered = $beforeCount - count($result);
-        if ($filtered > 0) {
-            Log::info("FreeNews: {$filtered} articles filtered (older than 1 month)");
         }
 
         // Sort oldest first (matching NewsCatcher's array_reverse pattern)
@@ -352,8 +347,6 @@ class FreeNewsService implements NewsServiceInterface
         $url = $originalUrl;
 
         try {
-            $html = null;
-
             if (!$this->isUrlSafe($url)) {
                 Log::warning('FreeNews: unsafe URL rejected: ' . $url);
                 return $this->buildArticleArray($article, $article['title'], $url);
@@ -361,29 +354,185 @@ class FreeNewsService implements NewsServiceInterface
 
             if (str_contains($url, 'news.google.com')) {
                 $decoded = $this->urlDecoder->decode($url);
-                if ($decoded !== null && !str_contains($decoded, 'news.google.com')) {
+                if ($decoded !== null && !str_contains($decoded, 'news.google.com')
+                    && (str_starts_with($decoded, 'http://') || str_starts_with($decoded, 'https://'))) {
+                    $this->lastDecodeTotal++;
+                    $this->lastDecodeSuccess++;
                     if (!$this->isUrlSafe($decoded)) {
                         Log::warning('FreeNews: decoded Google URL unsafe: ' . $decoded);
                         return $this->buildArticleArray($article, $article['title'], $originalUrl);
                     }
                     $url = $decoded;
                 } else {
+                    $this->lastDecodeTotal++;
                     Log::info('FreeNews: could not decode Google News URL: ' . $url);
                     return $this->buildArticleArray($article, $article['title'], $originalUrl);
                 }
             }
 
-            $html = FileHelper::getUrl($url);
+            // --- Fallback chain: fetch content ---
+            $content = null;
+            $author = null;
+            $image = null;
 
-            if (empty($html)) {
-                Log::warning('FreeNews: empty HTML for ' . $url);
+            // Step 1: Raw HTTP + Readability
+            try {
+                $res = Http::timeout(4)
+                    ->withHeaders(['User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'])
+                    ->get($url);
+                if ($res->status() >= 400) {
+                    throw new \Exception('HTTP ' . $res->status());
+                }
+                $rawHtml = $res->body();
+                if (!empty($rawHtml)) {
+                    Log::info('FreeNews: raw HTTP success for ' . $url);
+                    $extracted = $this->extractFromHtml($rawHtml, $url);
+                    if ($extracted !== null) {
+                        $content = $extracted['content'];
+                        $author = $extracted['author'];
+                        $image = $extracted['image'];
+                    } else {
+                        Log::info('FreeNews: raw HTTP readability failed, trying fallback services for ' . $url);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::info('FreeNews: raw HTTP failed for ' . $url . ': ' . $e->getMessage());
+            }
+
+            // Step 2: Jina Reader
+            if ($content === null) {
+                try {
+                    $jinaUrl = config('scraper.jina_url', 'https://r.jina.ai/') . $url;
+                    $res = Http::timeout(10)
+                        ->withHeaders(['X-Target-Selector' => 'article,.entry-content,.post-content,main,[role="main"]'])
+                        ->get($jinaUrl);
+                    if ($res->status() >= 400) {
+                        throw new \Exception('Jina HTTP ' . $res->status());
+                    }
+                    $jina = $this->parseJinaResponse($res->body());
+                    if ($jina['content'] !== null) {
+                        $content = $jina['content'];
+                        $image = $jina['image'];
+                        Log::info('FreeNews: Jina Reader success for ' . $url);
+                        Sleep::for(2)->seconds();
+                    } else {
+                        Log::info('FreeNews: Jina returned too little content for ' . $url);
+                    }
+                } catch (\Throwable $e) {
+                    Log::info('FreeNews: Jina failed for ' . $url . ': ' . $e->getMessage());
+                }
+            }
+
+            // Step 3: Scrape.do
+            if ($content === null) {
+                $sdKey = config('scraper.scrapedo_key');
+                if (!empty($sdKey)) {
+                    try {
+                        $res = Http::timeout(15)->get(config('scraper.scrapedo_url'), [
+                            'token' => $sdKey,
+                            'url' => $url,
+                        ]);
+                        if ($res->status() >= 400) {
+                            throw new \Exception('Scrape.do HTTP ' . $res->status());
+                        }
+                        $sdHtml = $res->body();
+                        if (!empty($sdHtml)) {
+                            Log::info('FreeNews: Scrape.do success for ' . $url);
+                            $extracted = $this->extractFromHtml($sdHtml, $url);
+                            if ($extracted !== null) {
+                                $content = $extracted['content'];
+                                $author = $extracted['author'];
+                                $image = $extracted['image'];
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::info('FreeNews: Scrape.do failed for ' . $url . ': ' . $e->getMessage());
+                    }
+                }
+            }
+
+            // Step 4: ScraperAPI (paid, last resort)
+            if ($content === null) {
+                $scraperKey = config('scraper.key');
+                if (!empty($scraperKey)) {
+                    try {
+                        $res = Http::timeout(30)->get(config('scraper.url'), [
+                            'api_key' => $scraperKey,
+                            'url' => $url,
+                            'country_code' => 'eu',
+                            'device_type' => 'desktop',
+                        ]);
+                        if ($res->status() >= 400) {
+                            throw new \Exception('ScraperAPI HTTP ' . $res->status());
+                        }
+                        $saHtml = $res->body();
+                        if (!empty($saHtml)) {
+                            Log::info('FreeNews: ScraperAPI success for ' . $url);
+                            $extracted = $this->extractFromHtml($saHtml, $url);
+                            if ($extracted !== null) {
+                                $content = $extracted['content'];
+                                $author = $extracted['author'];
+                                $image = $extracted['image'];
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('FreeNews: ScraperAPI (last resort) failed for ' . $url . ': ' . $e->getMessage());
+                    }
+                }
+            }
+
+            // All methods exhausted
+            if ($content === null) {
+                Log::warning('FreeNews: all fetch methods failed for ' . $url);
                 return $this->buildArticleArray($article, $article['title'], $url);
             }
 
-            if (strlen($html) > 2 * 1024 * 1024) {
-                $html = substr($html, 0, 2 * 1024 * 1024);
-            }
+            return $this->buildArticleArray($article, $content, $url, $author, $image);
+        } catch (\Throwable $e) {
+            Log::warning('FreeNews: content extraction failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
+            return $this->buildArticleArray($article, $article['title'], $originalUrl);
+        }
+    }
 
+    private function parseJinaResponse(string $response): array
+    {
+        $content = $response;
+
+        // Strip Jina metadata headers (Title:, URL Source:, Published Time:, Markdown Content:)
+        if (str_contains($content, "\n\n")) {
+            $parts = explode("\n\n", $content, 2);
+            // Check if first part looks like Jina metadata headers
+            if (preg_match('/^(Title:|URL Source:|Published Time:|Markdown Content:)/m', $parts[0])) {
+                $content = $parts[1] ?? '';
+            }
+        }
+
+        // Extract first image URL from markdown before stripping
+        $image = null;
+        if (preg_match('/!\[.*?\]\((https?:\/\/[^\)]+)\)/', $content, $m)) {
+            $image = $m[1];
+        }
+
+        // Clean: strip markdown link/image syntax, any residual HTML tags, normalize whitespace
+        $content = preg_replace('/!?\[([^\]]*)\]\([^\)]+\)/', '$1', $content);
+        $content = strip_tags($content);
+        $content = trim(preg_replace('/\s+/', ' ', $content));
+
+        // Minimum content requirement
+        if (mb_strlen($content) < 200) {
+            return ['content' => null, 'image' => null];
+        }
+
+        return ['content' => $content, 'image' => $image];
+    }
+
+    private function extractFromHtml(string $html, string $url): ?array
+    {
+        if (strlen($html) > 2 * 1024 * 1024) {
+            $html = substr($html, 0, 2 * 1024 * 1024);
+        }
+
+        try {
             $config = new Configuration();
             $config->setSubstituteEntities(true);
             $readability = new Readability($config);
@@ -391,27 +540,23 @@ class FreeNewsService implements NewsServiceInterface
 
             $content = $readability->getContent();
             if ($content === null) {
-                Log::warning('FreeNews: readability returned null content for ' . $url);
-                return $this->buildArticleArray($article, $article['title'], $url);
+                return null;
             }
             $content = strip_tags($content);
             $content = trim(preg_replace('/\s+/', ' ', $content));
 
-            $author = $readability->getAuthor();
-            $image = $readability->getImage();
-
             if (empty($content) || mb_strlen($content) < 200) {
-                Log::warning('FreeNews: readability extracted too little for ' . $url);
-                return $this->buildArticleArray($article, $article['title'], $url);
+                return null;
             }
 
-            return $this->buildArticleArray($article, $content, $url, $author, $image);
+            return [
+                'content' => $content,
+                'author' => $readability->getAuthor(),
+                'image' => $readability->getImage(),
+            ];
         } catch (ParseException $e) {
-            Log::warning('FreeNews: readability parse failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
-            return $this->buildArticleArray($article, $article['title'], $originalUrl);
-        } catch (\Throwable $e) {
-            Log::warning('FreeNews: content extraction failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
-            return $this->buildArticleArray($article, $article['title'], $originalUrl);
+            Log::warning('FreeNews: readability parse failed for ' . $url . ': ' . $e->getMessage());
+            return null;
         }
     }
 

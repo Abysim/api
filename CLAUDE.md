@@ -1,5 +1,11 @@
 # Project: API (Laravel)
 
+## CRITICAL: Production Safety
+- **This project runs directly on production (bigcats). There is no staging environment.**
+- **NEVER run commands on bigcats via SSH without explicit user approval.** Before executing any remote command, explain what it does and wait for confirmation. This includes `artisan tinker`, `queue:retry`, DB queries, cache clears, and any write operations.
+- **Destructive queue/DB operations are FORBIDDEN without user approval** — `queue:retry all`, `DELETE FROM jobs`, `queue:flush`, table truncation, etc. Always show the command and its impact first.
+- **NEVER use `git checkout <file>`, `git restore`, `git reset --hard`, or `git stash`** to revert changes — these destroy ALL uncommitted changes in the file/repo. To revert a specific change, use surgical edits. Only use destructive git commands if the user explicitly requests them by name.
+
 ## Overview
 Pet project that supports other projects. Laravel 10 API application.
 - **Target language**: Ukrainian (`uk`) — all foreign-language news articles are translated INTO Ukrainian. Articles already in Ukrainian skip translation. This is core domain logic, not a bug.
@@ -17,6 +23,10 @@ Pet project that supports other projects. Laravel 10 API application.
 - **New files** created outside the IDE (e.g. by Claude) do NOT auto-sync — manually `scp` them to bigcats
 - **Modified files** edited by Claude (not via IDE save) also may not auto-sync — verify with `md5sum` comparison between local and remote
 - **No local or staging environment** — bigcats is the only runtime environment
+- **After deploying code changes** to bigcats, queue workers automatically pick up the new code within ~4 minutes (workers restart due to `--max-time=180` in Kernel.php). No manual restart needed — just wait. Optionally run `ssh bigcats "cd ~/api && php artisan queue:restart"` to speed up propagation (graceful, no job loss).
+- **Verifying deployed code is running**: After `scp` + `queue:restart`, the restart only takes effect when the current job finishes. Long-running jobs (`AnalyzeNewsJob` polls for 30s×N) can delay pickup. Always verify with `grep 'expected_new_log_message' storage/logs/laravel.log` before assuming new code is active.
+- **After changing `.env` or config**, run `ssh bigcats "cd ~/api && php artisan config:cache"` — workers will load the new cached config on their next natural restart (~4 min)
+- **NEVER run `queue:retry all` as a "deployment step"** — it does NOT restart workers. It re-queues failed jobs and can flood the queue. Deploying code requires NO queue commands.
 
 ## Database
 - **Engine**: MySQL
@@ -56,6 +66,8 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-6`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
 - **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
 - **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
+- **GPT-5 family does NOT support `temperature`** — `gpt-5`, `gpt-5-mini`, `gpt-5-nano` all reject any temperature value other than the default (1), both via OpenAI directly and via OpenRouter. Use `reasoning_effort` instead for output control. Only non-GPT-5 models (Qwen, Gemini) accept custom temperature.
+- **`reasoning_effort` levels**: `gpt-5-mini` and `gpt-5-nano` support only up to `high`. `xhigh` is only available on larger models (`gpt-5.4`, `o3`). Using unsupported levels causes API errors.
 
 ## AI Cost Management
 - **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.4`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5-mini`, `gpt-5-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
@@ -69,6 +81,9 @@ Pet project that supports other projects. Laravel 10 API application.
 - **`NewsStatus` is an int-backed enum** (`app/Enums/NewsStatus.php`) — use integer values (not strings) in tinker/raw queries: CREATED=0, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, BEING_PROCESSED=10
 - **`FlickrPhotoController::process()` chains into `NewsController::process()`** — the `flickr-photo` hourly scheduler command is the trigger for automated news loading, not a separate cron. Trace: `Kernel.php` → `flickr-photo` (hourly) → `FlickrPhotoController::process()` → `app(NewsController::class)->process()`
 - **When `.env` changes on bigcats**, always run `php artisan config:cache` (not just `config:clear`) — Laravel may serve cached config otherwise
+- **NEVER run `queue:retry all`** — this re-queues ALL failed jobs at once and can flood the queue with hundreds of stale jobs, blocking the entire pipeline. Always inspect failed jobs first with `DB::table('failed_jobs')->get()` and retry specific jobs by UUID: `php artisan queue:retry <uuid>`. There is no valid reason to blindly retry all failed jobs.
+- **Queue workers** spawn via `queue:work --max-time=180` every minute in Kernel.php — multiple workers run concurrently. Jobs with long timeouts (e.g. `NewsJob` at 3500s) can monopolize a worker
+- **ApplyNewsAnalysisJob system prompt** is constructed by slicing `analyzer.md` via `Str::before('1.')` + `Str::afterLast("\n")` — this extracts ONLY the 3-line preamble + date, stripping all 24 numbered rules. This is intentional (the applier applies corrections, doesn't need analyzer rules), but the slicing is fragile and breaks if `analyzer.md` structure changes.
 
 ## News Search Architecture
 - **Species query routing** (NewsController lines ~358-414): species with `exclude` terms in `resources/json/news/species/{lang}.json` get **separate queries** (one per species with their exclusions). Species with empty `exclude` arrays get **batched into one combined query** (grouped by query length limit).
@@ -82,12 +97,21 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Google News RSS** does NOT support wildcards (`*`) in positive search terms inside `(... OR ...)` groups — the query silently returns 0 or stale results. Exclusion wildcards (`-horoscop*`) are harmless but don't actually do prefix matching; the PHP-side title filter handles real wildcard exclusion.
 - When debugging news search issues, **always check `storage/logs/laravel.log`** for rate-limit warnings and raw article counts before drawing conclusions about code correctness.
 
+## Content Fetching Fallback Chain
+- **4-step chain** in `FreeNewsService::extractContent()`: Raw HTTP (4s) → Jina Reader (10s) → Scrape.do (15s) → ScraperAPI (30s, paid)
+- **Jina Reader** returns clean markdown — skips Readability extraction, extracts image from markdown, sleeps 2s for rate limiting (20 RPM free tier)
+- **Scrape.do and ScraperAPI** return raw HTML — goes through Readability extraction as before
+- **Config**: `config/scraper.php` — `JINA_URL`, `SCRAPEDO_URL`/`SCRAPEDO_KEY`, `SCRAPER_URL`/`SCRAPER_KEY`
+- **Empty API keys** cause the step to be silently skipped
+- `FileHelper::getUrl()` is NOT used by `extractContent()` — it has its own inline chain. `FileHelper::getUrl()` is still used by other callers (e.g. GoogleNewsUrlDecoder)
+- **`news:clear-url-cache`** artisan command clears cached news URLs without flushing other cache entries
+
 ## Running artisan tinker locally (no DB)
 - Local MySQL is not running — use env overrides to bypass DB: `TELEGRAM_API_TOKEN="" DB_CONNECTION=sqlite DB_DATABASE=":memory:" p artisan tinker`
 
 ## News Processing Pipeline (Jobs)
 - **Pipeline order**: `CleanFreeNewsContentJob`/`CleanNewsContentJob` → `TranslateNewsJob` → `AnalyzeNewsJob` ↔ `ApplyNewsAnalysisJob` (cycle)
-- **`CleanFreeNewsContentJob` / `CleanNewsContentJob`**: Content cleanup via `gpt-4.1-nano` (OpenAI facade). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
+- **`CleanFreeNewsContentJob` / `CleanNewsContentJob`**: Content cleanup via `gpt-5-mini` (OpenAI facade). Prompt loaded from `resources/prompts/cleaner.md`. No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
 - **`TranslateNewsJob`**: Translates via Gemini (`gemini-3.1-pro-preview`). 4-iteration inner retry loop, `$tries=2`, `$timeout=3600`. On success dispatches `AnalyzeNewsJob` if `is_auto`
 - **`AnalyzeNewsJob`**: Quality analysis. 4-iteration inner retry loop with model alternation. `$tries=2`, `$timeout=7200`
 - **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `gpt-5-mini` (OpenAI) / `openai/gpt-5-mini` (OpenRouter), both with `reasoning_effort: high`. `$tries=2`, `$timeout=360`
@@ -101,6 +125,13 @@ Pet project that supports other projects. Laravel 10 API application.
    - `ApplyNewsAnalysisJob`: cycle limit exceeded → escalates to deep
 5. **Deep cycle** runs the same loop but with Claude Opus instead of o3/Gemini. If deep also hits "Ні" → sets `is_deepest=true`, `is_auto=false`, notifies admin
 6. If deep cycle limit also exceeded → sets `is_auto=false`, notifies admin ("Deepest analysis limit reached")
+
+### Oscillation detection (content_hashes + previous_analysis)
+- **`content_hashes`** (JSON): MD5 hashes of normalized `title+content` after each apply. If hash repeats → content reverted to previous state → escalate to next tier (same as "Ні")
+- **`previous_analysis`** (TEXT): Previous round's corrections injected into analyzer's user message so it can choose the better variant instead of flip-flopping
+- Both fields reset on tier escalation (each tier starts fresh)
+- Reset handlers: `translation()`, `counter()`, `deepest()` clear both; `deep()` clears both; `reset()` clears only `previous_analysis`
+- Hash normalization: `md5(mb_strtolower(preg_replace('/\s+/', ' ', title . "\n" . content)))`
 
 ### AnalyzeNewsJob model routing
 - `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
@@ -116,7 +147,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - When changing AI models: update BOTH the direct API model name AND the OpenRouter-prefixed variant in the same ternary
 
 ### Other jobs (no AI models)
-- **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`
+- **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`. Constructor: `__construct($load=false, $force=false, $lang=null, $publish=true)`. To manually dispatch for a specific language: `NewsJob::dispatch(true, true, 'uk', false)` — `$load` must be `true` to load news, `$force=true` bypasses the hourly schedule check (otherwise `shouldLoadNews()` may skip if already ran this hour), `$publish=false` to skip auto-publishing
 - **`ProcessTelegramChannelPost`**: Media group coordination via Cache. Photo download retry (5 attempts), media group wait loop (4 iterations with sleep)
 - **`PostToSocial`**: Posts to social platforms. No loops. `$timeout=180`
 
@@ -124,3 +155,4 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats
 - **PHP error log**: `~/api/error_log` on bigcats
 - View recent logs: `ssh bigcats "tail -100 ~/api/storage/logs/laravel.log"`
+- **Keep log entries single-line** — use `json_encode($data, JSON_UNESCAPED_UNICODE)` without `JSON_PRETTY_PRINT` in `Log::info()` calls, so entries remain greppable via `grep 'article_id' laravel.log`

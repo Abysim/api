@@ -452,6 +452,7 @@ class NewsController extends Controller
                     Request::sendMessage([
                         'chat_id' => explode(',', config('telegram.admins'))[0],
                         'text' => "FreeNews [{$lang}]: Google News decode rate {$rate}% ({$accDecodeSuccess}/{$accDecodeTotal}). Check SOCS cookies or batchexecute protocol.",
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                     ]);
                 }
             }
@@ -461,6 +462,7 @@ class NewsController extends Controller
                     Request::sendMessage([
                         'chat_id' => explode(',', config('telegram.admins'))[0],
                         'text' => "FreeNews [{$lang}]: GDELT rate limit hit. Consider increasing NEWS_INTER_SPECIES_DELAY (currently " . config('services.news.inter_species_delay', 2) . "s).",
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                     ]);
                 }
             }
@@ -904,15 +906,15 @@ class NewsController extends Controller
                 if ($i < 2) {
                     $params['response_format'] = ['type' => 'json_object'];
                 }
-                if (!$isDeepest) {
-                    $params['temperature'] = 0;
-                }
                 if (($isDeep && !($i % 2)) || (!$isDeep && ($i % 2))) {
                     if ($isDeepest) {
                         $params['reasoning_effort'] = 'high';
                     }
                     $classificationResponse = OpenAI::chat()->create($params);
                 } else {
+                    if (!$isDeep) {
+                        $params['temperature'] = 0;
+                    }
                     if ($i < 2) {
                         if (!$isDeep) {
                             $params['presence_penalty'] = 2;
@@ -1318,6 +1320,7 @@ class NewsController extends Controller
         } else {
             $model->is_deep = false;
         }
+        $model->previous_analysis = null;
 
         $this->cancel($model, $message);
     }
@@ -1325,6 +1328,8 @@ class NewsController extends Controller
     public function counter(News $model, Message $message): void
     {
         $model->analysis_count = 0;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
         Request::editMessageReplyMarkup([
             'chat_id' => $message->getChat()->getId(),
@@ -1342,6 +1347,8 @@ class NewsController extends Controller
         $model->is_deepest = false;
         $model->is_deep = false;
         $model->is_translated = false;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
 
         $this->reset($model, $message);
     }
@@ -1366,6 +1373,8 @@ class NewsController extends Controller
         $model->analysis_count = 0;
         $model->is_deep = true;
         $model->analysis = null;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
     }
 
@@ -1377,6 +1386,8 @@ class NewsController extends Controller
         }
 
         $model->is_deepest = true;
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
         $model->save();
     }
 }

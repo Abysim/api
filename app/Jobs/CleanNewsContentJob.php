@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,10 +44,9 @@ class CleanNewsContentJob implements ShouldQueue
             $response = OpenAI::chat()->create([
                 'model' => 'gpt-5-mini',
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Clean this news article text. Remove advertisements, cookie consent notices, navigation elements, subscription prompts, related article links, social media buttons text, and any text not part of the actual news article. Return only the clean article body text, preserving paragraph structure. Do not add any commentary.'],
+                    ['role' => 'system', 'content' => NewsController::getPrompt('cleaner')],
                     ['role' => 'user', 'content' => $textToClean],
                 ],
-                'temperature' => 0,
             ]);
 
             $cleaned = $response->choices[0]->message->content ?? null;
