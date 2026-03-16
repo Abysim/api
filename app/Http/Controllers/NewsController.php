@@ -326,7 +326,7 @@ class NewsController extends Controller
             // Pre-populate DB title cache for pre-extraction dedup
             if (empty($this->previousWeekNews[$lang])) {
                 $this->previousWeekNews[$lang] = News::where('language', $lang)
-                    ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                    ->where('posted_at', '>', now()->subDays(NewsServiceInterface::ARTICLE_FRESHNESS_DAYS)->toDateTimeString())
                     ->select('id', 'title')
                     ->limit(500)
                     ->orderByDesc('posted_at')
@@ -357,7 +357,7 @@ class NewsController extends Controller
 
             // Set URL-seen cache for cross-run dedup
             $cachePrefix = 'free_news_seen_url:' . $lang . ':';
-            $cacheTtlSeconds = (int) config('services.news.url_cache_ttl', 48) * 3600;
+            $cacheTtlSeconds = NewsServiceInterface::ARTICLE_FRESHNESS_DAYS * 86400;
 
             $this->service->setUrlSeenCache(
                 fn(string $url) => Cache::has($cachePrefix . md5($url)),
@@ -970,7 +970,7 @@ class NewsController extends Controller
     {
         if (empty($this->previousWeekNews[$model->language])) {
             $this->previousWeekNews[$model->language] = News::where('language', $model->language)
-                ->where('posted_at', '>', now()->subWeek()->toDateTimeString())
+                ->where('posted_at', '>', now()->subDays(NewsServiceInterface::ARTICLE_FRESHNESS_DAYS)->toDateTimeString())
                 ->select('id', 'title')
                 ->get();
         }

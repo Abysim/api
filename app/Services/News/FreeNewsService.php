@@ -100,6 +100,15 @@ class FreeNewsService implements NewsServiceInterface
 
         Log::info('FreeNews: fetched ' . count($articles) . ' article metadata for ' . $effectiveLang);
 
+        // Discard articles older than freshness window before any processing (Google News can resurface old content)
+        $cutoff = now()->subDays(NewsServiceInterface::ARTICLE_FRESHNESS_DAYS)->format('Y-m-d H:i:s');
+        $beforeAge = count($articles);
+        $articles = array_values(array_filter($articles, fn($a) => $a['published_date'] >= $cutoff));
+        $ageFiltered = $beforeAge - count($articles);
+        if ($ageFiltered > 0) {
+            Log::info("FreeNews: {$ageFiltered} articles filtered (older than " . NewsServiceInterface::ARTICLE_FRESHNESS_DAYS . " days)");
+        }
+
         $keywords = $this->extractKeywords($query);
         $excludeWords = $this->extractExcludeWords($query);
         $filtered = [];
@@ -174,15 +183,6 @@ class FreeNewsService implements NewsServiceInterface
             if ($skipped > 0) {
                 Log::info("FreeNews: DB title dedup removed {$skipped} of {$beforeCount} articles");
             }
-        }
-
-        // Discard articles older than 1 month before fetching (Google News can resurface old content)
-        $cutoff = now()->subMonth()->format('Y-m-d H:i:s');
-        $beforeAge = count($filtered);
-        $filtered = array_values(array_filter($filtered, fn($a) => $a['published_date'] >= $cutoff));
-        $ageFiltered = $beforeAge - count($filtered);
-        if ($ageFiltered > 0) {
-            Log::info("FreeNews: {$ageFiltered} articles filtered (older than 1 month)");
         }
 
         $maxEnrich = (int) config('services.news.max_enrich', 30);

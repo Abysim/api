@@ -10,6 +10,8 @@ interface NewsServiceInterface
 
     public const LOOKBACK_HOURS_OTHER_LANG = 26;
 
+    public const ARTICLE_FRESHNESS_DAYS = 7;
+
     public const EXCLUDE_COUNTRIES = ['RU'];
 
     public const EXCLUDE_DOMAINS = [
