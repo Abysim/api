@@ -416,7 +416,7 @@ class FreeNewsService implements NewsServiceInterface
                         Log::info('FreeNews: Jina Reader success for ' . $url);
                         Sleep::for(2)->seconds();
                     } else {
-                        Log::info('FreeNews: Jina returned too little content for ' . $url);
+                        Log::info('FreeNews: Jina returned no usable content for ' . $url);
                     }
                 } catch (\Throwable $e) {
                     Log::info('FreeNews: Jina failed for ' . $url . ': ' . $e->getMessage());
@@ -496,15 +496,29 @@ class FreeNewsService implements NewsServiceInterface
 
     private function parseJinaResponse(string $response): array
     {
+        // Bail out early if the target URL returned an error
+        if (str_contains($response, 'Warning: Target URL returned error')) {
+            return ['content' => null, 'image' => null];
+        }
+
         $content = $response;
 
-        // Strip Jina metadata headers (Title:, URL Source:, Published Time:, Markdown Content:)
-        if (str_contains($content, "\n\n")) {
-            $parts = explode("\n\n", $content, 2);
-            // Check if first part looks like Jina metadata headers
-            if (preg_match('/^(Title:|URL Source:|Published Time:|Markdown Content:)/m', $parts[0])) {
-                $content = $parts[1] ?? '';
+        // Strip Jina metadata headers line by line (handles missing \n\n separators)
+        $lines = explode("\n", $content);
+        $contentStart = 0;
+        foreach ($lines as $i => $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                continue;
             }
+            if (preg_match('/^(Title:|URL Source:|Published Time:|Markdown Content:|Warning:)/', $trimmed)) {
+                $contentStart = $i + 1;
+            } else {
+                break;
+            }
+        }
+        if ($contentStart > 0) {
+            $content = implode("\n", array_slice($lines, $contentStart));
         }
 
         // Extract first image URL from markdown before stripping
@@ -520,6 +534,10 @@ class FreeNewsService implements NewsServiceInterface
 
         // Minimum content requirement
         if (mb_strlen($content) < 200) {
+            return ['content' => null, 'image' => null];
+        }
+
+        if (!$this->isContentUsable($content)) {
             return ['content' => null, 'image' => null];
         }
 
@@ -549,6 +567,11 @@ class FreeNewsService implements NewsServiceInterface
                 return null;
             }
 
+            if (!$this->isContentUsable($content)) {
+                Log::info('FreeNews: extracted content is junk for ' . $url);
+                return null;
+            }
+
             return [
                 'content' => $content,
                 'author' => $readability->getAuthor(),
@@ -558,6 +581,24 @@ class FreeNewsService implements NewsServiceInterface
             Log::warning('FreeNews: readability parse failed for ' . $url . ': ' . $e->getMessage());
             return null;
         }
+    }
+
+    private function isContentUsable(string $content): bool
+    {
+        // Jina Reader metadata leaked into content
+        if (preg_match('/^(URL Source:|Markdown Content:)/', $content)) {
+            return false;
+        }
+
+        // Cookie consent / GDPR banners extracted as article content
+        if (preg_match('/^Powered by\b.*?(GDPR|Cookie)/i', $content)) {
+            return false;
+        }
+        if (preg_match('/^(We use cookies|This website uses cookies|This site uses cookies)/i', $content)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function buildArticleArray(

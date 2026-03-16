@@ -12,7 +12,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -48,34 +47,35 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
 
+        $isScience = $model->platform == 'article';
+        $preamble = trim(Str::before(NewsController::getPrompt('analyzer', $isScience), '1.'));
+        // Rewrite analyzer preamble from first/second-person to third-person to avoid editor identity confusion
+        $preamble = str_replace(['Ти — ', 'Твоя задача', 'Надавай одразу'], ['Це — ', 'Його задача', 'Надає одразу'], $preamble);
+        $systemPrompt = str_replace(
+            ['{analyzer_preamble}', '{date}'],
+            [$preamble, $model->date->translatedFormat('j F Y')],
+            NewsController::getPrompt('editor', $isScience)
+        );
+
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
                     'model' => $i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
                     'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
                         [
-                            'role' => 'system',
-                            'content' => trim(Str::before(
-                                NewsController::getPrompt('analyzer', $model->platform == 'article'),
-                                '1.'
-                            )) . "\n" . trim(Str::after(Str::afterLast(
-                                    trim(NewsController::getPrompt('analyzer', $model->platform == 'article')),
-                                    "\n"
-                            ), '.')) . ' ' . $model->date->translatedFormat('j F Y'),
+                            'role' => 'user',
+                            'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content
+                                . "\n\n---\nВиправлення філолога:\n" . $model->analysis,
                         ],
-                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content],
-                        ['role' => 'assistant', 'content' => $model->analysis],
-                        ['role' => 'user', 'content' => NewsController::getPrompt('editor')],
                     ],
                 ];
 
                 if ($i % 2) {
                     $params['provider'] = ['require_parameters' => true];
-                    $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
                 } else {
-                    $params['reasoning_effort'] = 'high';
                     $response = OpenAI::chat()->create($params);
                 }
 

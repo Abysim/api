@@ -17,6 +17,8 @@ interface NewsServiceInterface
         'sport.ua',
         'his.edu.vn',
         'newssniffer.co.uk',
+        'facebook.com',
+        'reddit.com',
     ];
 
     public function getNews(string $query, ?string $lang = null): array;
