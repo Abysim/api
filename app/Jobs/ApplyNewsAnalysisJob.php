@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use App\Helpers\SentenceHasher;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -91,50 +92,98 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $newTitle = trim($title, '*# ');
                     $newContent = trim(trim($content, '`'));
 
-                    // Compute content hash for oscillation detection
-                    $hash = md5(mb_strtolower(preg_replace('/\s+/', ' ', $newTitle . "\n" . $newContent)));
-                    $hashes = $model->content_hashes ?? [];
+                    // Per-sentence oscillation detection
+                    $hashTexts = SentenceHasher::hashSentences($newTitle, $newContent);
+                    $currentHashes = array_keys($hashTexts);
 
-                    if (in_array($hash, $hashes, true)) {
-                        // Oscillation detected: content reverted to a previously seen state
-                        // Escalate to next tier (same as "Ні") — do NOT apply reverted content
-                        Log::info("$model->id: Oscillation detected at analysis_count $model->analysis_count, escalating");
-                        $model->status = NewsStatus::PENDING_REVIEW;
-                        $model->analysis = null;
-                        $model->previous_analysis = null;
-                        $model->content_hashes = null;
+                    // Load stored cycles (backward compatible)
+                    $stored = $model->content_hashes;
+                    $cycles = [];
+                    if (is_array($stored) && !SentenceHasher::isOldFormat($stored)) {
+                        $cycles = $stored['cycles'] ?? [];
+                    }
 
-                        if (!$model->is_deep) {
-                            $model->is_deep = true;
-                            $model->analysis_count = 0;
-                            $model->save();
+                    // Detect flip-flops
+                    $detection = SentenceHasher::detectFlipFlops($currentHashes, $cycles);
 
-                            Request::sendMessage([
-                                'chat_id' => explode(',', config('telegram.admins'))[0],
-                                'reply_to_message_id' => $model->message_id,
-                                'text' => 'Oscillation detected, escalating to deep analysis',
-                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                            ]);
-
-                            AnalyzeNewsJob::dispatch($model->id);
-                        } else {
-                            $model->is_deepest = true;
-                            $model->is_auto = false;
-                            $model->save();
-
-                            Request::sendMessage([
-                                'chat_id' => explode(',', config('telegram.admins'))[0],
-                                'reply_to_message_id' => $model->message_id,
-                                'text' => 'Deep oscillation detected, auto analysis completed ' . $model->analysis_count,
-                                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                            ]);
-                        }
-
+                    if ($detection['total_changes'] === 0) {
+                        // No changes — article identical to last cycle, treat as done
+                        Log::info("$model->id: No changes at analysis_count $model->analysis_count, escalating");
+                        $this->escalateOscillation($model);
                         break;
                     }
 
-                    $hashes[] = $hash;
-                    $model->content_hashes = $hashes;
+                    if ($detection['is_all_flipflop']) {
+                        // 100% flip-flop — entire article reverted to a previously seen state
+                        Log::info("$model->id: 100% flip-flop at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes)");
+
+                        // AI variant selection: pick best version of each differing sentence
+                        $priorHashTexts = SentenceHasher::hashSentences($model->publish_title, $model->publish_content);
+                        $flipflopSentences = [];
+                        $additionTexts = [];
+                        foreach ($detection['additions'] as $hash) {
+                            $additionTexts[] = $hashTexts[$hash] ?? '';
+                        }
+                        $removalTexts = [];
+                        foreach ($detection['removals'] as $hash) {
+                            $removalTexts[] = $priorHashTexts[$hash] ?? '';
+                        }
+                        for ($p = 0; $p < max(count($additionTexts), count($removalTexts)); $p++) {
+                            $current = $additionTexts[$p] ?? '';
+                            $prior = $removalTexts[$p] ?? '';
+                            if ($current !== '' && $prior !== '') {
+                                $flipflopSentences[] = ['current' => $current, 'prior' => $prior];
+                            }
+                        }
+
+                        // Inline AI call to select best variants
+                        $patchedTitle = $newTitle;
+                        $patchedContent = $newContent;
+                        if (!empty($flipflopSentences)) {
+                            try {
+                                $selectionResponse = OpenAI::chat()->create([
+                                    'model' => 'gpt-5-mini',
+                                    'messages' => [
+                                        ['role' => 'system', 'content' => 'Ти — редактор української мови. Обирай граматично та стилістично кращий варіант.'],
+                                        ['role' => 'user', 'content' => SentenceHasher::buildVariantSelectionPrompt($flipflopSentences)],
+                                    ],
+                                ]);
+
+                                $selectionJson = json_decode($selectionResponse->choices[0]->message->content ?? '{}', true);
+                                if (is_array($selectionJson)) {
+                                    foreach ($flipflopSentences as $idx => $pair) {
+                                        $key = (string) ($idx + 1);
+                                        $choice = $selectionJson[$key] ?? 'A';
+                                        if ($choice === 'B' && !empty($pair['prior'])) {
+                                            $currentText = SentenceHasher::stripTitlePrefix($pair['current']);
+                                            $priorText = SentenceHasher::stripTitlePrefix($pair['prior']);
+                                            if (str_starts_with($pair['current'], 'title:')) {
+                                                $patchedTitle = $priorText;
+                                            } else {
+                                                $patchedContent = Str::replaceFirst($currentText, $priorText, $patchedContent);
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (Exception $e) {
+                                Log::warning("$model->id: AI variant selection failed: {$e->getMessage()}, keeping current content");
+                            }
+                        }
+
+                        $model->publish_title = $patchedTitle;
+                        $model->publish_content = $patchedContent;
+                        $this->escalateOscillation($model);
+                        break;
+                    }
+
+                    // Partial flip-flop or all-new changes — log and continue normally
+                    if ($detection['flipflop_changes'] > 0) {
+                        Log::info("$model->id: Partial flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences (additions: " . count($detection['additions']) . ", removals: " . count($detection['removals']) . ")");
+                    }
+
+                    // Append current cycle (hashes only) and save
+                    $cycles[] = ['hashes' => $currentHashes];
+                    $model->content_hashes = ['cycles' => $cycles];
                     $model->previous_analysis = $model->analysis;
 
                     $model->status = NewsStatus::PENDING_REVIEW;
@@ -185,6 +234,40 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 break;
             }
+        }
+    }
+
+    private function escalateOscillation(object $model): void
+    {
+        $model->status = NewsStatus::PENDING_REVIEW;
+        $model->analysis = null;
+        $model->previous_analysis = null;
+        $model->content_hashes = null;
+
+        if (!$model->is_deep) {
+            $model->is_deep = true;
+            $model->analysis_count = 0;
+            $model->save();
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => 'Oscillation detected, escalating to deep analysis',
+                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            ]);
+
+            AnalyzeNewsJob::dispatch($model->id);
+        } else {
+            $model->is_deepest = true;
+            $model->is_auto = false;
+            $model->save();
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => 'Deep oscillation detected, auto analysis completed ' . $model->analysis_count,
+                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            ]);
         }
     }
 }
