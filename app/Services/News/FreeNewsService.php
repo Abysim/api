@@ -142,6 +142,7 @@ class FreeNewsService implements NewsServiceInterface
             }
 
             if (!empty($keywords) && !$this->titleMatchesKeywords($article['title'], $keywords)) {
+                Log::info('FreeNews: keyword mismatch, marking seen: ' . $article['title']);
                 $this->markUrlSeen($article);
                 continue;
             }
