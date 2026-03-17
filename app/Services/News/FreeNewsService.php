@@ -136,7 +136,7 @@ class FreeNewsService implements NewsServiceInterface
                 continue;
             }
 
-            if (in_array($article['clean_url'] ?? '', NewsServiceInterface::EXCLUDE_DOMAINS, true)) {
+            if ($this->isDomainExcluded($article['clean_url'] ?? '', $article['link'] ?? '')) {
                 $this->markUrlSeen($article);
                 continue;
             }
@@ -287,6 +287,23 @@ class FreeNewsService implements NewsServiceInterface
         foreach ($excludeWords as $word) {
             if (mb_stripos($title, rtrim($word, '*')) !== false) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Check if domain (or link host) matches any excluded domain, including subdomains. */
+    private function isDomainExcluded(string $cleanUrl, string $link): bool
+    {
+        $domains = array_filter([$cleanUrl, parse_url($link, PHP_URL_HOST) ?: '']);
+
+        foreach ($domains as $domain) {
+            $domain = strtolower($domain);
+            foreach (NewsServiceInterface::EXCLUDE_DOMAINS as $excluded) {
+                if ($domain === $excluded || str_ends_with($domain, '.' . $excluded)) {
+                    return true;
+                }
             }
         }
 

@@ -20,6 +20,7 @@ interface NewsServiceInterface
         'his.edu.vn',
         'newssniffer.co.uk',
         'facebook.com',
+        'instagram.com',
         'reddit.com',
     ];
 
