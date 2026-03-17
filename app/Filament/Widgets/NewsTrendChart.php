@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Filament\Widgets;
+
+use App\Enums\NewsStatus;
+use App\Models\News;
+use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Carbon;
+
+class NewsTrendChart extends ChartWidget
+{
+    protected static ?string $heading = 'News Daily Trend';
+
+    protected static ?int $sort = 3;
+
+    protected int|string|array $columnSpan = 1;
+
+    protected static ?string $pollingInterval = null;
+
+    protected static ?string $maxHeight = '300px';
+
+    protected function getType(): string
+    {
+        return 'bar';
+    }
+
+    protected function getData(): array
+    {
+        $days = collect(range(13, 0))->map(fn ($i) => now()->subDays($i)->format('Y-m-d'));
+        $labels = $days->map(fn ($d) => Carbon::parse($d)->format('M d'));
+
+        $autoValues = collect([
+            NewsStatus::REJECTED_BY_KEYWORD, NewsStatus::REJECTED_BY_CLASSIFICATION,
+            NewsStatus::REJECTED_BY_DUP_TITLE, NewsStatus::REJECTED_BY_DEEP_AI,
+            NewsStatus::REJECTED_BY_DEEPEST_AI,
+        ])->map->value;
+        $manualValues = collect([
+            NewsStatus::REJECTED_MANUALLY, NewsStatus::REJECTED_AS_OFF_TOPIC,
+        ])->map->value;
+
+        // Single query: new + auto-rejected + manual-rejected (all use created_at).
+        // Alias as 'day' (not 'date') to prevent Eloquent auto-casting to Carbon.
+        $byCreated = News::selectRaw(
+            'DATE(created_at) as day, count(*) as total,'
+            . ' SUM(status IN (' . $autoValues->join(',') . ')) as auto_rejected,'
+            . ' SUM(status IN (' . $manualValues->join(',') . ')) as manual_rejected'
+        )
+            ->where('created_at', '>=', now()->subDays(14))
+            ->groupByRaw('DATE(created_at)')
+            ->get()->keyBy('day');
+
+        $publishedCounts = News::selectRaw('DATE(published_at) as day, count(*) as count')
+            ->where('published_at', '>=', now()->subDays(14))
+            ->whereNotNull('published_at')
+            ->groupByRaw('DATE(published_at)')->pluck('count', 'day');
+
+        return [
+            'datasets' => [
+                ['label' => 'New', 'data' => $days->map(fn ($d) => (int) ($byCreated[$d]->total ?? 0))->values(), 'backgroundColor' => '#3b82f6'],
+                ['label' => 'Published', 'data' => $days->map(fn ($d) => $publishedCounts[$d] ?? 0)->values(), 'backgroundColor' => '#22c55e'],
+                ['label' => 'Auto Rejected', 'data' => $days->map(fn ($d) => (int) ($byCreated[$d]->auto_rejected ?? 0))->values(), 'backgroundColor' => '#f97316'],
+                ['label' => 'Manual Rejected', 'data' => $days->map(fn ($d) => (int) ($byCreated[$d]->manual_rejected ?? 0))->values(), 'backgroundColor' => '#ef4444'],
+            ],
+            'labels' => $labels->values(),
+        ];
+    }
+}

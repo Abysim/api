@@ -15,6 +15,7 @@ use App\Jobs\CleanFreeNewsContentJob;
 use App\Jobs\CleanNewsContentJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
+use App\Models\DailyStat;
 use App\Models\FlickrPhoto;
 use App\Models\News;
 use App\Services\BigCatsService;
@@ -96,6 +97,7 @@ class NewsController extends Controller
             NewsJob::dispatch(publish: false);
         }
 
+        DailyStat::flushCache();
         $this->deleteNewsFiles();
     }
 

@@ -17,4 +17,24 @@ enum NewsStatus: int
     case BEING_PROCESSED = 10;
     case REJECTED_BY_DEEPEST_AI = 11;
     case FAILED = 12;
+
+    /** @return self[] */
+    public static function rejectedCases(): array
+    {
+        return array_values(self::rejectedLabels());
+    }
+
+    /** @return array<string, self> */
+    public static function rejectedLabels(): array
+    {
+        return [
+            'KW' => self::REJECTED_BY_KEYWORD,
+            'Class' => self::REJECTED_BY_CLASSIFICATION,
+            'Dup' => self::REJECTED_BY_DUP_TITLE,
+            'Deep' => self::REJECTED_BY_DEEP_AI,
+            'Deepest' => self::REJECTED_BY_DEEPEST_AI,
+            'Manual' => self::REJECTED_MANUALLY,
+            'OT' => self::REJECTED_AS_OFF_TOPIC,
+        ];
+    }
 }

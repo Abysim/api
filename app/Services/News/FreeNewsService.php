@@ -2,10 +2,12 @@
 
 namespace App\Services\News;
 
+use App\Models\DailyStat;
 use App\Services\NewsServiceInterface;
 use fivefilters\Readability\Configuration;
 use fivefilters\Readability\ParseException;
 use fivefilters\Readability\Readability;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
@@ -391,6 +393,7 @@ class FreeNewsService implements NewsServiceInterface
                         $content = $extracted['content'];
                         $author = $extracted['author'];
                         $image = $extracted['image'];
+                        Cache::increment(DailyStat::cacheKey('fetch_raw_http'));
                     } else {
                         Log::info('FreeNews: raw HTTP readability failed, trying fallback services for ' . $url);
                     }
@@ -413,6 +416,7 @@ class FreeNewsService implements NewsServiceInterface
                     if ($jina['content'] !== null) {
                         $content = $jina['content'];
                         $image = $jina['image'];
+                        Cache::increment(DailyStat::cacheKey('fetch_jina'));
                         Log::info('FreeNews: Jina Reader success for ' . $url);
                         Sleep::for(2)->seconds();
                     } else {
@@ -443,6 +447,7 @@ class FreeNewsService implements NewsServiceInterface
                                 $content = $extracted['content'];
                                 $author = $extracted['author'];
                                 $image = $extracted['image'];
+                                Cache::increment(DailyStat::cacheKey('fetch_scrapedo'));
                             }
                         }
                     } catch (\Throwable $e) {
@@ -473,6 +478,7 @@ class FreeNewsService implements NewsServiceInterface
                                 $content = $extracted['content'];
                                 $author = $extracted['author'];
                                 $image = $extracted['image'];
+                                Cache::increment(DailyStat::cacheKey('fetch_scraperapi'));
                             }
                         }
                     } catch (\Throwable $e) {
