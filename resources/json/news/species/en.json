@@ -3,7 +3,8 @@
         "words": [
             "lion",
             "lions",
-            "lioness*"
+            "lioness",
+            "lionesses"
         ],
         "exclude": [
             "horoscop*",
@@ -52,8 +53,19 @@
             "langley",
             "captain",
             "lion city",
-            "cafe"
+            "cafe",
+            "marketbeat",
+            "lion street",
+            "quarterback*",
+            "lionsgate",
+            "lion copper",
+            "lion finance",
+            "lion one",
+            "lion's mane",
+            "roaring lion",
+            "cannes lions"
         ],
+        "_temporary_exclude": ["roaring lion — remove after Operation Roaring Lion ends"],
         "excludeCase": [
             "Lion",
             "White Lion",
@@ -62,8 +74,10 @@
     },
     "tiger": {
         "words": [
-            "tiger*",
-            "tigr*"
+            "tiger",
+            "tigers",
+            "tigress",
+            "tigresses"
         ],
         "exclude": [
             "shark*",
@@ -79,7 +93,15 @@
             "tiger woods",
             "detroit tigers",
             "yankees",
-            "paper tiger"
+            "paper tiger",
+            "onitsuka tiger",
+            "tiger eye",
+            "kenzo",
+            "soccer",
+            "muay thai",
+            "flipkart",
+            "lsu",
+            "triumph tiger"
         ],
         "excludeCase": [
             "Tiger"
@@ -87,9 +109,20 @@
     },
     "leopard": {
         "words": [
-            "leopard*"
+            "leopard",
+            "leopards",
+            "leopardess"
         ],
         "exclude": [
+            "leopard print",
+            "sneaker*",
+            "leopard 2",
+            "war thunder",
+            "catahoula leopard",
+            "lululemon",
+            "gecko",
+            "leigh leopards",
+            "leopard seal"
         ],
         "excludeCase": [
             "Leopard",
@@ -98,9 +131,31 @@
     },
     "jaguar": {
         "words": [
-            "jaguar*"
+            "jaguar",
+            "jaguars"
         ],
         "exclude": [
+            "nfl*",
+            "free agenc*",
+            "trade",
+            "xj",
+            "xke",
+            "e-type",
+            "e-pace",
+            "autotrader",
+            "jaguar health",
+            "carpet",
+            "cartier",
+            "tejas",
+            "f-type",
+            "f-pace",
+            "x-type",
+            "xk8",
+            "s-type",
+            "fender jaguar",
+            "atari jaguar",
+            "claas jaguar",
+            "hot wheels"
         ],
         "excludeCase": [
             "Jaguar"
@@ -108,10 +163,17 @@
     },
     "cheetah": {
         "words": [
-            "cheetah*"
+            "cheetah",
+            "cheetahs"
         ],
         "exclude": [
-            "armor*"
+            "armor*",
+            "cheetah print",
+            "sneaker*",
+            "amazfit",
+            "cheetah fc",
+            "cheetah girls",
+            "herbicide"
         ],
         "excludeCase": [
             "Cheetah",
@@ -120,7 +182,8 @@
     },
     "panther": {
         "words": [
-            "panther*"
+            "panther",
+            "panthers"
         ],
         "exclude": [
             "armor*",
@@ -131,7 +194,19 @@
             "pink panther",
             "panther civil",
             "cathedral*",
-            "panther party"
+            "panther party",
+            "panther lake",
+            "cartier",
+            "carolina panthers",
+            "steel panther",
+            "panther industrial",
+            "nba",
+            "hoodie",
+            "treadmill",
+            "chassis",
+            "disney",
+            "noble panther",
+            "panther metals"
         ],
         "excludeCase": [
             "Black Panther",
@@ -140,12 +215,28 @@
     },
     "puma": {
         "words": [
-            "puma*",
-            "cougar*"
+            "puma",
+            "pumas",
+            "cougar",
+            "cougars"
         ],
         "exclude": [
             "houston cougars",
-            "sklenar"
+            "sklenar",
+            "sneaker*",
+            "shoe*",
+            "derby",
+            "puma suede",
+            "puma property",
+            "trainer*",
+            "lamelo ball",
+            "sandal*",
+            "racehorse",
+            "mercury cougar",
+            "ford puma",
+            "ferrari",
+            "motorsport",
+            "forest river"
         ],
         "excludeCase": [
             "Puma",
@@ -155,9 +246,19 @@
     },
     "lynx": {
         "words": [
-            "lynx*"
+            "lynx",
+            "lynxes"
         ],
         "exclude": [
+            "lynx machinery",
+            "minnesota lynx",
+            "kittens for sale",
+            "kittens for adoption",
+            "varsity",
+            "snowmobile*",
+            "deodorant",
+            "honeywell",
+            "dc shoes lynx"
         ],
         "excludeCase": [
             "Lynx"
@@ -165,27 +266,45 @@
     },
     "ocelot": {
         "words": [
-            "ocelot*"
+            "ocelot",
+            "ocelots"
         ],
-        "exclude": [],
+        "exclude": [
+            "metal gear",
+            "coach ocelot",
+            "kate spade"
+        ],
         "excludeCase": [
             "Ocelot"
         ]
     },
     "caracal": {
         "words": [
-            "caracal*"
+            "caracal",
+            "caracals"
         ],
-        "exclude": [],
+        "exclude": [
+            "kittens for sale",
+            "cat price",
+            "pistol"
+        ],
         "excludeCase": [
             "Caracal"
         ]
     },
     "serval": {
         "words": [
-            "serval*"
+            "serval",
+            "servals"
         ],
-        "exclude": [],
+        "exclude": [
+            "savannah cat",
+            "kittens for sale",
+            "cat for sale",
+            "cat price",
+            "honkai",
+            "system76"
+        ],
         "excludeCase": [
             "Serval"
         ]

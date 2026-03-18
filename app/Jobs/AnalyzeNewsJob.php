@@ -75,12 +75,17 @@ class AnalyzeNewsJob implements ShouldQueue
                 Log::info("$model->id: News analysis $model->analysis_count $i");
                 $params = [
                     'model' => $model->is_deep
-                        ? ($i > 1 ? 'anthropic/claude-3.7-sonnet:thinking' : 'claude-3-7-sonnet-20250219')
+                        ? ($i > 1 ? 'anthropic/claude-opus-4-6' : 'claude-opus-4-6')
                         : ($i > 1
-                            ? ($isOA ? 'openai/o3' : 'gemini-2.5-pro')
-                            : ($isOA ? 'o3' : 'gemini-2.5-pro')
+                            ? ($isOA ? 'openai/gpt-5.4' : 'gemini-3.1-pro-preview')
+                            : ($isOA ? 'gpt-5.4' : 'gemini-3.1-pro-preview')
                         ),
                 ];
+
+                $userContent = '# ' . $model->publish_title . "\n\n" . $model->publish_content;
+                if (!empty($model->previous_analysis)) {
+                    $userContent .= "\n\n---\nПопередній аналіз (для контексту — якщо бачиш, що твоє виправлення скасовує щойно застосоване, обери кращий варіант за правилами та зафіксуй вибір, а не пропонуй зворотну зміну):\n" . $model->previous_analysis;
+                }
 
                 if ($model->is_deep && $i <= 1) {
                     $params['system'] = [
@@ -92,7 +97,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         ['type' => 'text', 'text' => $model->date->translatedFormat('j F Y')]
                     ];
                     $params['messages'] = [
-                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
+                        ['role' => 'user', 'content' => $userContent]
                     ];
 
                     $params['max_tokens'] = 128000;
@@ -104,15 +109,20 @@ class AnalyzeNewsJob implements ShouldQueue
                             'content' => NewsController::getPrompt('analyzer', $model->platform == 'article')
                                 . ' ' . $model->date->translatedFormat('j F Y')
                         ],
-                        ['role' => 'user', 'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content]
+                        ['role' => 'user', 'content' => $userContent]
                     ];
 
-                    if ($model->is_deep || $i > 1 && $isOA) {
+                    if ($model->is_deep) {
                         $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
                         $params['reasoning'] = ['effort' => 'high'];
                     } elseif ($isOA) {
-                        $params['reasoning_effort'] = 'high';
+                        if ($i > 1) {
+                            $params['provider'] = ['require_parameters' => true];
+                            $params['reasoning'] = ['effort' => 'xhigh'];
+                        } else {
+                            $params['reasoning_effort'] = 'xhigh';
+                        }
                     }
                 }
 
@@ -244,7 +254,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 Log::info(
                     "$model->id: News analysis $model->analysis_count $i result: "
-                    . json_encode($response, JSON_UNESCAPED_UNICODE + JSON_PRETTY_PRINT)
+                    . json_encode($response, JSON_UNESCAPED_UNICODE)
                 );
 
                 $content = $response->content[1]->text ?? $response->choices[0]->message->content ?? null;
@@ -268,6 +278,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         $model->analysis = $content;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis_count = $model->analysis_count + 1;
+                        $model->previous_analysis = null;
                         $model->save();
                     }
                 }
@@ -297,11 +308,15 @@ class AnalyzeNewsJob implements ShouldQueue
                             $model->analysis = null;
                             $model->is_deep = true;
                             $model->analysis_count = 0;
+                            $model->content_hashes = null;
+                            $model->previous_analysis = null;
                             $model->save();
                             AnalyzeNewsJob::dispatch($model->id);
                         } else {
                             $model->is_deepest = true;
                             $model->is_auto = false;
+                            $model->content_hashes = null;
+                            $model->previous_analysis = null;
                             $model->save();
 
                             Request::sendMessage([

@@ -47,7 +47,7 @@ class TranslateNewsJob implements ShouldQueue
             try {
                 Log::info("$model->id: News translation");
                 $params = [
-                    'model' => 'gemini-2.5-pro',
+                    'model' => 'gemini-3.1-pro-preview',
                     'messages' => [
                         [
                             'role' => 'system',

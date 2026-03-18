@@ -2,28 +2,21 @@
 
 namespace App\Services;
 
+use App\Services\News\GeneratesSearchQuery;
 use Exception;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class NewsCatcherService implements NewsServiceInterface
 {
+    use GeneratesSearchQuery;
+
     private const URL = 'https://api.newscatcherapi.com/v2/';
 
     protected const SEARCH_QUERY_LIMIT = 1000;
 
-    protected const LANG = 'uk';
-
-    protected const EXCLUDE_COUNTRIES = ['RU'];
-
-    protected const EXCLUDE_DOMAINS = [
-        'champion.com.ua',
-        'sport.ua',
-        'his.edu.vn',
-        'newssniffer.co.uk',
-    ];
+    protected const LANG = NewsServiceInterface::DEFAULT_LANG;
 
     private PendingRequest $request;
 
@@ -34,7 +27,7 @@ class NewsCatcherService implements NewsServiceInterface
 
     public function getNews(string $query, ?string $lang = null): array
     {
-        $excludeCountries = self::EXCLUDE_COUNTRIES;
+        $excludeCountries = NewsServiceInterface::EXCLUDE_COUNTRIES;
         if (empty($lang) || $lang == self::LANG) {
             $excludeCountries[] = 'KZ';
         }
@@ -47,7 +40,7 @@ class NewsCatcherService implements NewsServiceInterface
                 'q' => $query,
                 'lang' => $lang ?? self::LANG,
                 'not_countries' => implode(',', $excludeCountries),
-                'not_sources' => implode(',', self::EXCLUDE_DOMAINS),
+                'not_sources' => implode(',', NewsServiceInterface::EXCLUDE_DOMAINS),
                 'ranked_only' => 'False',
                 'sort_by' => 'date',
                 'page_size' => 100,
@@ -76,19 +69,6 @@ class NewsCatcherService implements NewsServiceInterface
     public function getSearchQueryLimit(): int
     {
         return self::SEARCH_QUERY_LIMIT;
-    }
-
-    public function generateSearchQuery($words, $excludeWords): string
-    {
-        $query = '(' . implode(' OR ', $words) . ')';
-        foreach ($excludeWords as $exclude) {
-            if (Str::position($exclude, ' ') !== false) {
-                $exclude = '"' . $exclude . '"';
-            }
-            $query .= ' !' . $exclude;
-        }
-
-        return $query;
     }
 
     public function getName(): string
