@@ -566,8 +566,8 @@ class FlickrPhotoController extends Controller
                         $this->sendPhotoToReview($model);
                     }
 
-                    if ($duplicateResult && !empty($model->message_id)) {
-                        $this->sendDuplicateReply($model, $duplicateResult['photo'], $duplicateResult['won']);
+                    if ($duplicateResult && !$duplicateResult['won'] && !empty($model->message_id)) {
+                        $this->sendDuplicateReply($model, $duplicateResult['photo']);
                     }
                 }
             }
@@ -642,13 +642,12 @@ class FlickrPhotoController extends Controller
             $existingPhoto->status = FlickrPhotoStatus::PENDING_REVIEW;
             $existingPhoto->save();
 
-            $this->sendDuplicateReply($existingPhoto, $newPhoto, false);
+            $this->sendDuplicateReply($existingPhoto, $newPhoto);
             return ['photo' => $existingPhoto, 'won' => true];
         } else {
             $newPhoto->status = FlickrPhotoStatus::PENDING_REVIEW;
             $newPhoto->save();
 
-            $this->sendDuplicateReply($existingPhoto, $newPhoto, true);
             return ['photo' => $existingPhoto, 'won' => false];
         }
     }
@@ -672,29 +671,27 @@ class FlickrPhotoController extends Controller
         return $count;
     }
 
-    private function sendDuplicateReply(FlickrPhoto $photo, FlickrPhoto $otherPhoto, bool $isWinner): void
+    private function sendDuplicateReply(FlickrPhoto $loser, FlickrPhoto $winner): void
     {
-        if (empty($photo->message_id)) {
+        if (empty($loser->message_id)) {
             return;
         }
 
         try {
-            $text = $isWinner
-                ? "Kept as best quality. Duplicate of {$otherPhoto->id} demoted."
-                : "Duplicate of {$otherPhoto->id} (better quality). Review needed.";
+            $text = "Similar to {$winner->id} which is sharper. Consider deleting.";
 
             $params = [
                 'chat_id' => explode(',', config('telegram.admins'))[0],
-                'reply_to_message_id' => $photo->message_id,
+                'reply_to_message_id' => $loser->message_id,
                 'text' => $text,
                 'reply_markup' => new InlineKeyboard([
-                    ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $photo->id],
+                    ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $loser->id],
                 ]),
             ];
 
             Request::sendMessage($params);
         } catch (Exception $e) {
-            Log::error($photo->id . ': Failed to send duplicate reply: ' . $e->getMessage());
+            Log::error($loser->id . ': Failed to send duplicate reply: ' . $e->getMessage());
         }
     }
 
