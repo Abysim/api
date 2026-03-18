@@ -92,7 +92,7 @@ class FlickrPhotoHashBackfillCommand extends Command
                 if ($other->id === $photo->id || $processed->contains($other->id)) {
                     return false;
                 }
-                $hamming = substr_count(sprintf('%064b', $photo->perceptual_hash ^ $other->perceptual_hash), '1');
+                $hamming = $this->hammingDistance($photo->perceptual_hash, $other->perceptual_hash);
                 return $hamming <= $threshold;
             });
 
@@ -139,5 +139,15 @@ class FlickrPhotoHashBackfillCommand extends Command
             $this->newLine();
             $this->info("Found {$groupId} duplicate group(s).");
         }
+    }
+
+    private function hammingDistance(int $hash1, int $hash2): int
+    {
+        $xor = $hash1 ^ $hash2;
+        $count = 0;
+        for ($i = 0; $i < 64; $i++) {
+            $count += ($xor >> $i) & 1;
+        }
+        return $count;
     }
 }

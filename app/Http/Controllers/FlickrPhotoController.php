@@ -625,7 +625,7 @@ class FlickrPhotoController extends Controller
     {
         $newSize = $this->getFileSize($newPhoto);
         $existingSize = $this->getFileSize($existingPhoto);
-        $hamming = substr_count(sprintf('%064b', $newPhoto->perceptual_hash ^ $existingPhoto->perceptual_hash), '1');
+        $hamming = $this->hammingDistance($newPhoto->perceptual_hash, $existingPhoto->perceptual_hash);
         Log::info(sprintf(
             '%s: Duplicate of %s (hamming: %d, new size: %s, existing size: %s, existing status: %s)',
             $newPhoto->id, $existingPhoto->id, $hamming,
@@ -661,6 +661,16 @@ class FlickrPhotoController extends Controller
             return File::size($path);
         }
         return 0;
+    }
+
+    private function hammingDistance(int $hash1, int $hash2): int
+    {
+        $xor = $hash1 ^ $hash2;
+        $count = 0;
+        for ($i = 0; $i < 64; $i++) {
+            $count += ($xor >> $i) & 1;
+        }
+        return $count;
     }
 
     private function sendDuplicateReply(FlickrPhoto $photo, FlickrPhoto $otherPhoto, bool $isWinner): void
