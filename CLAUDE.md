@@ -83,6 +83,9 @@ Pet project that supports other projects. Laravel 10 API application.
 - **When `.env` changes on bigcats**, always run `php artisan config:cache` (not just `config:clear`) — Laravel may serve cached config otherwise
 - **NEVER run `queue:retry all`** — this re-queues ALL failed jobs at once and can flood the queue with hundreds of stale jobs, blocking the entire pipeline. Always inspect failed jobs first with `DB::table('failed_jobs')->get()` and retry specific jobs by UUID: `php artisan queue:retry <uuid>`. There is no valid reason to blindly retry all failed jobs.
 - **Queue workers** spawn via `queue:work --max-time=180` every minute in Kernel.php — multiple workers run concurrently. Jobs with long timeouts (e.g. `NewsJob` at 3500s) can monopolize a worker
+- **MariaDB `XOR` is LOGICAL, not bitwise** — `XOR` returns 0 or 1 (boolean), `^` is the bitwise XOR operator. Always use `^` for bit operations: `BIT_COUNT(col ^ ?)`, never `BIT_COUNT(col XOR ?)`
+- **`composer install` on bigcats runs `filament:upgrade`** which clears config cache — always run `php artisan config:cache` after
+- **`FlickrPhotoStatus` is an int-backed enum** — CREATED=0, REJECTED_BY_TAG=1, REJECTED_BY_CLASSIFICATION=2, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, PUBLISHED=6, REMOVED_BY_AUTHOR=7, REJECTED_BY_DUPLICATION=8
 - **ApplyNewsAnalysisJob system prompt** is constructed by slicing `analyzer.md` via `Str::before('1.')` + `Str::afterLast("\n")` — this extracts ONLY the 3-line preamble + date, stripping all 24 numbered rules. This is intentional (the applier applies corrections, doesn't need analyzer rules), but the slicing is fragile and breaks if `analyzer.md` structure changes.
 
 ## News Search Architecture
@@ -152,6 +155,15 @@ Pet project that supports other projects. Laravel 10 API application.
 - **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`. Constructor: `__construct($load=false, $force=false, $lang=null, $publish=true)`. To manually dispatch for a specific language: `NewsJob::dispatch(true, true, 'uk', false)` — `$load` must be `true` to load news, `$force=true` bypasses the hourly schedule check (otherwise `shouldLoadNews()` may skip if already ran this hour), `$publish=false` to skip auto-publishing
 - **`ProcessTelegramChannelPost`**: Media group coordination via Cache. Photo download retry (5 attempts), media group wait loop (4 iterations with sleep)
 - **`PostToSocial`**: Posts to social platforms. No loops. `$timeout=180`
+
+## FlickrPhoto Deduplication
+- **Perceptual hashing** via `jenssegers/imagehash` (pHash algorithm) — 64-bit hash stored as signed `BIGINT` in `perceptual_hash` column on `flickr_photos`
+- **Pipeline**: after classification in `processPhotos()`, `checkDuplicate()` computes hash, compares via `BIT_COUNT(perceptual_hash ^ ?) <= threshold`
+- **Threshold**: configurable via `FLICKR_PHOTO_HASH_THRESHOLD` env (default: 10 Hamming distance out of 64 bits)
+- **vs PUBLISHED**: new photo auto-rejected with `REJECTED_BY_DUPLICATION` (status 8)
+- **vs queued (PENDING_REVIEW/APPROVED)**: largest file wins (sharpness proxy); loser gets PENDING_REVIEW; Telegram replies with Delete button sent to both
+- **Hash permanence**: hashes persist in DB even after file deletion or manual approval override
+- **Backfill command**: `php artisan flickr-photo:hash-backfill --detect [--dry-run] [--reject] [--threshold=N]`
 
 ## Logs
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats
