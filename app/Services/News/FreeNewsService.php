@@ -25,6 +25,8 @@ class FreeNewsService implements NewsServiceInterface
     private GdeltSource $gdeltSource;
     private GoogleNewsUrlDecoder $urlDecoder;
     private array $dnsCache = [];
+    private array $blockedDomains = [];
+    private ?array $cachedExcludedDomains = null;
     private int $lastDecodeTotal = 0;
     private int $lastDecodeSuccess = 0;
     private bool $gdeltRateLimited = false;
@@ -64,6 +66,11 @@ class FreeNewsService implements NewsServiceInterface
         $this->googleSource = $googleSource;
         $this->gdeltSource = $gdeltSource;
         $this->urlDecoder = $urlDecoder;
+
+        $path = resource_path('json/news/blocked_domains.json');
+        if (file_exists($path)) {
+            $this->blockedDomains = json_decode(file_get_contents($path), true) ?: [];
+        }
     }
 
     public function getNews(string $query, ?string $lang = null): array
@@ -300,7 +307,7 @@ class FreeNewsService implements NewsServiceInterface
 
         foreach ($domains as $domain) {
             $domain = strtolower($domain);
-            foreach (NewsServiceInterface::EXCLUDE_DOMAINS as $excluded) {
+            foreach ($this->allExcludedDomains() as $excluded) {
                 if ($domain === $excluded || str_ends_with($domain, '.' . $excluded)) {
                     return true;
                 }
@@ -308,6 +315,14 @@ class FreeNewsService implements NewsServiceInterface
         }
 
         return false;
+    }
+
+    private function allExcludedDomains(): array
+    {
+        return $this->cachedExcludedDomains ??= array_merge(
+            NewsServiceInterface::EXCLUDE_DOMAINS,
+            $this->blockedDomains
+        );
     }
 
     /** Validate URL targets a public IP. TOCTOU risk accepted: URLs are from trusted RSS/API sources. */
@@ -397,7 +412,7 @@ class FreeNewsService implements NewsServiceInterface
 
             // Step 1: Raw HTTP + Readability
             try {
-                $res = Http::timeout(4)
+                $res = Http::timeout(8)
                     ->withHeaders(['User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'])
                     ->get($url);
                 if ($res->status() >= 400) {
@@ -424,8 +439,14 @@ class FreeNewsService implements NewsServiceInterface
             if ($content === null) {
                 try {
                     $jinaUrl = config('scraper.jina_url', 'https://r.jina.ai/') . $url;
-                    $res = Http::timeout(10)
-                        ->withHeaders(['X-Target-Selector' => 'article,.entry-content,.post-content,main,[role="main"]'])
+                    $res = Http::timeout(35)
+                        ->withHeaders([
+                            'X-Target-Selector' => 'article,.entry-content,.post-content,main,[role="main"]',
+                            'X-Remove-Selector' => 'nav,footer,.sidebar,#ads,.cookie-banner,.related-articles',
+                            'X-Wait-For-Selector' => 'article',
+                            'X-No-Cache' => 'true',
+                            'X-Timeout' => '30',
+                        ])
                         ->get($jinaUrl);
                     if ($res->status() >= 400) {
                         throw new \Exception('Jina HTTP ' . $res->status());
@@ -445,31 +466,35 @@ class FreeNewsService implements NewsServiceInterface
                 }
             }
 
-            // Step 3: Scrape.do
+            // Step 3: Diffbot Article API (5 RPM free tier)
             if ($content === null) {
-                $sdKey = config('scraper.scrapedo_key');
-                if (!empty($sdKey)) {
+                $diffbotToken = config('scraper.diffbot_token');
+                if (!empty($diffbotToken)) {
                     try {
-                        $res = Http::timeout(15)->get(config('scraper.scrapedo_url'), [
-                            'token' => $sdKey,
+                        $res = Http::timeout(15)->get(config('scraper.diffbot_url'), [
+                            'token' => $diffbotToken,
                             'url' => $url,
                         ]);
-                        if ($res->status() >= 400) {
-                            throw new \Exception('Scrape.do HTTP ' . $res->status());
-                        }
-                        $sdHtml = $res->body();
-                        if (!empty($sdHtml)) {
-                            Log::info('FreeNews: Scrape.do success for ' . $url);
-                            $extracted = $this->extractFromHtml($sdHtml, $url);
-                            if ($extracted !== null) {
-                                $content = $extracted['content'];
-                                $author = $extracted['author'];
-                                $image = $extracted['image'];
-                                Cache::increment(DailyStat::cacheKey('fetch_scrapedo'));
+                        if ($res->status() === 429) {
+                            Log::info('FreeNews: Diffbot rate limited for ' . $url);
+                        } elseif ($res->status() >= 400) {
+                            throw new \Exception('Diffbot HTTP ' . $res->status());
+                        } else {
+                            $diffbot = $res->json();
+                            $obj = $diffbot['objects'][0] ?? null;
+                            if ($obj && !empty($obj['text']) && mb_strlen($obj['text']) >= 200) {
+                                $content = trim(preg_replace('/\s+/', ' ', $obj['text']));
+                                $author = $obj['author'] ?? null;
+                                $image = $obj['images'][0]['url'] ?? null;
+                                Cache::increment(DailyStat::cacheKey('fetch_diffbot'));
+                                Log::info('FreeNews: Diffbot success for ' . $url);
+                            } else {
+                                Log::info('FreeNews: Diffbot returned no usable content for ' . $url);
                             }
+                            Sleep::for(12)->seconds();
                         }
                     } catch (\Throwable $e) {
-                        Log::info('FreeNews: Scrape.do failed for ' . $url . ': ' . $e->getMessage());
+                        Log::info('FreeNews: Diffbot failed for ' . $url . ': ' . $e->getMessage());
                     }
                 }
             }
@@ -497,6 +522,8 @@ class FreeNewsService implements NewsServiceInterface
                                 $author = $extracted['author'];
                                 $image = $extracted['image'];
                                 Cache::increment(DailyStat::cacheKey('fetch_scraperapi'));
+                            } else {
+                                Log::info('FreeNews: ScraperAPI HTML fetched but extraction failed for ' . $url);
                             }
                         }
                     } catch (\Throwable $e) {
@@ -619,6 +646,21 @@ class FreeNewsService implements NewsServiceInterface
             return false;
         }
         if (preg_match('/^(We use cookies|This website uses cookies|This site uses cookies)/i', $content)) {
+            return false;
+        }
+
+        // Paywall / login walls
+        if (preg_match('/^(Subscribe to (read|continue)|Please sign in|Please log in|Create an account to)/i', $content)) {
+            return false;
+        }
+
+        // JS-required / bot-detection pages
+        if (preg_match('/^(Please enable JavaScript|Enable JavaScript|You need to enable JavaScript)/i', $content)) {
+            return false;
+        }
+
+        // Cookie consent variants
+        if (preg_match('/^(Before you continue|Accept cookies|Cookie Notice|By continuing you agree)/i', $content)) {
             return false;
         }
 

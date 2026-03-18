@@ -1216,7 +1216,7 @@ class FreeNewsServiceTest extends TestCase
         $this->assertStringNotContainsString('](', $result[0]['content']);
     }
 
-    public function test_extract_content_raw_and_jina_fail_scrapedo_success_uses_readability(): void
+    public function test_extract_content_raw_and_jina_fail_diffbot_success(): void
     {
         $article = $this->makeArticle('Lion found', 'https://example.com/article', '2024-01-15 10:00:00');
 
@@ -1225,18 +1225,22 @@ class FreeNewsServiceTest extends TestCase
         $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
         $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
 
-        config(['scraper.scrapedo_key' => 'test-key']);
+        config(['scraper.diffbot_token' => 'test-token']);
+
+        $diffbotBody = str_repeat('A lion was found in the wild savanna by researchers near Nairobi. ', 10);
 
         $this->overrideHttpFake([
             'https://r.jina.ai/*' => Http::response('', 500),
-            'https://api.scrape.do*' => Http::response($this->readableHtml(), 200),
+            'https://api.diffbot.com/*' => Http::response([
+                'objects' => [['text' => $diffbotBody, 'author' => 'Test Author', 'images' => [['url' => 'https://example.com/lion.jpg']]]],
+            ], 200),
             'https://example.com/*' => Http::response('', 500),
         ]);
 
         $result = $this->service->getNews('(lion OR lions)');
 
         $this->assertCount(1, $result);
-        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+        $this->assertStringContainsString('lion was found in the wild savanna', $result[0]['content']);
     }
 
     public function test_extract_content_all_fail_returns_title_only(): void
@@ -1267,19 +1271,23 @@ class FreeNewsServiceTest extends TestCase
         $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
         $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
 
-        config(['scraper.scrapedo_key' => 'test-key']);
+        config(['scraper.diffbot_token' => 'test-token']);
+
+        $diffbotBody = str_repeat('A lion was found in the wild savanna by researchers near Nairobi. ', 10);
 
         $this->overrideHttpFake([
             'https://r.jina.ai/*' => Http::response("Title: Short\n\nToo short.", 200),
-            'https://api.scrape.do*' => Http::response($this->readableHtml(), 200),
+            'https://api.diffbot.com/*' => Http::response([
+                'objects' => [['text' => $diffbotBody, 'author' => 'Test Author']],
+            ], 200),
             'https://example.com/*' => Http::response('', 500),
         ]);
 
         $result = $this->service->getNews('(lion OR lions)');
 
         $this->assertCount(1, $result);
-        // Should have used Scrape.do HTML via Readability, not Jina's short content
-        $this->assertStringContainsString('substantial test article body', $result[0]['content']);
+        // Should have used Diffbot, not Jina's short content
+        $this->assertStringContainsString('lion was found in the wild savanna', $result[0]['content']);
     }
 
     public function test_extract_content_scraperapi_success_uses_readability(): void
@@ -1291,7 +1299,7 @@ class FreeNewsServiceTest extends TestCase
         $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
         $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
 
-        config(['scraper.scrapedo_key' => '', 'scraper.key' => 'test-scraper-key', 'scraper.url' => 'https://api.scraperapi.com']);
+        config(['scraper.diffbot_token' => '', 'scraper.key' => 'test-scraper-key', 'scraper.url' => 'https://api.scraperapi.com']);
 
         $this->overrideHttpFake([
             'https://r.jina.ai/*' => Http::response('', 500),
@@ -1314,8 +1322,8 @@ class FreeNewsServiceTest extends TestCase
         $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
         $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
 
-        // Ensure Scrape.do and ScraperAPI keys are empty (should be skipped)
-        config(['scraper.scrapedo_key' => '', 'scraper.key' => '']);
+        // Ensure Diffbot and ScraperAPI keys are empty (should be skipped)
+        config(['scraper.diffbot_token' => '', 'scraper.key' => '']);
 
         $this->overrideHttpFake([
             'https://r.jina.ai/*' => Http::response('', 500),
@@ -1326,8 +1334,8 @@ class FreeNewsServiceTest extends TestCase
 
         // All steps failed or skipped → no articles
         $this->assertCount(0, $result);
-        // Scrape.do and ScraperAPI should NOT have been called
-        Http::assertNotSent(fn($req) => str_contains($req->url(), 'api.scrape.do'));
+        // Diffbot and ScraperAPI should NOT have been called
+        Http::assertNotSent(fn($req) => str_contains($req->url(), 'api.diffbot.com'));
         Http::assertNotSent(fn($req) => str_contains($req->url(), 'scraperapi.com'));
     }
 

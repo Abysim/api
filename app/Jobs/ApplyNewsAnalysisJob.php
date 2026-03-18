@@ -108,12 +108,12 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                     if ($detection['total_changes'] === 0) {
                         // No changes — applier produced identical content, let analyzer re-evaluate
+                        // Don't update content or hashes, just clear analysis
                         Log::info("$model->id: No changes at analysis_count $model->analysis_count, letting analyzer re-evaluate");
                         $model->previous_analysis = $model->analysis;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis = null;
                         $model->save();
-                        // Don't update content or hashes — post-iteration check dispatches AnalyzeNewsJob
                     } elseif ($detection['is_all_flipflop']) {
                         // Full reversion — AI selects best variant, then let analyzer re-evaluate
                         Log::info("$model->id: Flip-flop reversion at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes), resolving");
@@ -170,25 +170,16 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         }
 
                         // Recompute hashes for the patched content
-                        $hashTexts = SentenceHasher::hashSentences($newTitle, $newContent);
-                        $currentHashes = array_keys($hashTexts);
-
-                        // Save resolved content — post-iteration check dispatches AnalyzeNewsJob
-                        $cycles[] = ['hashes' => $currentHashes];
-                        $model->content_hashes = ['cycles' => $cycles];
-                        $model->previous_analysis = $model->analysis;
-                        $model->status = NewsStatus::PENDING_REVIEW;
-                        $model->analysis = null;
-                        $model->publish_title = $newTitle;
-                        $model->publish_content = $newContent;
-                        $model->save();
+                        $currentHashes = array_keys(SentenceHasher::hashSentences($newTitle, $newContent));
                     } else {
                         // Partial flip-flop or all-new changes — log and continue normally
                         if ($detection['flipflop_changes'] > 0) {
                             Log::info("$model->id: Partial flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences (additions: " . count($detection['additions']) . ", removals: " . count($detection['removals']) . ")");
                         }
+                    }
 
-                        // Normal save — post-iteration check dispatches AnalyzeNewsJob
+                    if ($detection['total_changes'] > 0) {
+                        // Save content and hashes — post-iteration check dispatches AnalyzeNewsJob
                         $cycles[] = ['hashes' => $currentHashes];
                         $model->content_hashes = ['cycles' => $cycles];
                         $model->previous_analysis = $model->analysis;
