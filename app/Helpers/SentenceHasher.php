@@ -74,6 +74,7 @@ class SentenceHasher
             'removals' => [],
             'total_changes' => 0,
             'flipflop_changes' => 0,
+            'flipflop_hashes' => [],
         ];
 
         if (empty($priorCycles)) {
@@ -115,6 +116,7 @@ class SentenceHasher
         foreach ($result['additions'] as $hash) {
             if (isset($olderHashes[$hash])) {
                 $result['flipflop_changes']++;
+                $result['flipflop_hashes'][] = $hash;
             }
         }
 
@@ -133,9 +135,13 @@ class SentenceHasher
      * Build the AI variant selection prompt for flip-flop resolution.
      * Each entry in $flipflopSentences has 'current' and 'prior' keys.
      */
-    public static function buildVariantSelectionPrompt(array $flipflopSentences): string
+    public static function buildVariantSelectionPrompt(array $flipflopSentences, string $articleContext = ''): string
     {
         $prompt = "Для кожної пари речень обери кращий варіант (A або B) за правилами української мови. Відповідай ТІЛЬКИ у форматі JSON: {\"1\": \"A\", \"2\": \"B\", ...}\n\n";
+
+        if ($articleContext !== '') {
+            $prompt = "Контекст статті:\n$articleContext\n\n===\n\n" . $prompt;
+        }
 
         foreach ($flipflopSentences as $i => $pair) {
             $num = $i + 1;

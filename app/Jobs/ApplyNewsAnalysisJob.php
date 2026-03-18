@@ -108,49 +108,51 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                     if ($detection['total_changes'] === 0) {
                         // No changes — applier produced identical content, let analyzer re-evaluate
-                        // Don't update content or hashes, just clear analysis
                         Log::info("$model->id: No changes at analysis_count $model->analysis_count, letting analyzer re-evaluate");
                         $model->previous_analysis = $model->analysis;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis = null;
                         $model->save();
-                    } elseif ($detection['is_all_flipflop']) {
-                        // Full reversion — AI selects best variant, then let analyzer re-evaluate
-                        Log::info("$model->id: Flip-flop reversion at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes), resolving");
+                    } elseif ($detection['flipflop_changes'] > 0) {
+                        // Flip-flop detected — AI selects best variant for oscillating sentences only
+                        $flipType = $detection['is_all_flipflop'] ? "full, matched cycle {$detection['matched_cycle']}" : 'partial';
+                        Log::info("$model->id: Flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences ($flipType), resolving");
 
-                        // AI variant selection: pick best version of each differing sentence
+                        // Position-based pairing: match flip-flop sentences by document position
                         $priorHashTexts = SentenceHasher::hashSentences($model->publish_title, $model->publish_content);
-                        $flipflopSentences = [];
-                        $additionTexts = [];
-                        foreach ($detection['additions'] as $hash) {
-                            $additionTexts[] = $hashTexts[$hash] ?? '';
-                        }
-                        $removalTexts = [];
-                        foreach ($detection['removals'] as $hash) {
-                            $removalTexts[] = $priorHashTexts[$hash] ?? '';
-                        }
-                        for ($p = 0; $p < max(count($additionTexts), count($removalTexts)); $p++) {
-                            $current = $additionTexts[$p] ?? '';
-                            $prior = $removalTexts[$p] ?? '';
-                            if ($current !== '' && $prior !== '') {
-                                $flipflopSentences[] = ['current' => $current, 'prior' => $prior];
+                        $currentPositions = array_keys($hashTexts);
+                        $priorPositions = array_keys($priorHashTexts);
+
+                        $removalsSet = array_flip($detection['removals']);
+                        $flipflopPairs = [];
+                        foreach ($detection['flipflop_hashes'] as $addHash) {
+                            $pos = array_search($addHash, $currentPositions);
+                            if ($pos !== false && isset($priorPositions[$pos])) {
+                                $remHash = $priorPositions[$pos];
+                                if (isset($removalsSet[$remHash])) {
+                                    $flipflopPairs[] = [
+                                        'current' => $hashTexts[$addHash] ?? '',
+                                        'prior' => $priorHashTexts[$remHash] ?? '',
+                                    ];
+                                }
                             }
                         }
 
-                        // Inline AI call to select best variants
-                        if (!empty($flipflopSentences)) {
+                        // AI variant selection with article context
+                        if (!empty($flipflopPairs)) {
                             try {
+                                $articleContext = $newTitle . "\n\n" . $newContent;
                                 $selectionResponse = OpenAI::chat()->create([
                                     'model' => 'gpt-5-mini',
                                     'messages' => [
                                         ['role' => 'system', 'content' => 'Ти — редактор української мови. Обирай граматично та стилістично кращий варіант.'],
-                                        ['role' => 'user', 'content' => SentenceHasher::buildVariantSelectionPrompt($flipflopSentences)],
+                                        ['role' => 'user', 'content' => SentenceHasher::buildVariantSelectionPrompt($flipflopPairs, $articleContext)],
                                     ],
                                 ]);
 
                                 $selectionJson = json_decode($selectionResponse->choices[0]->message->content ?? '{}', true);
                                 if (is_array($selectionJson)) {
-                                    foreach ($flipflopSentences as $idx => $pair) {
+                                    foreach ($flipflopPairs as $idx => $pair) {
                                         $key = (string) ($idx + 1);
                                         $choice = $selectionJson[$key] ?? 'A';
                                         if ($choice === 'B' && !empty($pair['prior'])) {
@@ -171,11 +173,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                         // Recompute hashes for the patched content
                         $currentHashes = array_keys(SentenceHasher::hashSentences($newTitle, $newContent));
-                    } else {
-                        // Partial flip-flop or all-new changes — log and continue normally
-                        if ($detection['flipflop_changes'] > 0) {
-                            Log::info("$model->id: Partial flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences (additions: " . count($detection['additions']) . ", removals: " . count($detection['removals']) . ")");
-                        }
                     }
 
                     if ($detection['total_changes'] > 0) {

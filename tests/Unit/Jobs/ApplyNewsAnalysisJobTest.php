@@ -194,11 +194,14 @@ class ApplyNewsAnalysisJobTest extends TestCase
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 5: Partial flip-flop continues normally ---
+    // --- Test 5: Partial flip-flop resolves via variant selection ---
 
-    public function test_partial_flipflop_continues_normally(): void
+    public function test_partial_flipflop_resolves_via_variant_selection(): void
     {
         $title = 'Title';
+        // Cycle 0: "Sentence A. Sentence B." — Cycle 1: "Sentence A. Sentence C."
+        // Current apply returns: "Sentence A. Sentence B. Sentence D."
+        // → "Sentence B." is a flip-flop (was in cycle 0), "Sentence D." is genuine new
         $hashesAB = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence B.'));
         $hashesAC = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence C.'));
 
@@ -211,14 +214,63 @@ class ApplyNewsAnalysisJobTest extends TestCase
             ]],
         ]);
         $this->mockNewsFind($news);
-        $this->fakeOpenAiResponses(["# $title\nSentence A. Sentence B. Sentence D."]);
+        // First response: editor output. Second response: variant selector picks B (prior version)
+        $this->fakeOpenAiResponses([
+            "# $title\nSentence A. Sentence B. Sentence D.",
+            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "B"}']]]])
+        ]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
         $this->assertFalse($news->is_deep);
+        // AI chose B (prior) → flip-flop sentence reverted to "Sentence C.", genuine "Sentence D." preserved
+        $this->assertStringContainsString('Sentence C.', $news->publish_content);
+        $this->assertStringContainsString('Sentence D.', $news->publish_content);
+        $this->assertStringNotContainsString('Sentence B.', $news->publish_content);
         $this->assertArrayHasKey('cycles', $news->content_hashes);
         $this->assertCount(3, $news->content_hashes['cycles']);
+        Queue::assertPushed(AnalyzeNewsJob::class);
+    }
+
+    // --- Test 5b: Partial flip-flop position-based pairing correctness ---
+
+    public function test_partial_flipflop_position_based_pairing(): void
+    {
+        $title = 'Title';
+        // 3 content sentences. Middle one will flip-flop, last one changes genuinely.
+        // Cycle 0: "First. Вищі хижаки. Third."
+        // Cycle 1: "First. Вершинні хижаки. Third."  (middle changed)
+        // Current: "First. Вищі хижаки. Fourth."      (middle reverts = flip-flop, last = genuine)
+        $content0 = 'First. Вищі хижаки. Third.';
+        $content1 = 'First. Вершинні хижаки. Third.';
+        $contentCurrent = 'First. Вищі хижаки. Fourth.';
+        $hashes0 = array_keys(SentenceHasher::hashSentences($title, $content0));
+        $hashes1 = array_keys(SentenceHasher::hashSentences($title, $content1));
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $content1, // model has state from cycle 1
+            'content_hashes' => ['cycles' => [
+                ['hashes' => $hashes0],
+                ['hashes' => $hashes1],
+            ]],
+        ]);
+        $this->mockNewsFind($news);
+        // Editor returns content with flip-flop. Variant selector picks B (prior = "Вершинні хижаки.")
+        $this->fakeOpenAiResponses([
+            "# $title\n$contentCurrent",
+            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "B"}']]]])
+        ]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // AI chose B → flip-flop sentence reverted to "Вершинні хижаки."
+        // Genuine change "Fourth." preserved (was not sent to variant selection)
+        $this->assertStringContainsString('Вершинні хижаки.', $news->publish_content);
+        $this->assertStringContainsString('Fourth.', $news->publish_content);
+        $this->assertStringNotContainsString('Вищі хижаки.', $news->publish_content);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
