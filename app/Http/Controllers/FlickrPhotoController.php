@@ -552,9 +552,9 @@ class FlickrPhotoController extends Controller
                         }
                     }
 
-                    $duplicateMatch = null;
+                    $duplicateResult = null;
                     if (empty($model->perceptual_hash)) {
-                        $duplicateMatch = $this->checkDuplicate($model);
+                        $duplicateResult = $this->checkDuplicate($model);
                     }
 
                     $model->refresh();
@@ -566,15 +566,15 @@ class FlickrPhotoController extends Controller
                         $this->sendPhotoToReview($model);
                     }
 
-                    if ($duplicateMatch && !empty($model->message_id)) {
-                        $this->sendDuplicateReply($model, $duplicateMatch, true);
+                    if ($duplicateResult && !empty($model->message_id)) {
+                        $this->sendDuplicateReply($model, $duplicateResult['photo'], $duplicateResult['won']);
                     }
                 }
             }
         }
     }
 
-    private function checkDuplicate(FlickrPhoto $model): ?FlickrPhoto
+    private function checkDuplicate(FlickrPhoto $model): ?array
     {
         $filePath = $model->getFilePath();
         if (empty($filePath) || !File::exists($filePath)) {
@@ -601,7 +601,7 @@ class FlickrPhotoController extends Controller
                 FlickrPhotoStatus::APPROVED,
                 FlickrPhotoStatus::PUBLISHED,
             ])
-            ->whereRaw('BIT_COUNT(perceptual_hash XOR ?) <= ?', [$model->perceptual_hash, $threshold])
+            ->whereRaw('BIT_COUNT(perceptual_hash ^ ?) <= ?', [$model->perceptual_hash, $threshold])
             ->get();
 
         if ($duplicates->isEmpty()) {
@@ -621,7 +621,7 @@ class FlickrPhotoController extends Controller
         return $this->handleDuplicate($model, $bestDuplicate);
     }
 
-    private function handleDuplicate(FlickrPhoto $newPhoto, FlickrPhoto $existingPhoto): ?FlickrPhoto
+    private function handleDuplicate(FlickrPhoto $newPhoto, FlickrPhoto $existingPhoto): ?array
     {
         $newSize = $this->getFileSize($newPhoto);
         $existingSize = $this->getFileSize($existingPhoto);
@@ -643,14 +643,13 @@ class FlickrPhotoController extends Controller
             $existingPhoto->save();
 
             $this->sendDuplicateReply($existingPhoto, $newPhoto, false);
-            return $existingPhoto;
+            return ['photo' => $existingPhoto, 'won' => true];
         } else {
             $newPhoto->status = FlickrPhotoStatus::PENDING_REVIEW;
             $newPhoto->save();
 
-            $this->sendDuplicateReply($newPhoto, $existingPhoto, false);
             $this->sendDuplicateReply($existingPhoto, $newPhoto, true);
-            return $existingPhoto;
+            return ['photo' => $existingPhoto, 'won' => false];
         }
     }
 
