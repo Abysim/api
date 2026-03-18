@@ -26,7 +26,7 @@ class FetchFunnelStats extends StatsOverviewWidget
                 ->icon('heroicon-o-globe-alt'),
             Stat::make('Jina Reader', $stat?->fetch_jina ?? 0)
                 ->icon('heroicon-o-document-text'),
-            Stat::make('Scrape.do', $stat?->fetch_scrapedo ?? 0)
+            Stat::make('Diffbot', $stat?->fetch_diffbot ?? 0)
                 ->icon('heroicon-o-cloud'),
             Stat::make('ScraperAPI', $stat?->fetch_scraperapi ?? 0)
                 ->icon('heroicon-o-server'),

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * @property string $date
  * @property int $fetch_raw_http
  * @property int $fetch_jina
- * @property int $fetch_scrapedo
+ * @property int $fetch_diffbot
  * @property int $fetch_scraperapi
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -24,7 +24,7 @@ class DailyStat extends Model
 {
     protected $fillable = ['date'];
 
-    public const FIELDS = ['fetch_raw_http', 'fetch_jina', 'fetch_scrapedo', 'fetch_scraperapi'];
+    public const FIELDS = ['fetch_raw_http', 'fetch_jina', 'fetch_diffbot', 'fetch_scraperapi'];
 
     public static function cacheKey(string $field, ?string $date = null): string
     {

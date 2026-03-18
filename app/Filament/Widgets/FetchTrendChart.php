@@ -32,7 +32,7 @@ class FetchTrendChart extends ChartWidget
             'datasets' => [
                 ['label' => 'Raw HTTP', 'data' => $days->map(fn ($d) => $stats[$d]->fetch_raw_http ?? 0)->values(), 'backgroundColor' => '#3b82f6'],
                 ['label' => 'Jina Reader', 'data' => $days->map(fn ($d) => $stats[$d]->fetch_jina ?? 0)->values(), 'backgroundColor' => '#8b5cf6'],
-                ['label' => 'Scrape.do', 'data' => $days->map(fn ($d) => $stats[$d]->fetch_scrapedo ?? 0)->values(), 'backgroundColor' => '#f97316'],
+                ['label' => 'Diffbot', 'data' => $days->map(fn ($d) => $stats[$d]->fetch_diffbot ?? 0)->values(), 'backgroundColor' => '#f97316'],
                 ['label' => 'ScraperAPI', 'data' => $days->map(fn ($d) => $stats[$d]->fetch_scraperapi ?? 0)->values(), 'backgroundColor' => '#ef4444'],
             ],
             'labels' => $labels->values(),
