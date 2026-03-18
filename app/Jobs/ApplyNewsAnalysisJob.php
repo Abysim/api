@@ -107,14 +107,24 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $detection = SentenceHasher::detectFlipFlops($currentHashes, $cycles);
 
                     if ($detection['total_changes'] === 0) {
-                        // No changes — applier produced content identical to last cycle
+                        if ($i === 0) {
+                            // Two-strike: first detection, retry with different model
+                            Log::info("$model->id: No changes at analysis_count $model->analysis_count i=$i, retrying");
+                            continue;
+                        }
+                        // Two-strike confirmed — escalate
                         Log::info("$model->id: No changes at analysis_count $model->analysis_count, escalating");
                         $this->escalateOscillation($model, 'no_changes');
                         break;
                     }
 
                     if ($detection['is_all_flipflop']) {
-                        // 100% flip-flop — entire article reverted to a previously seen state
+                        if ($i === 0) {
+                            // Two-strike: first detection, retry with different model
+                            Log::info("$model->id: Flip-flop reversion at analysis_count $model->analysis_count i=$i, retrying");
+                            continue;
+                        }
+                        // Two-strike confirmed — AI variant selection then escalate
                         Log::info("$model->id: 100% flip-flop at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes)");
 
                         // AI variant selection: pick best version of each differing sentence

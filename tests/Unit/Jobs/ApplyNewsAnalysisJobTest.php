@@ -40,6 +40,12 @@ class ApplyNewsAnalysisJobTest extends TestCase
         );
     }
 
+    private function mockAiClient(): void
+    {
+        $mock = Mockery::mock('alias:' . \App\AI::class);
+        $mock->shouldReceive('client')->andThrow(new \Exception('OpenRouter not available in tests'));
+    }
+
     private function makeNewsObject(array $attributes = []): object
     {
         $defaults = [
@@ -180,9 +186,11 @@ class ApplyNewsAnalysisJobTest extends TestCase
         ]);
         $this->mockNewsFind($news);
         $this->mockTelegramRequest();
-        // Two OpenAI calls: 1) editor applies corrections → returns state A, 2) AI variant selection
+        $this->mockAiClient();
+        // Two-strike: i=0 editor (flip-flop, continue), i=1 OpenRouter (mocked to fail), i=2 editor (confirmed), then variant selection
         $this->fakeOpenAiResponses([
-            "# $titleA\n$contentA",
+            "# $titleA\n$contentA",   // i=0 editor
+            "# $titleA\n$contentA",   // i=2 editor
             CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "B"}']]]])
         ]);
 
@@ -218,8 +226,11 @@ class ApplyNewsAnalysisJobTest extends TestCase
         ]);
         $this->mockNewsFind($news);
         $this->mockTelegramRequest();
+        $this->mockAiClient();
+        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed)
         $this->fakeOpenAiResponses([
-            "# $title\n$contentA",
+            "# $title\n$contentA",   // i=0 editor
+            "# $title\n$contentA",   // i=2 editor
             CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
         ]);
 
@@ -285,8 +296,11 @@ class ApplyNewsAnalysisJobTest extends TestCase
         ]);
         $this->mockNewsFind($news);
         $this->mockTelegramRequest();
+        $this->mockAiClient();
+        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed)
         $this->fakeOpenAiResponses([
-            "# $title\n$contentA",
+            "# $title\n$contentA",   // i=0 editor
+            "# $title\n$contentA",   // i=2 editor
             CreateResponse::fake(['choices' => [['message' => ['content' => 'not valid json at all']]]]),
         ]);
 
@@ -340,9 +354,11 @@ class ApplyNewsAnalysisJobTest extends TestCase
         ]);
         $this->mockNewsFind($news);
         $this->mockTelegramRequest();
-        // AI returns state A → flip-flop. Selection call picks A.
+        $this->mockAiClient();
+        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed). Selection picks A.
         $this->fakeOpenAiResponses([
-            "# $title\n$contentA",
+            "# $title\n$contentA",   // i=0 editor
+            "# $title\n$contentA",   // i=2 editor
             CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
         ]);
 
