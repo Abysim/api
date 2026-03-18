@@ -107,9 +107,9 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $detection = SentenceHasher::detectFlipFlops($currentHashes, $cycles);
 
                     if ($detection['total_changes'] === 0) {
-                        // No changes — article identical to last cycle, treat as done
+                        // No changes — applier produced content identical to last cycle
                         Log::info("$model->id: No changes at analysis_count $model->analysis_count, escalating");
-                        $this->escalateOscillation($model);
+                        $this->escalateOscillation($model, 'no_changes');
                         break;
                     }
 
@@ -172,7 +172,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                         $model->publish_title = $patchedTitle;
                         $model->publish_content = $patchedContent;
-                        $this->escalateOscillation($model);
+                        $this->escalateOscillation($model, 'flipflop');
                         break;
                     }
 
@@ -237,12 +237,18 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         }
     }
 
-    private function escalateOscillation(object $model): void
+    private function escalateOscillation(object $model, string $reason = 'flipflop'): void
     {
         $model->status = NewsStatus::PENDING_REVIEW;
         $model->analysis = null;
         $model->previous_analysis = null;
         $model->content_hashes = null;
+
+        $messages = [
+            'no_changes' => ['No content changes after apply, escalating to deep', 'No content changes in deep, auto analysis completed ' . $model->analysis_count],
+            'flipflop' => ['Flip-flop reversion detected, escalating to deep analysis', 'Deep flip-flop reversion detected, auto analysis completed ' . $model->analysis_count],
+        ];
+        $msg = $messages[$reason] ?? $messages['flipflop'];
 
         if (!$model->is_deep) {
             $model->is_deep = true;
@@ -252,7 +258,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             Request::sendMessage([
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'reply_to_message_id' => $model->message_id,
-                'text' => 'Oscillation detected, escalating to deep analysis',
+                'text' => $msg[0],
                 'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
             ]);
 
@@ -265,7 +271,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             Request::sendMessage([
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'reply_to_message_id' => $model->message_id,
-                'text' => 'Deep oscillation detected, auto analysis completed ' . $model->analysis_count,
+                'text' => $msg[1],
                 'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
             ]);
         }
