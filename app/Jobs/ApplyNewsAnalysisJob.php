@@ -107,25 +107,16 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     $detection = SentenceHasher::detectFlipFlops($currentHashes, $cycles);
 
                     if ($detection['total_changes'] === 0) {
-                        if ($i === 0) {
-                            // Two-strike: first detection, retry with different model
-                            Log::info("$model->id: No changes at analysis_count $model->analysis_count i=$i, retrying");
-                            continue;
-                        }
-                        // Two-strike confirmed — escalate
-                        Log::info("$model->id: No changes at analysis_count $model->analysis_count, escalating");
-                        $this->escalateOscillation($model, 'no_changes');
-                        break;
-                    }
-
-                    if ($detection['is_all_flipflop']) {
-                        if ($i === 0) {
-                            // Two-strike: first detection, retry with different model
-                            Log::info("$model->id: Flip-flop reversion at analysis_count $model->analysis_count i=$i, retrying");
-                            continue;
-                        }
-                        // Two-strike confirmed — AI variant selection then escalate
-                        Log::info("$model->id: 100% flip-flop at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes)");
+                        // No changes — applier produced identical content, let analyzer re-evaluate
+                        Log::info("$model->id: No changes at analysis_count $model->analysis_count, letting analyzer re-evaluate");
+                        $model->previous_analysis = $model->analysis;
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis = null;
+                        $model->save();
+                        // Don't update content or hashes — post-iteration check dispatches AnalyzeNewsJob
+                    } elseif ($detection['is_all_flipflop']) {
+                        // Full reversion — AI selects best variant, then let analyzer re-evaluate
+                        Log::info("$model->id: Flip-flop reversion at analysis_count $model->analysis_count (matched cycle {$detection['matched_cycle']}, {$detection['total_changes']} changes), resolving");
 
                         // AI variant selection: pick best version of each differing sentence
                         $priorHashTexts = SentenceHasher::hashSentences($model->publish_title, $model->publish_content);
@@ -147,8 +138,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         }
 
                         // Inline AI call to select best variants
-                        $patchedTitle = $newTitle;
-                        $patchedContent = $newContent;
                         if (!empty($flipflopSentences)) {
                             try {
                                 $selectionResponse = OpenAI::chat()->create([
@@ -168,9 +157,9 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                                             $currentText = SentenceHasher::stripTitlePrefix($pair['current']);
                                             $priorText = SentenceHasher::stripTitlePrefix($pair['prior']);
                                             if (str_starts_with($pair['current'], 'title:')) {
-                                                $patchedTitle = $priorText;
+                                                $newTitle = $priorText;
                                             } else {
-                                                $patchedContent = Str::replaceFirst($currentText, $priorText, $patchedContent);
+                                                $newContent = Str::replaceFirst($currentText, $priorText, $newContent);
                                             }
                                         }
                                     }
@@ -180,27 +169,35 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                             }
                         }
 
-                        $model->publish_title = $patchedTitle;
-                        $model->publish_content = $patchedContent;
-                        $this->escalateOscillation($model, 'flipflop');
-                        break;
+                        // Recompute hashes for the patched content
+                        $hashTexts = SentenceHasher::hashSentences($newTitle, $newContent);
+                        $currentHashes = array_keys($hashTexts);
+
+                        // Save resolved content — post-iteration check dispatches AnalyzeNewsJob
+                        $cycles[] = ['hashes' => $currentHashes];
+                        $model->content_hashes = ['cycles' => $cycles];
+                        $model->previous_analysis = $model->analysis;
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis = null;
+                        $model->publish_title = $newTitle;
+                        $model->publish_content = $newContent;
+                        $model->save();
+                    } else {
+                        // Partial flip-flop or all-new changes — log and continue normally
+                        if ($detection['flipflop_changes'] > 0) {
+                            Log::info("$model->id: Partial flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences (additions: " . count($detection['additions']) . ", removals: " . count($detection['removals']) . ")");
+                        }
+
+                        // Normal save — post-iteration check dispatches AnalyzeNewsJob
+                        $cycles[] = ['hashes' => $currentHashes];
+                        $model->content_hashes = ['cycles' => $cycles];
+                        $model->previous_analysis = $model->analysis;
+                        $model->status = NewsStatus::PENDING_REVIEW;
+                        $model->analysis = null;
+                        $model->publish_title = $newTitle;
+                        $model->publish_content = $newContent;
+                        $model->save();
                     }
-
-                    // Partial flip-flop or all-new changes — log and continue normally
-                    if ($detection['flipflop_changes'] > 0) {
-                        Log::info("$model->id: Partial flip-flop: {$detection['flipflop_changes']}/{$detection['total_changes']} sentences (additions: " . count($detection['additions']) . ", removals: " . count($detection['removals']) . ")");
-                    }
-
-                    // Append current cycle (hashes only) and save
-                    $cycles[] = ['hashes' => $currentHashes];
-                    $model->content_hashes = ['cycles' => $cycles];
-                    $model->previous_analysis = $model->analysis;
-
-                    $model->status = NewsStatus::PENDING_REVIEW;
-                    $model->analysis = null;
-                    $model->publish_title = $newTitle;
-                    $model->publish_content = $newContent;
-                    $model->save();
                 }
             } catch (Exception $e) {
                 Log::error("$model->id: News applying analysis $model->analysis_count $i fail: {$e->getMessage()}");
@@ -247,43 +244,4 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         }
     }
 
-    private function escalateOscillation(object $model, string $reason = 'flipflop'): void
-    {
-        $model->status = NewsStatus::PENDING_REVIEW;
-        $model->analysis = null;
-        $model->previous_analysis = null;
-        $model->content_hashes = null;
-
-        $messages = [
-            'no_changes' => ['No content changes after apply, escalating to deep', 'No content changes in deep, auto analysis completed ' . $model->analysis_count],
-            'flipflop' => ['Flip-flop reversion detected, escalating to deep analysis', 'Deep flip-flop reversion detected, auto analysis completed ' . $model->analysis_count],
-        ];
-        $msg = $messages[$reason] ?? $messages['flipflop'];
-
-        if (!$model->is_deep) {
-            $model->is_deep = true;
-            $model->analysis_count = 0;
-            $model->save();
-
-            Request::sendMessage([
-                'chat_id' => explode(',', config('telegram.admins'))[0],
-                'reply_to_message_id' => $model->message_id,
-                'text' => $msg[0],
-                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-            ]);
-
-            AnalyzeNewsJob::dispatch($model->id);
-        } else {
-            $model->is_deepest = true;
-            $model->is_auto = false;
-            $model->save();
-
-            Request::sendMessage([
-                'chat_id' => explode(',', config('telegram.admins'))[0],
-                'reply_to_message_id' => $model->message_id,
-                'text' => $msg[1],
-                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-            ]);
-        }
-    }
 }

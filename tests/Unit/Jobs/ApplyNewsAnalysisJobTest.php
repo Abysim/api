@@ -40,12 +40,6 @@ class ApplyNewsAnalysisJobTest extends TestCase
         );
     }
 
-    private function mockAiClient(): void
-    {
-        $mock = Mockery::mock('alias:' . \App\AI::class);
-        $mock->shouldReceive('client')->andThrow(new \Exception('OpenRouter not available in tests'));
-    }
-
     private function makeNewsObject(array $attributes = []): object
     {
         $defaults = [
@@ -125,17 +119,15 @@ class ApplyNewsAnalysisJobTest extends TestCase
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        // Should treat as first cycle, not crash
         $this->assertIsArray($news->content_hashes);
         $this->assertArrayHasKey('cycles', $news->content_hashes);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 3: No changes escalates to deep ---
+    // --- Test 3: No changes → does NOT escalate, dispatches AnalyzeNewsJob ---
 
-    public function test_no_changes_escalates_to_deep(): void
+    public function test_no_changes_continues_cycle(): void
     {
-        // Set up so the AI returns content identical to what's stored
         $title = 'Same Title';
         $content = 'Same content.';
         $hashTexts = SentenceHasher::hashSentences($title, $content);
@@ -145,30 +137,27 @@ class ApplyNewsAnalysisJobTest extends TestCase
             'publish_content' => $content,
             'content_hashes' => ['cycles' => [
                 ['hashes' => array_keys($hashTexts)],
-                ['hashes' => array_keys($hashTexts)], // last cycle same as current
+                ['hashes' => array_keys($hashTexts)],
             ]],
             'is_deep' => false,
         ]);
         $this->mockNewsFind($news);
-        $this->mockTelegramRequest();
         $this->fakeOpenAiResponses(["# $title\n$content"]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        $this->assertTrue($news->is_deep);
-        $this->assertSame(0, $news->analysis_count);
-        $this->assertNull($news->content_hashes);
+        // Does NOT escalate — hands back to analyzer
+        $this->assertFalse($news->is_deep);
+        $this->assertNull($news->analysis);
+        $this->assertSame('Так. Виправлення: «у світі» → «в світі»', $news->previous_analysis);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 4: 100% flip-flop triggers AI selection and escalates ---
+    // --- Test 4: Flip-flop → AI selects best variant, continues cycle ---
 
-    public function test_100_percent_flipflop_triggers_ai_selection_and_escalates(): void
+    public function test_flipflop_resolves_and_continues_cycle(): void
     {
-        // State A: title + "Ягуари є верхівковими хижаками."
-        // State B: title + "Ягуари є вищими хижаками."
-        // Current (AI returns state A again) → flip-flop
         $titleA = 'Title';
         $contentA = 'Ягуари є верхівковими хижаками.';
         $contentB = 'Ягуари є вищими хижаками.';
@@ -177,7 +166,7 @@ class ApplyNewsAnalysisJobTest extends TestCase
 
         $news = $this->makeNewsObject([
             'publish_title' => $titleA,
-            'publish_content' => $contentB, // Current model has state B
+            'publish_content' => $contentB, // model has state B
             'content_hashes' => ['cycles' => [
                 ['hashes' => $hashesA], // Cycle 0: state A
                 ['hashes' => $hashesB], // Cycle 1: state B (last)
@@ -185,70 +174,31 @@ class ApplyNewsAnalysisJobTest extends TestCase
             'is_deep' => false,
         ]);
         $this->mockNewsFind($news);
-        $this->mockTelegramRequest();
-        $this->mockAiClient();
-        // Two-strike: i=0 editor (flip-flop, continue), i=1 OpenRouter (mocked to fail), i=2 editor (confirmed), then variant selection
+        // Editor returns state A (flip-flop), then AI variant selection picks B
         $this->fakeOpenAiResponses([
-            "# $titleA\n$contentA",   // i=0 editor
-            "# $titleA\n$contentA",   // i=2 editor
+            "# $titleA\n$contentA",
             CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "B"}']]]])
         ]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        $this->assertTrue($news->is_deep);
-        $this->assertSame(0, $news->analysis_count);
-        $this->assertNull($news->content_hashes);
-        // AI chose B for the differing sentence → prior variant applied
+        // Does NOT escalate — resolves flip-flop and continues cycle
+        $this->assertFalse($news->is_deep);
+        $this->assertNull($news->analysis);
+        // AI chose B → prior variant applied
         $this->assertSame('Ягуари є вищими хижаками.', $news->publish_content);
+        // Hashes stored for resolved content
+        $this->assertArrayHasKey('cycles', $news->content_hashes);
+        $this->assertCount(3, $news->content_hashes['cycles']);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 5: 100% flip-flop in deep mode finishes ---
-
-    public function test_100_percent_flipflop_deep_finishes(): void
-    {
-        $title = 'Title';
-        $contentA = 'Sentence A version.';
-        $contentB = 'Sentence B version.';
-        $hashesA = array_keys(SentenceHasher::hashSentences($title, $contentA));
-        $hashesB = array_keys(SentenceHasher::hashSentences($title, $contentB));
-
-        $news = $this->makeNewsObject([
-            'publish_title' => $title,
-            'publish_content' => $contentB,
-            'content_hashes' => ['cycles' => [
-                ['hashes' => $hashesA],
-                ['hashes' => $hashesB],
-            ]],
-            'is_deep' => true,
-        ]);
-        $this->mockNewsFind($news);
-        $this->mockTelegramRequest();
-        $this->mockAiClient();
-        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed)
-        $this->fakeOpenAiResponses([
-            "# $title\n$contentA",   // i=0 editor
-            "# $title\n$contentA",   // i=2 editor
-            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
-        ]);
-
-        $job = new ApplyNewsAnalysisJob(1);
-        $job->handle();
-
-        $this->assertTrue($news->is_deepest);
-        $this->assertFalse($news->is_auto);
-        $this->assertNull($news->content_hashes);
-        Queue::assertNotPushed(AnalyzeNewsJob::class);
-    }
-
-    // --- Test 6: Partial flip-flop continues normally ---
+    // --- Test 5: Partial flip-flop continues normally ---
 
     public function test_partial_flipflop_continues_normally(): void
     {
         $title = 'Title';
-        // Cycle 0: A + B. Cycle 1: A + C. Current: A + B + D (B is flip-flop but D is new)
         $hashesAB = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence B.'));
         $hashesAC = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence C.'));
 
@@ -261,23 +211,20 @@ class ApplyNewsAnalysisJobTest extends TestCase
             ]],
         ]);
         $this->mockNewsFind($news);
-        // AI returns content with B restored + new D
         $this->fakeOpenAiResponses(["# $title\nSentence A. Sentence B. Sentence D."]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        // Should continue normally — not escalate
         $this->assertFalse($news->is_deep);
-        $this->assertIsArray($news->content_hashes);
         $this->assertArrayHasKey('cycles', $news->content_hashes);
         $this->assertCount(3, $news->content_hashes['cycles']);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 7: AI selection invalid JSON falls back ---
+    // --- Test 6: AI selection invalid JSON keeps current content ---
 
-    public function test_ai_selection_invalid_json_falls_back(): void
+    public function test_ai_selection_invalid_json_keeps_current(): void
     {
         $title = 'Title';
         $contentA = 'Version A sentence.';
@@ -292,29 +239,23 @@ class ApplyNewsAnalysisJobTest extends TestCase
                 ['hashes' => $hashesA],
                 ['hashes' => $hashesB],
             ]],
-            'is_deep' => false,
         ]);
         $this->mockNewsFind($news);
-        $this->mockTelegramRequest();
-        $this->mockAiClient();
-        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed)
         $this->fakeOpenAiResponses([
-            "# $title\n$contentA",   // i=0 editor
-            "# $title\n$contentA",   // i=2 editor
-            CreateResponse::fake(['choices' => [['message' => ['content' => 'not valid json at all']]]]),
+            "# $title\n$contentA",
+            CreateResponse::fake(['choices' => [['message' => ['content' => 'not valid json']]]]),
         ]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        // Should still escalate even though AI selection failed
-        $this->assertTrue($news->is_deep);
-        $this->assertNull($news->content_hashes);
-        // Keeps current content (version A) since JSON parsing didn't select B
+        // Keeps current (state A) content since JSON parse failed, continues cycle
+        $this->assertFalse($news->is_deep);
         $this->assertSame($contentA, $news->publish_content);
+        Queue::assertPushed(AnalyzeNewsJob::class);
     }
 
-    // --- Test 8: Normal apply preserves previous_analysis ---
+    // --- Test 7: Normal apply preserves previous_analysis ---
 
     public function test_normal_apply_preserves_previous_analysis(): void
     {
@@ -333,7 +274,7 @@ class ApplyNewsAnalysisJobTest extends TestCase
         $this->assertNull($news->analysis);
     }
 
-    // --- Test 9: AI receives both variants in A→B→A ---
+    // --- Test 8: Flip-flop AI receives both variants ---
 
     public function test_flipflop_ai_receives_both_variants(): void
     {
@@ -347,26 +288,23 @@ class ApplyNewsAnalysisJobTest extends TestCase
             'publish_title' => $title,
             'publish_content' => $contentB, // model has state B
             'content_hashes' => ['cycles' => [
-                ['hashes' => $hashesA], // Cycle 0: state A
-                ['hashes' => $hashesB], // Cycle 1: state B
+                ['hashes' => $hashesA],
+                ['hashes' => $hashesB],
             ]],
-            'is_deep' => false,
         ]);
         $this->mockNewsFind($news);
-        $this->mockTelegramRequest();
-        $this->mockAiClient();
-        // Two-strike: i=0 (continue), i=1 OpenRouter (mocked to fail), i=2 (confirmed). Selection picks A.
+        // AI returns state A, selection picks A
         $this->fakeOpenAiResponses([
-            "# $title\n$contentA",   // i=0 editor
-            "# $title\n$contentA",   // i=2 editor
+            "# $title\n$contentA",
             CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
         ]);
 
         $job = new ApplyNewsAnalysisJob(1);
         $job->handle();
 
-        // AI chose A → keeps the current (restored) content
+        // AI chose A → keeps the current (restored) content, continues cycle
         $this->assertSame($contentA, $news->publish_content);
-        $this->assertTrue($news->is_deep); // still escalates
+        $this->assertFalse($news->is_deep); // no escalation
+        Queue::assertPushed(AnalyzeNewsJob::class);
     }
 }
