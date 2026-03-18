@@ -166,7 +166,7 @@ class FlickrPhotoHashBackfillCommand extends Command
                 'reply_to_message_id' => $photo->message_id,
                 'text' => $text,
                 'reply_markup' => new InlineKeyboard([
-                    ['text' => '❌Decline', 'callback_data' => 'flickr_decline ' . $photo->id],
+                    ['text' => '❌Delete', 'callback_data' => 'flickr_delete ' . $photo->id],
                 ]),
             ]);
         } catch (\Exception $e) {
