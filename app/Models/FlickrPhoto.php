@@ -35,6 +35,7 @@ use Longman\TelegramBot\Request;
  * @property string $filename
  * @property FlickrPhotoStatus $status
  * @property array $classification
+ * @property int|null $perceptual_hash
  * @property string $publish_title
  * @property string $publish_tags
  * @property int $message_id

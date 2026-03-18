@@ -31,6 +31,7 @@ class FlickrTrendChart extends ChartWidget
 
         $autoValues = collect([
             FlickrPhotoStatus::REJECTED_BY_TAG, FlickrPhotoStatus::REJECTED_BY_CLASSIFICATION,
+            FlickrPhotoStatus::REJECTED_BY_DUPLICATION,
         ])->map->value;
         $manualValues = collect([
             FlickrPhotoStatus::REJECTED_MANUALLY, FlickrPhotoStatus::REMOVED_BY_AUTHOR,

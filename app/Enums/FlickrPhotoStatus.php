@@ -12,6 +12,7 @@ enum FlickrPhotoStatus: int
     case APPROVED = 5;
     case PUBLISHED = 6;
     case REMOVED_BY_AUTHOR = 7;
+    case REJECTED_BY_DUPLICATION = 8;
 
     /** @return self[] */
     public static function rejectedCases(): array
@@ -27,6 +28,7 @@ enum FlickrPhotoStatus: int
             'Class' => self::REJECTED_BY_CLASSIFICATION,
             'Manual' => self::REJECTED_MANUALLY,
             'Removed' => self::REMOVED_BY_AUTHOR,
+            'Dupe' => self::REJECTED_BY_DUPLICATION,
         ];
     }
 }

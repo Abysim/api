@@ -33,6 +33,7 @@ return [
 
     'flickr' => [
         'key' => env('FLICKR_KEY'),
+        'hash_threshold' => env('FLICKR_PHOTO_HASH_THRESHOLD', 10),
     ],
 
     'ifttt' => [

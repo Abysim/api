@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Laravel\Facades\Image;
+use Jenssegers\ImageHash\ImageHash;
+use Jenssegers\ImageHash\Implementations\PerceptualHash;
 use JeroenG\Flickr\FlickrLaravelFacade;
 use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Entities\Message;
@@ -144,6 +146,7 @@ class FlickrPhotoController extends Controller
      * @var string[];
      */
     private array $excludedTags = [];
+    private ?ImageHash $imageHasher = null;
 
     /**
      * @return string[]
@@ -232,6 +235,7 @@ class FlickrPhotoController extends Controller
             ->whereIn('status', [
                 FlickrPhotoStatus::REJECTED_BY_TAG,
                 FlickrPhotoStatus::REJECTED_MANUALLY,
+                FlickrPhotoStatus::REJECTED_BY_DUPLICATION,
             ])
             ->whereNotNull('filename')
             ->get();
@@ -548,6 +552,11 @@ class FlickrPhotoController extends Controller
                         }
                     }
 
+                    $duplicateMatch = null;
+                    if (empty($model->perceptual_hash)) {
+                        $duplicateMatch = $this->checkDuplicate($model);
+                    }
+
                     $model->refresh();
                     if (
                         empty($model->status)
@@ -556,8 +565,122 @@ class FlickrPhotoController extends Controller
                     ) {
                         $this->sendPhotoToReview($model);
                     }
+
+                    if ($duplicateMatch && !empty($model->message_id)) {
+                        $this->sendDuplicateReply($model, $duplicateMatch, true);
+                    }
                 }
             }
+        }
+    }
+
+    private function checkDuplicate(FlickrPhoto $model): ?FlickrPhoto
+    {
+        $filePath = $model->getFilePath();
+        if (empty($filePath) || !File::exists($filePath)) {
+            Log::warning($model->id . ': Cannot compute hash - file missing');
+            return null;
+        }
+
+        try {
+            $this->imageHasher ??= new ImageHash(new PerceptualHash());
+            $hash = $this->imageHasher->hash($filePath);
+            $model->perceptual_hash = $hash->getIntegers()[0];
+            $model->save();
+            Log::info($model->id . ': Computed perceptual hash: ' . $model->perceptual_hash);
+        } catch (Exception $e) {
+            Log::error($model->id . ': Hash computation failed: ' . $e->getMessage());
+            return null;
+        }
+
+        $threshold = (int) config('services.flickr.hash_threshold', 10);
+        $duplicates = FlickrPhoto::whereNotNull('perceptual_hash')
+            ->where('id', '!=', $model->id)
+            ->whereIn('status', [
+                FlickrPhotoStatus::PENDING_REVIEW,
+                FlickrPhotoStatus::APPROVED,
+                FlickrPhotoStatus::PUBLISHED,
+            ])
+            ->whereRaw('BIT_COUNT(perceptual_hash XOR ?) <= ?', [$model->perceptual_hash, $threshold])
+            ->get();
+
+        if ($duplicates->isEmpty()) {
+            return null;
+        }
+
+        Log::info($model->id . ': Found ' . $duplicates->count() . ' duplicate(s)');
+
+        $publishedMatch = $duplicates->first(fn ($d) => $d->status == FlickrPhotoStatus::PUBLISHED);
+        if ($publishedMatch) {
+            $this->handleDuplicate($model, $publishedMatch);
+            return null;
+        }
+
+        $bestDuplicate = $duplicates->sortByDesc(fn ($d) => $this->getFileSize($d))->first();
+
+        return $this->handleDuplicate($model, $bestDuplicate);
+    }
+
+    private function handleDuplicate(FlickrPhoto $newPhoto, FlickrPhoto $existingPhoto): ?FlickrPhoto
+    {
+        $newSize = $this->getFileSize($newPhoto);
+        $existingSize = $this->getFileSize($existingPhoto);
+        $hamming = substr_count(sprintf('%064b', $newPhoto->perceptual_hash ^ $existingPhoto->perceptual_hash), '1');
+        Log::info(sprintf(
+            '%s: Duplicate of %s (hamming: %d, new size: %s, existing size: %s, existing status: %s)',
+            $newPhoto->id, $existingPhoto->id, $hamming,
+            $newSize, $existingSize, $existingPhoto->status->name
+        ));
+
+        if ($existingPhoto->status == FlickrPhotoStatus::PUBLISHED) {
+            $newPhoto->status = FlickrPhotoStatus::REJECTED_BY_DUPLICATION;
+            $newPhoto->save();
+            return null;
+        }
+
+        if ($newSize > $existingSize) {
+            $existingPhoto->status = FlickrPhotoStatus::PENDING_REVIEW;
+            $existingPhoto->save();
+
+            $this->sendDuplicateReply($existingPhoto, $newPhoto, false);
+            return $existingPhoto;
+        } else {
+            $newPhoto->status = FlickrPhotoStatus::PENDING_REVIEW;
+            $newPhoto->save();
+
+            $this->sendDuplicateReply($newPhoto, $existingPhoto, false);
+            $this->sendDuplicateReply($existingPhoto, $newPhoto, true);
+            return $existingPhoto;
+        }
+    }
+
+    private function getFileSize(FlickrPhoto $model): int
+    {
+        $path = $model->getFilePath();
+        if ($path && File::exists($path)) {
+            return File::size($path);
+        }
+        return 0;
+    }
+
+    private function sendDuplicateReply(FlickrPhoto $photo, FlickrPhoto $otherPhoto, bool $isWinner): void
+    {
+        if (empty($photo->message_id)) {
+            return;
+        }
+
+        try {
+            $text = $isWinner
+                ? "Kept as best quality. Duplicate of {$otherPhoto->id} demoted."
+                : "Duplicate of {$otherPhoto->id} (better quality). Review needed.";
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $photo->message_id,
+                'text' => $text,
+            ]);
+        } catch (Exception $e) {
+            Log::error($photo->id . ': Failed to send duplicate reply: ' . $e->getMessage());
         }
     }
 
