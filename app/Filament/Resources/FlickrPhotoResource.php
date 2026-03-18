@@ -145,7 +145,7 @@ class FlickrPhotoResource extends Resource
                     ->deselectRecordsAfterCompletion()
                     ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
                         ($livewire->getTableFilterState('status')['value'] ?? null)
-                            === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                            == FlickrPhotoStatus::PENDING_REVIEW->value
                     ),
                 Tables\Actions\BulkAction::make('decline')
                     ->label('Decline')
@@ -161,7 +161,7 @@ class FlickrPhotoResource extends Resource
                     ->deselectRecordsAfterCompletion()
                     ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
                         ($livewire->getTableFilterState('status')['value'] ?? null)
-                            === (string) FlickrPhotoStatus::PENDING_REVIEW->value
+                            == FlickrPhotoStatus::PENDING_REVIEW->value
                     ),
                 Tables\Actions\BulkAction::make('addTagToTitle')
                     ->label('Add Tag to Title')
