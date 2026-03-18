@@ -16,6 +16,7 @@ class FlickrPhotoHashBackfillCommand extends Command
     protected $signature = 'flickr-photo:hash-backfill
                             {--detect : Run duplicate detection after hashing}
                             {--dry-run : Show duplicates without changing statuses}
+                            {--reject : Reject non-winners with REJECTED_BY_DUPLICATION instead of demoting to PENDING_REVIEW}
                             {--threshold= : Override hash threshold (default: from config)}';
 
     protected $description = 'Compute perceptual hashes for existing photos and optionally detect duplicates';
@@ -119,11 +120,16 @@ class FlickrPhotoHashBackfillCommand extends Command
             );
 
             if (!$dryRun) {
+                $reject = $this->option('reject');
                 foreach ($group as $p) {
                     if ($p->id === $winner->id) {
                         continue;
                     }
-                    if ($p->status == FlickrPhotoStatus::APPROVED) {
+                    if ($reject) {
+                        $p->status = FlickrPhotoStatus::REJECTED_BY_DUPLICATION;
+                        $p->save();
+                        $this->warn("  {$p->id}: rejected as duplicate");
+                    } elseif ($p->status == FlickrPhotoStatus::APPROVED) {
                         $p->status = FlickrPhotoStatus::PENDING_REVIEW;
                         $p->save();
                         $this->warn("  {$p->id}: demoted APPROVED → PENDING_REVIEW");
