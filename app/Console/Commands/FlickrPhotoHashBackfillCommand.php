@@ -6,7 +6,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Models\FlickrPhoto;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
+use Longman\TelegramBot\Request;
 use Jenssegers\ImageHash\ImageHash;
 use Jenssegers\ImageHash\Implementations\PerceptualHash;
 
@@ -127,7 +127,9 @@ class FlickrPhotoHashBackfillCommand extends Command
                         $p->save();
                         $this->warn("  {$p->id}: demoted APPROVED → PENDING_REVIEW");
                     }
+                    $this->sendReply($p, $winner, false);
                 }
+                $this->sendReply($winner, $group->first(fn ($p) => $p->id !== $winner->id), true);
             }
 
             $processed = $processed->merge($group->pluck('id'));
@@ -138,6 +140,27 @@ class FlickrPhotoHashBackfillCommand extends Command
         } else {
             $this->newLine();
             $this->info("Found {$groupId} duplicate group(s).");
+        }
+    }
+
+    private function sendReply(FlickrPhoto $photo, FlickrPhoto $otherPhoto, bool $isWinner): void
+    {
+        if (empty($photo->message_id)) {
+            return;
+        }
+
+        try {
+            $text = $isWinner
+                ? "Kept as best quality. Duplicate of {$otherPhoto->id} demoted."
+                : "Duplicate of {$otherPhoto->id} (better quality). Review needed.";
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $photo->message_id,
+                'text' => $text,
+            ]);
+        } catch (\Exception $e) {
+            $this->error("  {$photo->id}: Telegram reply failed - {$e->getMessage()}");
         }
     }
 
