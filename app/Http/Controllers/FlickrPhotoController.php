@@ -684,11 +684,16 @@ class FlickrPhotoController extends Controller
                 ? "Kept as best quality. Duplicate of {$otherPhoto->id} demoted."
                 : "Duplicate of {$otherPhoto->id} (better quality). Review needed.";
 
-            Request::sendMessage([
+            $params = [
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'reply_to_message_id' => $photo->message_id,
                 'text' => $text,
-            ]);
+                'reply_markup' => new InlineKeyboard([
+                    ['text' => '❌Decline', 'callback_data' => 'flickr_decline ' . $photo->id],
+                ]),
+            ];
+
+            Request::sendMessage($params);
         } catch (Exception $e) {
             Log::error($photo->id . ': Failed to send duplicate reply: ' . $e->getMessage());
         }

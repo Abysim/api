@@ -6,6 +6,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Models\FlickrPhoto;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
+use Longman\TelegramBot\Entities\InlineKeyboard;
 use Longman\TelegramBot\Request;
 use Jenssegers\ImageHash\ImageHash;
 use Jenssegers\ImageHash\Implementations\PerceptualHash;
@@ -158,6 +159,9 @@ class FlickrPhotoHashBackfillCommand extends Command
                 'chat_id' => explode(',', config('telegram.admins'))[0],
                 'reply_to_message_id' => $photo->message_id,
                 'text' => $text,
+                'reply_markup' => new InlineKeyboard([
+                    ['text' => '❌Decline', 'callback_data' => 'flickr_decline ' . $photo->id],
+                ]),
             ]);
         } catch (\Exception $e) {
             $this->error("  {$photo->id}: Telegram reply failed - {$e->getMessage()}");
