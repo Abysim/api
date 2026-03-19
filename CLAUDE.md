@@ -121,7 +121,7 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ### Analyze ↔ Apply auto-cycle (when `is_auto=true`)
 1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
-2. `ApplyNewsAnalysisJob` applies edits, clears `analysis`, increments `analysis_count` → dispatches `AnalyzeNewsJob`
+2. `ApplyNewsAnalysisJob` applies edits, clears `analysis` → dispatches `AnalyzeNewsJob` (which increments `analysis_count` at line 280 when it saves the result)
 3. Steps 1-2 repeat. Cycle limit checked in `ApplyNewsAnalysisJob`: **32** for `platform=='article'`, **16** for others
 4. **Known gap**: if all 4 inner-loop iterations in `AnalyzeNewsJob` throw caught exceptions, the for-loop exits silently without resetting `status` from BEING_PROCESSED — article becomes orphaned with no pending job. Check for orphans: `News::where('status', 10)->where('updated_at', '<', now()->subMinutes(30))->where('is_auto', true)->get(['id','analysis_count'])`
 5. **Escalation to deep**: two paths trigger `is_deep=true` + `analysis_count=0` + re-dispatch:
@@ -131,11 +131,12 @@ Pet project that supports other projects. Laravel 10 API application.
 7. If deep cycle limit also exceeded → sets `is_auto=false`, notifies admin ("Deepest analysis limit reached")
 
 ### Oscillation detection (content_hashes + previous_analysis)
-- **`content_hashes`** (JSON): MD5 hashes of normalized `title+content` after each apply. If hash repeats → content reverted to previous state → escalate to next tier (same as "Ні")
+- **`content_hashes`** (JSON): Per-sentence hashing via `SentenceHasher`. Structure: `{cycles: [{hashes: [sentence1_md5, sentence2_md5, ...]}, ...]}`. Each cycle entry = one Apply iteration's snapshot of all sentence hashes. Title is hashed with `title:` prefix to distinguish from content sentences
+- **Flip-flop detection** (`SentenceHasher::detectFlipFlops`): Level 1 (full reversion) compares sorted hash set against older cycles; Level 2 (partial) checks if any new sentence hash appeared in an older cycle. Needs **3+ cycles** minimum (`olderCycles = array_slice($priorCycles, 0, -1)` excludes the last). When detected, AI selects best variant per oscillating sentence via `gpt-5-mini`
 - **`previous_analysis`** (TEXT): Previous round's corrections injected into analyzer's user message so it can choose the better variant instead of flip-flopping
 - Both fields reset on tier escalation (each tier starts fresh)
 - Reset handlers: `translation()`, `counter()`, `deepest()` clear both; `deep()` clears both; `reset()` clears only `previous_analysis`
-- Hash normalization: `md5(mb_strtolower(preg_replace('/\s+/', ' ', title . "\n" . content)))`
+- Sentence hash: `md5(mb_strtolower(preg_replace('/\s+/', ' ', trim($sentence))))` — per-sentence, not whole-article
 
 ### AnalyzeNewsJob model routing
 - `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
@@ -149,7 +150,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - Most AI jobs use `for ($i = 0; $i < 4; $i++)` with provider alternation: direct API for `$i<=1`, OpenRouter fallback for `$i>1` (or odd/even alternation in ApplyNewsAnalysisJob)
 - This is separate from Laravel's `$tries` (queue-level retries on job failure). Both layers provide resilience
 - When changing AI models: update BOTH the direct API model name AND the OpenRouter-prefixed variant in the same ternary
-- **"Ні" two-strike confirmation is essential**: when `i=0` returns "Ні", the code retries at `i=1` before escalating. ~36% of "Ні" results flip to "Так" on retry — do NOT suggest removing this as an optimization
+- **"Ні" two-strike confirmation is essential**: when `i=0` returns "Ні", the code retries at `i=1` before escalating. Both i=0 and i=1 use direct OpenAI (OpenRouter only at i>=2). ~36% of "Ні" results flip to "Так" on retry — do NOT suggest removing this as an optimization
 
 ### Other jobs (no AI models)
 - **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`. Constructor: `__construct($load=false, $force=false, $lang=null, $publish=true)`. To manually dispatch for a specific language: `NewsJob::dispatch(true, true, 'uk', false)` — `$load` must be `true` to load news, `$force=true` bypasses the hourly schedule check (otherwise `shouldLoadNews()` may skip if already ran this hour), `$publish=false` to skip auto-publishing
@@ -169,5 +170,6 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Laravel log**: `~/api/storage/logs/laravel.log` on bigcats
 - **PHP error log**: `~/api/error_log` on bigcats
 - View recent logs: `ssh bigcats "tail -100 ~/api/storage/logs/laravel.log"`
+- **Monitoring analysis pipeline**: filter out verbose JSON with `grep -v 'result:' | grep -v 'Updating'` — result lines contain full AI response payloads (100KB+)
 - **Log timestamps are UTC**, but bigcats system clock is CET (UTC+1) — a log entry at `02:30` corresponds to server time `03:30`
 - **Keep log entries single-line** — use `json_encode($data, JSON_UNESCAPED_UNICODE)` without `JSON_PRETTY_PRINT` in `Log::info()` calls, so entries remain greppable via `grep 'article_id' laravel.log`
