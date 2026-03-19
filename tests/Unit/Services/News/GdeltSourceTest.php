@@ -159,20 +159,16 @@ class GdeltSourceTest extends TestCase
 
     // fetch – rate limit detection (HTTP 200 with text body)
 
-    public function test_fetch_retries_on_rate_limit_and_returns_data_on_second_attempt(): void
+    public function test_fetch_returns_empty_immediately_on_rate_limit(): void
     {
-        Sleep::fake();
-
         Http::fake([
-            '*' => Http::sequence()
-                ->push('Please limit requests to one every 5 seconds', 200)
-                ->push($this->gdeltPayload(), 200),
+            '*' => Http::response('Please limit requests to one every 5 seconds', 200),
         ]);
 
         $articles = $this->source->fetch('ukraine war', 'en');
 
-        $this->assertCount(2, $articles);
-        Sleep::assertSleptTimes(1);
+        $this->assertSame([], $articles);
+        $this->assertTrue($this->source->wasRateLimited());
     }
 
     public function test_fetch_returns_empty_on_persistent_rate_limit(): void
@@ -192,35 +188,16 @@ class GdeltSourceTest extends TestCase
 
     // fetch – retry on HTTP 429
 
-    public function test_fetch_retries_on_http_429_and_returns_data_on_second_attempt(): void
+    public function test_fetch_returns_empty_immediately_on_http_429(): void
     {
-        Sleep::fake();
-
         Http::fake([
-            '*' => Http::sequence()
-                ->push('Rate limited', 429)
-                ->push($this->gdeltPayload(), 200),
-        ]);
-
-        $articles = $this->source->fetch('ukraine war', 'en');
-
-        $this->assertCount(2, $articles);
-        Sleep::assertSleptTimes(1);
-    }
-
-    public function test_fetch_returns_empty_on_persistent_http_429(): void
-    {
-        Sleep::fake();
-
-        Http::fake([
-            '*' => Http::sequence()
-                ->push('Rate limited', 429)
-                ->push('Rate limited', 429),
+            '*' => Http::response('Rate limited', 429),
         ]);
 
         $articles = $this->source->fetch('ukraine war', 'en');
 
         $this->assertSame([], $articles);
+        $this->assertTrue($this->source->wasRateLimited());
     }
 
     // fetch – retry on HTTP 500
@@ -350,19 +327,15 @@ class GdeltSourceTest extends TestCase
 
     public function test_wasRateLimited_resets_to_false_on_next_successful_fetch(): void
     {
-        Sleep::fake();
-
-        // First fetch: rate limited
         Http::fake([
             '*' => Http::sequence()
-                ->push('Rate limited', 429)
-                ->push('Rate limited', 429),
+                ->push('Rate limited', 429)          // first fetch: rate limited
+                ->push($this->gdeltPayload(), 200),  // second fetch: success
         ]);
+
         $this->source->fetch('ukraine war', 'en');
         $this->assertTrue($this->source->wasRateLimited());
 
-        // Second fetch: success
-        Http::fake(['*' => Http::response($this->gdeltPayload(), 200)]);
         $this->source->fetch('ukraine war', 'en');
         $this->assertFalse($this->source->wasRateLimited());
     }

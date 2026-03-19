@@ -66,11 +66,10 @@ class GdeltSource
             try {
                 $response = Http::timeout(30)->get(self::BASE_URL, $params);
 
-                if ($response->status() === 429 && $attempt === 1) {
+                if ($response->status() === 429) {
                     $this->rateLimited = true;
-                    Log::warning('GdeltSource: rate limited (HTTP 429), retrying...');
-                    Sleep::for(6)->seconds();
-                    continue;
+                    Log::warning('GdeltSource: rate limited (HTTP 429)');
+                    return [];
                 }
 
                 if ($response->status() >= 500 && $attempt === 1) {
@@ -91,11 +90,7 @@ class GdeltSource
                     $body = $response->body();
                     if (str_contains($body, 'limit requests')) {
                         $this->rateLimited = true;
-                        Log::warning('GdeltSource: rate limited by GDELT API' . ($attempt === 1 ? ', retrying...' : ''));
-                        if ($attempt === 1) {
-                            Sleep::for(6)->seconds();
-                            continue;
-                        }
+                        Log::warning('GdeltSource: rate limited by GDELT API');
                         return [];
                     }
                     Log::info('GdeltSource: no articles returned');
