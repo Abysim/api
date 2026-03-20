@@ -21,6 +21,7 @@ interface NewsServiceInterface
         'newssniffer.co.uk',
         'facebook.com',
         'instagram.com',
+        'linkedin.com',
         'reddit.com',
     ];
 
