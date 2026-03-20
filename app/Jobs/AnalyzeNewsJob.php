@@ -12,6 +12,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +32,11 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public function __construct(private readonly int $id)
     {
+    }
+
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping($this->id))->releaseAfter(300)->expireAfter(1800)];
     }
 
     /**
