@@ -91,6 +91,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     [$title, $content] = explode("\n", $content, 2);
                     $newTitle = trim($title, '*# ');
                     $newContent = trim(trim($content, '`'));
+                    $newContent = preg_replace('/\s*(\n\s*---\s*)+\s*$/', '', $newContent);
 
                     // Per-sentence oscillation detection
                     $hashTexts = SentenceHasher::hashSentences($newTitle, $newContent);
