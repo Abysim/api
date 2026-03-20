@@ -8,6 +8,7 @@ use App\Models\BlueskyConnection;
 use App\Models\ExcludedTag;
 use App\Models\FlickrPhoto;
 use App\MyCloudflareAI;
+use App\Services\BigCatsService;
 use DeepL\Translator;
 use Exception;
 use GuzzleHttp\Exception\ServerException;
@@ -372,6 +373,9 @@ class FlickrPhotoController extends Controller
         $errorMessage = null;
 
         $model->source_url = null;
+        $model->thumbnail_url = null;
+        $model->thumbnail_width = null;
+        $model->thumbnail_height = null;
         $this->loadPhotoFile($model);
 
         if (empty($model->filename)) {
@@ -452,8 +456,26 @@ class FlickrPhotoController extends Controller
             return;
         }
 
-        if (empty($model->source_url)) {
+        if (empty($model->source_url) || empty($model->thumbnail_url)) {
             $this->loadPhotoFile($model);
+        }
+
+        if (!empty($model->thumbnail_url)) {
+            try {
+                $bigCatsService = new BigCatsService();
+                if ($bigCatsService->publishPhoto($model) === false) {
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'reply_to_message_id' => $model->message_id,
+                        'text' => 'Photo not published to BigCats!',
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
+                }
+            } catch (Exception $e) {
+                Log::error($model->id . ': BigCats photo publishing error: ' . $e->getMessage());
+            }
+        } else {
+            Log::warning($model->id . ': Skipping BigCats publishing - no thumbnail data');
         }
 
         Log::info($model->id . ': Publishing Flickr photo');
@@ -863,7 +885,7 @@ class FlickrPhotoController extends Controller
      */
     private function loadPhotoFile(FlickrPhoto $model): void
     {
-        if (empty($model->source_url) || empty($model->classification)) {
+        if (empty($model->source_url) || empty($model->classification) || empty($model->thumbnail_url)) {
             $sizesResponse = FlickrLaravelFacade::request('flickr.photos.getSizes', [
                 'photo_id' => $model->id,
             ]);
@@ -885,6 +907,10 @@ class FlickrPhotoController extends Controller
 
                         break;
                     }
+                }
+
+                if (empty($model->thumbnail_url)) {
+                    $model->applyThumbnailFromSizes($sizesResponse->sizes['size']);
                 }
 
                 Log::info($model->id . ': Loaded photo sizes: ' . json_encode($sizesResponse->sizes));

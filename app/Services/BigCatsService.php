@@ -6,6 +6,7 @@
 namespace App\Services;
 
 use App\Helpers\FileHelper;
+use App\Models\FlickrPhoto;
 use App\Models\News;
 use Exception;
 use Illuminate\Http\Client\PendingRequest;
@@ -61,6 +62,32 @@ class BigCatsService
             Log::error($news->id . ': BigCats publishing error: ' . json_encode($response['errors']));
         } else {
             Log::error($news->id . ': BigCats publishing error: ' . json_encode($response));
+        }
+
+        return false;
+    }
+
+    public function publishPhoto(FlickrPhoto $model): bool
+    {
+        $data = [
+            'name' => $model->publish_title,
+            'author_name' => $model->owner_realname ?: $model->owner_username,
+            'flickr_link' => $model->url,
+            'thumbnail_url' => $model->thumbnail_url,
+            'thumbnail_width' => $model->thumbnail_width,
+            'thumbnail_height' => $model->thumbnail_height,
+            'tags' => array_map(fn ($item) => trim($item, '#'), explode(' ', $model->publish_tags)),
+        ];
+        $response = $this->request->post(config('services.bigcats.url') . 'photos/create', $data)->json();
+
+        if (!empty($response['status']) && $response['status'] == 'success') {
+            Log::info($model->id . ': published successfully to BigCats');
+
+            return true;
+        } elseif (!empty($response['errors'])) {
+            Log::error($model->id . ': BigCats photo publishing error: ' . json_encode($response['errors']));
+        } else {
+            Log::error($model->id . ': BigCats photo publishing error: ' . json_encode($response));
         }
 
         return false;

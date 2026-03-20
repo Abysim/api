@@ -32,6 +32,9 @@ use Longman\TelegramBot\Request;
  * @property string[] $tags
  * @property string $url
  * @property string $source_url
+ * @property string|null $thumbnail_url
+ * @property int|null $thumbnail_width
+ * @property int|null $thumbnail_height
  * @property string $filename
  * @property FlickrPhotoStatus $status
  * @property array $classification
@@ -252,6 +255,21 @@ class FlickrPhoto extends Model
         }
 
         return $score;
+    }
+
+    public function applyThumbnailFromSizes(array $sizes): bool
+    {
+        for ($i = count($sizes) - 1; $i >= 0; $i--) {
+            if ($sizes[$i]['width'] <= 640 && $sizes[$i]['height'] <= 640) {
+                $this->thumbnail_url = $sizes[$i]['source'];
+                $this->thumbnail_width = $sizes[$i]['width'];
+                $this->thumbnail_height = $sizes[$i]['height'];
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected static function booted(): void
