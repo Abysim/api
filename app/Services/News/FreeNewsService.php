@@ -19,6 +19,9 @@ class FreeNewsService implements NewsServiceInterface
 
     private const SEARCH_QUERY_LIMIT = 400;
 
+    /** Domain name prefixes blocked across all TLDs (e.g. 'ubuy' blocks ubuy.gy, ubuy.bf, etc.) */
+    private const KEYWORD_BLOCKED_PREFIXES = ['ubuy', 'espn'];
+
     private const LANG = NewsServiceInterface::DEFAULT_LANG;
 
     private GoogleNewsSource $googleSource;
@@ -300,7 +303,7 @@ class FreeNewsService implements NewsServiceInterface
         return false;
     }
 
-    /** Check if domain (or link host) matches any excluded domain, including subdomains. */
+    /** Check if domain (or link host) matches any excluded domain, including subdomains and keyword prefixes. */
     private function isDomainExcluded(string $cleanUrl, string $link): bool
     {
         $domains = array_filter([$cleanUrl, parse_url($link, PHP_URL_HOST) ?: '']);
@@ -309,6 +312,11 @@ class FreeNewsService implements NewsServiceInterface
             $domain = strtolower($domain);
             foreach ($this->allExcludedDomains() as $excluded) {
                 if ($domain === $excluded || str_ends_with($domain, '.' . $excluded)) {
+                    return true;
+                }
+            }
+            foreach (self::KEYWORD_BLOCKED_PREFIXES as $prefix) {
+                if (str_starts_with($domain, $prefix . '.') || str_contains($domain, '.' . $prefix . '.')) {
                     return true;
                 }
             }

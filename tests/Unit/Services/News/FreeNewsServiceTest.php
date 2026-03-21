@@ -632,6 +632,69 @@ class FreeNewsServiceTest extends TestCase
         $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
     }
 
+    public function test_get_news_filters_articles_from_keyword_blocked_prefix_ubuy(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $ubuyArticle = $this->makeArticle('Lion figurine for sale', 'https://ubuy.gy/product/1', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $ubuyArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_filters_articles_from_keyword_blocked_prefix_espn(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $espnArticle = $this->makeArticle('Lions vs Bears game recap', 'https://espn.co.uk/nfl/story', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $espnArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_keyword_prefix_blocks_subdomains_too(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $subdomainArticle = $this->makeArticle('Lion toy on sale', 'https://shop.ubuy.bf/item/1', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $subdomainArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_keyword_prefix_does_not_block_unrelated_domain(): void
+    {
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion conservation efforts', 'https://espncdn.com/article/1', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(2, $result);
+    }
+
     public function test_get_news_exclude_words_filter_rejects_title_with_exclude_term(): void
     {
         $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');

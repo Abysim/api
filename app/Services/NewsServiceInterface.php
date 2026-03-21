@@ -23,6 +23,7 @@ interface NewsServiceInterface
         'instagram.com',
         'linkedin.com',
         'reddit.com',
+        'espn.com',
     ];
 
     public function getNews(string $query, ?string $lang = null): array;
