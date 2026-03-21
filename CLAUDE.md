@@ -5,6 +5,9 @@
 - **NEVER run commands on bigcats via SSH without explicit user approval.** Before executing any remote command, explain what it does and wait for confirmation. This includes `artisan tinker`, `queue:retry`, DB queries, cache clears, and any write operations.
 - **Destructive queue/DB operations are FORBIDDEN without user approval** — `queue:retry all`, `DELETE FROM jobs`, `queue:flush`, table truncation, etc. Always show the command and its impact first.
 - **NEVER use `git checkout <file>`, `git restore`, `git reset --hard`, or `git stash`** to revert changes — these destroy ALL uncommitted changes in the file/repo. To revert a specific change, use surgical edits. Only use destructive git commands if the user explicitly requests them by name.
+- **`scp` to bigcats IS a deployment action** — requires the same explicit user approval as any SSH command. Never deploy speculatively.
+- **`queue:restart` kills workers mid-job** — running jobs (especially long AnalyzeNewsJob with batch polling) are terminated when `queue:restart` is issued. Only run after confirming no critical jobs are in progress, or wait for natural worker rotation (~4 min).
+- **Never reset article status via tinker without approval** — `News::find(X)->update(['status' => ...])` is a production write operation. Always show the command and wait for confirmation.
 
 ## Overview
 Pet project that supports other projects. Laravel 10 API application.
@@ -75,6 +78,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
 ## Gotchas
+- **NEVER redeclare properties defined by Laravel traits** — `Queueable` defines `public $connection`, `public $queue`, etc. Redeclaring with a different type OR a different default value causes a **fatal error** in PHP 8.2+ ("definition differs and is considered incompatible"). To override: set the value in the constructor (`$this->connection = 'long_running'`), never as a class property.
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
 - **Single cron entry on bigcats**: `* * * * * php artisan schedule:run` — ALL scheduling is inside Laravel `Kernel.php`, no external cron entries
@@ -83,6 +87,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **When `.env` changes on bigcats**, always run `php artisan config:cache` (not just `config:clear`) — Laravel may serve cached config otherwise
 - **NEVER run `queue:retry all`** — this re-queues ALL failed jobs at once and can flood the queue with hundreds of stale jobs, blocking the entire pipeline. Always inspect failed jobs first with `DB::table('failed_jobs')->get()` and retry specific jobs by UUID: `php artisan queue:retry <uuid>`. There is no valid reason to blindly retry all failed jobs.
 - **Queue workers** spawn via `queue:work --max-time=180` every minute in Kernel.php — multiple workers run concurrently. Jobs with long timeouts (e.g. `NewsJob` at 3500s) can monopolize a worker
+- **`long_running` queue connection** (`config/queue.php`): `retry_after=1800` (30 min). Used by `AnalyzeNewsJob` via `$connection` property. Separate from `default` queue (`retry_after=180`) to prevent job row deletion during 2h batch polling. Workers spawned separately in Kernel.php.
 - **MariaDB `XOR` is LOGICAL, not bitwise** — `XOR` returns 0 or 1 (boolean), `^` is the bitwise XOR operator. Always use `^` for bit operations: `BIT_COUNT(col ^ ?)`, never `BIT_COUNT(col XOR ?)`
 - **`composer install` on bigcats runs `filament:upgrade`** which clears config cache — always run `php artisan config:cache` after
 - **`FlickrPhotoStatus` is an int-backed enum** — CREATED=0, REJECTED_BY_TAG=1, REJECTED_BY_CLASSIFICATION=2, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, PUBLISHED=6, REMOVED_BY_AUTHOR=7, REJECTED_BY_DUPLICATION=8
@@ -123,7 +128,7 @@ Pet project that supports other projects. Laravel 10 API application.
 1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
 2. `ApplyNewsAnalysisJob` applies edits, clears `analysis` → dispatches `AnalyzeNewsJob` (which increments `analysis_count` at line 280 when it saves the result)
 3. Steps 1-2 repeat. Cycle limit checked in `ApplyNewsAnalysisJob`: **32** for `platform=='article'`, **16** for others
-4. **Known gap**: if all 4 inner-loop iterations in `AnalyzeNewsJob` throw caught exceptions, the for-loop exits silently without resetting `status` from BEING_PROCESSED — article becomes orphaned with no pending job. Check for orphans: `News::where('status', 10)->where('updated_at', '<', now()->subMinutes(30))->where('is_auto', true)->get(['id','analysis_count'])`
+4. **Known gap — orphaned articles**: Articles can get stuck at `status=10` (BEING_PROCESSED) with no pending job. Two causes: (a) all 4 inner-loop iterations throw caught exceptions and the for-loop exits silently, (b) **`retry_after=180` collision** — the database queue re-releases a reserved job after 180s while the original worker is still running. A second worker picks it up, the guard clause (`status != PENDING_REVIEW`) returns early, Laravel treats it as "success" and **deletes the job row**. The original worker continues but the job is gone. This affects any job running >180s (AnalyzeNewsJob, NewsJob). Check for orphans: `News::where('status', 10)->where('updated_at', '<', now()->subMinutes(30))->where('is_auto', true)->get(['id','analysis_count'])`
 5. **Escalation to deep**: two paths trigger `is_deep=true` + `analysis_count=0` + re-dispatch:
    - `AnalyzeNewsJob`: analysis says "Ні" (No) → escalates to deep immediately
    - `ApplyNewsAnalysisJob`: cycle limit exceeded → escalates to deep
@@ -132,7 +137,8 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ### Oscillation detection (content_hashes + previous_analysis)
 - **`content_hashes`** (JSON): Per-sentence hashing via `SentenceHasher`. Structure: `{cycles: [{hashes: [sentence1_md5, sentence2_md5, ...]}, ...]}`. Each cycle entry = one Apply iteration's snapshot of all sentence hashes. Title is hashed with `title:` prefix to distinguish from content sentences
-- **Flip-flop detection** (`SentenceHasher::detectFlipFlops`): Level 1 (full reversion) compares sorted hash set against older cycles; Level 2 (partial) checks if any new sentence hash appeared in an older cycle. Needs **3+ cycles** minimum (`olderCycles = array_slice($priorCycles, 0, -1)` excludes the last). When detected, AI selects best variant per oscillating sentence via `gpt-5-mini`
+- **Flip-flop detection** (`SentenceHasher::detectFlipFlops`): Level 1 (full reversion) compares sorted hash set against older cycles; Level 2 (partial) checks if any new sentence hash appeared in an older cycle. Needs **2+ prior cycles** minimum for set comparison. When flip-flop detected: AI selects best variant per oscillating sentence via `gpt-5-mini`, saves resolved content, then **hands back to analyzer** (never escalates directly). The analyzer gets the final say on escalation via the existing "Ні" two-strike logic.
+- **`SentenceHasher`** (`app/Helpers/SentenceHasher.php`): Pure helper — `splitSentences()`, `hashSentences()`, `detectFlipFlops()`, `hash()`, `stripTitlePrefix()`, `isOldFormat()`, `buildVariantSelectionPrompt()`. Ukrainian abbreviation protection via `ABBREV_PATTERN` constant.
 - **`previous_analysis`** (TEXT): Previous round's corrections injected into analyzer's user message so it can choose the better variant instead of flip-flopping
 - Both fields reset on tier escalation (each tier starts fresh)
 - Reset handlers: `translation()`, `counter()`, `deepest()` clear both; `deep()` clears both; `reset()` clears only `previous_analysis`
@@ -151,6 +157,11 @@ Pet project that supports other projects. Laravel 10 API application.
 - This is separate from Laravel's `$tries` (queue-level retries on job failure). Both layers provide resilience
 - When changing AI models: update BOTH the direct API model name AND the OpenRouter-prefixed variant in the same ternary
 - **"Ні" two-strike confirmation is essential**: when `i=0` returns "Ні", the code retries at `i=1` before escalating. Both i=0 and i=1 use direct OpenAI (OpenRouter only at i>=2). ~36% of "Ні" results flip to "Так" on retry — do NOT suggest removing this as an optimization
+
+### AnalyzeNewsJob kill recovery
+- **PID guard**: On `retry_after` re-release, guard checks `posix_kill($pid, 0)` from cached state. Alive → `release()`. Dead → resume from cached `$i`/`$j` + Telegram notification.
+- **Cache state**: `Cache::get('analyze_job_state_{id}')` stores `{pid, i, j, batch_id, poll_start_time}`. Updated every polling iteration (30s). TTL = `TIMEOUT` (7200s).
+- **Scheduler safety net**: `news:resume-orphaned` runs every 5 min, catches articles stuck at `BEING_PROCESSED` longer than `TIMEOUT` with no live worker PID.
 
 ### Other jobs (no AI models)
 - **`NewsJob`**: Wrapper calling `NewsController::process()`. `$tries=1`, `$timeout=3500`. Constructor: `__construct($load=false, $force=false, $lang=null, $publish=true)`. To manually dispatch for a specific language: `NewsJob::dispatch(true, true, 'uk', false)` — `$load` must be `true` to load news, `$force=true` bypasses the hourly schedule check (otherwise `shouldLoadNews()` may skip if already ran this hour), `$publish=false` to skip auto-publishing

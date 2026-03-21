@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -25,12 +26,19 @@ class AnalyzeNewsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
+    public const TIMEOUT = 7200;
 
-    public int $timeout = 7200;
+    public int $tries = 0;
+
+    public int $maxExceptions = 2;
+
+    public int $timeout = self::TIMEOUT;
+
+    public const CACHE_KEY_PREFIX = 'analyze_job_state_';
 
     public function __construct(private readonly int $id)
     {
+        $this->connection = 'long_running';
     }
 
     /**
@@ -40,11 +48,40 @@ class AnalyzeNewsJob implements ShouldQueue
     {
         $startTime = now();
         $model = News::find($this->id);
+
+        $resumeState = null;
         if (!empty($model->analysis) || $model->status != NewsStatus::PENDING_REVIEW) {
-            return;
+            if ($model->status == NewsStatus::BEING_PROCESSED) {
+                $state = $this->getState();
+                $pid = $state['pid'] ?? null;
+                if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
+                    // Original worker still alive — re-queue for next check
+                    $this->release(config('queue.connections.long_running.retry_after'));
+                    return;
+                }
+                // Original worker is dead — resume this job
+                $resumeState = $state;
+                $model->touch();
+                Log::warning("$model->id: Resuming orphaned analysis job, cached state: " . json_encode($state));
+                $this->sendResumeNotification($model, $state);
+            } else {
+                $this->clearState();
+                return;
+            }
+        } else {
+            $model->status = NewsStatus::BEING_PROCESSED;
+            $model->save();
         }
-        $model->status = NewsStatus::BEING_PROCESSED;
-        $model->save();
+
+        // Store initial state (or update PID on resume)
+        // poll_start_time tracks when the batch was originally submitted (for >2h cancel decision)
+        // $startTime tracks current execution start (for polling loop timeout)
+        $this->saveState([
+            'i' => $resumeState['i'] ?? 0,
+            'j' => 0,
+            'batch_id' => $resumeState['batch_id'] ?? null,
+            'poll_start_time' => $resumeState['poll_start_time'] ?? $startTime->timestamp,
+        ]);
 
         $isOA = $model->platform == 'article' || config('app.is_news_by_openai');
         if (
@@ -64,15 +101,25 @@ class AnalyzeNewsJob implements ShouldQueue
                     'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
                 ]);
 
+                $this->clearState();
                 return;
             } else {
                 $isOA = false;
             }
         }
 
-        for ($i = 0; $i < 4; $i++) {
+        $startI = $resumeState['i'] ?? 0;
+        for ($i = $startI; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News analysis $model->analysis_count $i");
+
+                $this->saveState([
+                    'i' => $i,
+                    'j' => 0,
+                    'batch_id' => null,
+                    'poll_start_time' => $startTime->timestamp,
+                ]);
+
                 $params = [
                     'model' => $model->is_deep
                         ? ($i > 1 ? 'anthropic/claude-opus-4-6' : 'claude-opus-4-6')
@@ -137,103 +184,155 @@ class AnalyzeNewsJob implements ShouldQueue
                     AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
                         ->increment('total_tokens', $response->usage->totalTokens ?? 0);
                 } elseif ($model->is_deep && $i <= 1) {
-                    $response = Http::asJson()
-                        ->withHeaders([
-                            'x-api-key' => config('services.anthropic.api_key'),
-                            'anthropic-version' => '2023-06-01',
-                            'anthropic-beta' => 'output-128k-2025-02-19',
-                        ])
-                        ->timeout(config('services.anthropic.api_timeout'))
-                        ->post(
-                            'https://' . config('services.anthropic.api_endpoint') . '/messages/batches',
-                            [
-                                'requests' => [
-                                    [
-                                        'custom_id' => $model->id . 'analyze' . $model->analysis_count . 'i' . $i,
-                                        'params' => $params,
-                                    ]
-                                ]
-                            ]
-                        )
-                        ->object();
-                    Log::info(
-                        "$model->id: News analysis batch started $model->analysis_count $i: "
-                        . json_encode($response, JSON_UNESCAPED_UNICODE)
-                    );
+                    $batchId = null;
+                    $resumingBatch = $resumeState && !empty($resumeState['batch_id']) && ($resumeState['i'] ?? -1) == $i;
 
-                    if (empty($response->id)) {
-                        throw new Exception("$model->id: Failed to get batch ID $model->analysis_count $i");
-                    }
-                    $batchId = $response->id;
+                    if ($resumingBatch) {
+                        // PATH B: Resume — check existing batch status
+                        $batchId = $resumeState['batch_id'];
+                        $batchStartTime = $resumeState['poll_start_time'] ?? $startTime->timestamp;
+                        $elapsed = now()->timestamp - $batchStartTime;
 
-                    $sleep = 30;
-                    for ($j = 0; $j < intdiv($this->timeout, $sleep); $j++) {
-                        sleep($sleep);
-                        try {
-                            $response = Http::withHeaders([
-                                'x-api-key' => config('services.anthropic.api_key'),
-                                'anthropic-version' => '2023-06-01',
-                            ])
-                                ->timeout($sleep)
-                                ->get('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId)
-                                ->object();
+                        $response = $this->anthropicHttp()
+                            ->get('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId)
+                            ->object();
 
-                            Log::info(
-                                "$model->id: News analysis batch waiting $model->analysis_count $i $j: "
-                                . json_encode($response, JSON_UNESCAPED_UNICODE)
-                            );
+                        Log::info(
+                            "$model->id: News analysis batch resume check $model->analysis_count $i: "
+                            . json_encode($response, JSON_UNESCAPED_UNICODE)
+                        );
 
-                            if ($response->processing_status == 'ended') {
-                                if (empty($response->results_url)) {
-                                    break;
-                                }
-
-                                $response = Http::withHeaders([
-                                        'x-api-key' => config('services.anthropic.api_key'),
-                                        'anthropic-version' => '2023-06-01',
-                                    ])
-                                    ->timeout($sleep)
+                        if ($response->processing_status == 'ended') {
+                            if (!empty($response->results_url)) {
+                                $response = $this->anthropicHttp()
                                     ->get($response->results_url)
                                     ->object();
 
-                                if (empty($response->result->message)) {
+                                if (!empty($response->result->message)) {
+                                    $response = $response->result->message;
+                                } else {
                                     throw new Exception(
-                                        "$model->id: News analysis failed to get batch result $model->analysis_count $i: "
+                                        "$model->id: News analysis failed to get batch result on resume $model->analysis_count $i: "
                                         . json_encode($response, JSON_UNESCAPED_UNICODE)
                                     );
                                 }
-
-                                $response = $response->result->message;
-                                break;
                             }
-                        } catch (Exception $e) {
-                            Log::error("$model->id: News analysis batch failed $model->analysis_count $i: {$e->getMessage()}");
-                        }
+                        } elseif ($elapsed >= self::TIMEOUT) {
+                            Log::warning("$model->id: News analysis batch timeout on resume $model->analysis_count $i, elapsed {$elapsed}s");
+                            $this->anthropicHttp()
+                                ->post('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId . '/cancel')
+                                ->object();
 
-                        $currentTime = now();
-                        if (
-                            $currentTime->diffInSeconds($startTime) >= $this->timeout - $sleep * 2
-                            || isset($response->processing_status) && $response->processing_status != 'in_progress'
-                        ) {
+                            $model->status = NewsStatus::PENDING_REVIEW;
+                            $model->save();
+                            $this->clearState();
+                            AnalyzeNewsJob::dispatch($model->id);
                             break;
                         }
+                    }
 
-                        unset($response);
-                        gc_collect_cycles();
+                    if (!$resumingBatch || (isset($response->processing_status) && $response->processing_status != 'ended')) {
+                        if (!$resumingBatch) {
+                            // PATH A: Fresh start — submit new batch
+                            $response = $this->anthropicHttp(config('services.anthropic.api_timeout'))
+                                ->asJson()
+                                ->withHeaders(['anthropic-beta' => 'output-128k-2025-02-19'])
+                                ->post(
+                                    'https://' . config('services.anthropic.api_endpoint') . '/messages/batches',
+                                    [
+                                        'requests' => [
+                                            [
+                                                'custom_id' => $model->id . 'analyze' . $model->analysis_count . 'i' . $i,
+                                                'params' => $params,
+                                            ]
+                                        ]
+                                    ]
+                                )
+                                ->object();
+                            Log::info(
+                                "$model->id: News analysis batch started $model->analysis_count $i: "
+                                . json_encode($response, JSON_UNESCAPED_UNICODE)
+                            );
+
+                            if (empty($response->id)) {
+                                throw new Exception("$model->id: Failed to get batch ID $model->analysis_count $i");
+                            }
+                            $batchId = $response->id;
+                        }
+
+                        $sleep = 30;
+                        $startJ = ($resumingBatch && isset($resumeState['j'])) ? $resumeState['j'] : 0;
+                        $pollStartTime = ($resumingBatch && isset($resumeState['poll_start_time']))
+                            ? $resumeState['poll_start_time']
+                            : $startTime->timestamp;
+
+                        for ($j = $startJ; $j < intdiv($this->timeout, $sleep); $j++) {
+                            sleep($sleep);
+
+                            $this->saveState([
+                                'i' => $i,
+                                'j' => $j,
+                                'batch_id' => $batchId,
+                                'poll_start_time' => $pollStartTime,
+                            ]);
+
+                            try {
+                                $response = $this->anthropicHttp($sleep)
+                                    ->get('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId)
+                                    ->object();
+
+                                Log::info(
+                                    "$model->id: News analysis batch waiting $model->analysis_count $i $j: "
+                                    . json_encode($response, JSON_UNESCAPED_UNICODE)
+                                );
+
+                                if ($response->processing_status == 'ended') {
+                                    if (empty($response->results_url)) {
+                                        break;
+                                    }
+
+                                    $response = $this->anthropicHttp($sleep)
+                                        ->get($response->results_url)
+                                        ->object();
+
+                                    if (empty($response->result->message)) {
+                                        throw new Exception(
+                                            "$model->id: News analysis failed to get batch result $model->analysis_count $i: "
+                                            . json_encode($response, JSON_UNESCAPED_UNICODE)
+                                        );
+                                    }
+
+                                    $response = $response->result->message;
+                                    break;
+                                }
+                            } catch (Exception $e) {
+                                Log::error("$model->id: News analysis batch failed $model->analysis_count $i: {$e->getMessage()}");
+                            }
+
+                            $currentTime = now();
+                            if (
+                                $currentTime->diffInSeconds($startTime) >= $this->timeout - $sleep * 2
+                                || isset($response->processing_status) && $response->processing_status != 'in_progress'
+                            ) {
+                                break;
+                            }
+
+                            unset($response);
+                            gc_collect_cycles();
+                        }
                     }
 
                     if (empty($response->content[1]->text)) {
                         Log::warning("$model->id: News analysis batch without result $model->analysis_count $i");
-                        Http::withHeaders([
-                            'x-api-key' => config('services.anthropic.api_key'),
-                            'anthropic-version' => '2023-06-01',
-                        ])
-                            ->timeout($sleep)
-                            ->post('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId . '/cancel')
-                            ->object();
+                        if (!empty($batchId)) {
+                            $this->anthropicHttp()
+                                ->post('https://' . config('services.anthropic.api_endpoint') . '/messages/batches/' . $batchId . '/cancel')
+                                ->object();
+                        }
 
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->save();
+                        $this->clearState();
                         if (!isset($response->processing_status) || $response->processing_status == 'in_progress') {
                             Log::warning("$model->id: News analysis batch timeout $model->analysis_count $i");
                             AnalyzeNewsJob::dispatch($model->id);
@@ -280,6 +379,7 @@ class AnalyzeNewsJob implements ShouldQueue
                         $model->analysis_count = $model->analysis_count + 1;
                         $model->previous_analysis = null;
                         $model->save();
+                        $this->clearState();
                     }
                 }
             } catch (Exception $e) {
@@ -289,6 +389,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 } else {
                     $model->status = NewsStatus::PENDING_REVIEW;
                     $model->save();
+                    $this->clearState();
 
                     Request::sendMessage([
                         'chat_id' => explode(',', config('telegram.admins'))[0],
@@ -302,6 +403,7 @@ class AnalyzeNewsJob implements ShouldQueue
             if (!empty($model->analysis)) {
                 if ($model->is_auto) {
                     if (Str::substr(trim($model->analysis, '*# '), 0, 3) == 'Так') {
+                        $this->clearState();
                         ApplyNewsAnalysisJob::dispatch($model->id);
                     } elseif (Str::substr(trim($model->analysis, '*# '), 0, 2) == 'Ні') {
                         if (!$model->is_deep) {
@@ -311,6 +413,7 @@ class AnalyzeNewsJob implements ShouldQueue
                             $model->content_hashes = null;
                             $model->previous_analysis = null;
                             $model->save();
+                            $this->clearState();
                             AnalyzeNewsJob::dispatch($model->id);
                         } else {
                             $model->is_deepest = true;
@@ -318,6 +421,7 @@ class AnalyzeNewsJob implements ShouldQueue
                             $model->content_hashes = null;
                             $model->previous_analysis = null;
                             $model->save();
+                            $this->clearState();
 
                             Request::sendMessage([
                                 'chat_id' => explode(',', config('telegram.admins'))[0],
@@ -329,6 +433,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     } else {
                         $model->is_auto = false;
                         $model->save();
+                        $this->clearState();
 
                         Request::sendMessage([
                             'chat_id' => explode(',', config('telegram.admins'))[0],
@@ -341,6 +446,63 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 break;
             }
+        }
+
+        $this->clearState();
+    }
+
+    private function anthropicHttp(int $timeout = 30): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withHeaders([
+            'x-api-key' => config('services.anthropic.api_key'),
+            'anthropic-version' => '2023-06-01',
+        ])->timeout($timeout);
+    }
+
+    private function cacheKey(): string
+    {
+        return self::CACHE_KEY_PREFIX . $this->id;
+    }
+
+    private function saveState(array $state): void
+    {
+        Cache::put($this->cacheKey(), array_merge($state, ['pid' => getmypid()]), self::TIMEOUT);
+    }
+
+    private function getState(): ?array
+    {
+        return Cache::get($this->cacheKey());
+    }
+
+    private function clearState(): void
+    {
+        Cache::forget($this->cacheKey());
+    }
+
+    private function sendResumeNotification(News $model, ?array $state): void
+    {
+        if (empty($model->message_id)) {
+            return;
+        }
+
+        $stuckMinutes = $state
+            ? intdiv(now()->timestamp - ($state['poll_start_time'] ?? now()->timestamp), 60)
+            : 0;
+        $resumeType = $state && !empty($state['batch_id']) ? 'polling' : 'API';
+
+        try {
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => $state
+                    ? "Resumed killed analysis job (stuck {$stuckMinutes}m, {$resumeType}, i={$state['i']})"
+                    : 'Resumed killed analysis job (no cached state)',
+                'reply_markup' => new InlineKeyboard([
+                    ['text' => '❌Delete', 'callback_data' => 'delete'],
+                ]),
+            ]);
+        } catch (TelegramException $e) {
+            Log::error("$model->id: Failed to send resume notification: {$e->getMessage()}");
         }
     }
 }
