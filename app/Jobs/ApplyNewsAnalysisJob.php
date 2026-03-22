@@ -25,7 +25,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public const TIMEOUT = 360;
+    public const TIMEOUT = 1800;
 
     public const CACHE_KEY_PREFIX = 'apply_job_state_';
 
