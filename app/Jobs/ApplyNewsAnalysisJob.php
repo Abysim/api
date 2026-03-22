@@ -126,7 +126,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                         $removalsSet = array_flip($detection['removals']);
                         $flipflopPairs = [];
-                        foreach ($detection['flipflop_hashes'] as $addHash) {
+                        foreach ($detection['flipflop_hashes'] ?? [] as $addHash) {
                             $pos = array_search($addHash, $currentPositions);
                             if ($pos !== false && isset($priorPositions[$pos])) {
                                 $remHash = $priorPositions[$pos];

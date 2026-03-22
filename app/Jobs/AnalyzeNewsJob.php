@@ -51,7 +51,7 @@ class AnalyzeNewsJob implements ShouldQueue
 
         $resumeState = null;
         if (!empty($model->analysis) || $model->status != NewsStatus::PENDING_REVIEW) {
-            if ($model->status == NewsStatus::BEING_PROCESSED) {
+            if (empty($model->analysis) && $model->status == NewsStatus::BEING_PROCESSED) {
                 $state = $this->getState();
                 $pid = $state['pid'] ?? null;
                 if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
