@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use App\Helpers\SentenceHasher;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Longman\TelegramBot\Entities\InlineKeyboard;
@@ -24,9 +25,13 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public const TIMEOUT = 360;
+
+    public const CACHE_KEY_PREFIX = 'apply_job_state_';
+
     public int $tries = 2;
 
-    public int $timeout = 360;
+    public int $timeout = self::TIMEOUT;
 
     public function __construct(private readonly int $id)
     {
@@ -38,15 +43,41 @@ class ApplyNewsAnalysisJob implements ShouldQueue
     public function handle(): void
     {
         $model = News::find($this->id);
-        if (
+        if (!$model) {
+            return;
+        }
+
+        // PID guard — must check status BEFORE content to catch dead-worker resume
+        if ($model->status == NewsStatus::BEING_PROCESSED) {
+            $state = Cache::get(self::CACHE_KEY_PREFIX . $this->id);
+            $pid = $state['pid'] ?? null;
+            if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
+                $this->release(config('queue.connections.database.retry_after'));
+                return;
+            }
+            // Dead worker — resume
+            $model->touch();
+            Log::warning("$model->id: Resuming orphaned apply job");
+            if (!empty($model->message_id)) {
+                try {
+                    Request::sendMessage([
+                        'chat_id' => explode(',', config('telegram.admins'))[0],
+                        'reply_to_message_id' => $model->message_id,
+                        'text' => 'Resumed killed apply job',
+                        'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+                    ]);
+                } catch (TelegramException) {}
+            }
+        } elseif (
             empty($model->analysis)
-            || $model->status == NewsStatus::BEING_PROCESSED
             || Str::substr(trim($model->analysis, '*# '), 0, 2) == 'Ні'
         ) {
             return;
         }
+
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
+        Cache::put(self::CACHE_KEY_PREFIX . $this->id, ['pid' => getmypid()], self::TIMEOUT + 120);
 
         $isScience = $model->platform == 'article';
         $preamble = trim(Str::before(NewsController::getPrompt('analyzer', $isScience), '1.'));
@@ -235,6 +266,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             }
 
             if (empty($model->analysis)) {
+                Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
                 if ($model->is_auto) {
                     $storedNiCount = $model->content_hashes['flipflop_ni_count'] ?? 0;
                     if ($storedNiCount >= 2) {
@@ -249,6 +281,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 break;
             }
         }
+
+        Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
     }
 
     /**
@@ -256,6 +290,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
      */
     private function escalate($model, string $deepText, string $deepestText): void
     {
+        Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
         $model->content_hashes = null;
         $model->previous_analysis = null;
 
