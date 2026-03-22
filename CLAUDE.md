@@ -31,6 +31,18 @@ Pet project that supports other projects. Laravel 10 API application.
 - **After changing `.env` or config**, run `ssh bigcats "cd ~/api && php artisan config:cache"` — workers will load the new cached config on their next natural restart (~4 min)
 - **NEVER run `queue:retry all` as a "deployment step"** — it does NOT restart workers. It re-queues failed jobs and can flood the queue. Deploying code requires NO queue commands.
 
+## Deploy Command
+- **`php artisan deploy`**: Deploys all changed files since last deploy to bigcats via SCP. Tracks state in `.deploy-state` (git SHA). **Use this instead of manual `scp` commands.**
+- **`php artisan deploy --all`**: Required for first deploy (no prior state). Deploys all tracked files minus exclusions.
+- **`php artisan deploy --force`**: Overrides risky file blocking (composer.json, composer.lock, database/migrations/).
+- **Risky file blocking**: Command aborts if composer.json/lock or migration files changed — prints exact SSH commands to run manually. Use `--force` to deploy anyway.
+- **Does NOT run migrations or `composer install`** — only copies files and runs `config:cache`/`queue:restart`. Composer install and migrations are manual steps; the command prints the exact commands to run.
+- **Smart post-deploy**: Auto-runs `config:cache` if config/ changed, `queue:restart` if app/routes/resources/ changed.
+- **Exclusions**: storage/, public/storage/, .omc/, .claude/, .idea/, .git/, vendor/, .env, .gitignore, .deploy-state
+- **Partial failure safety**: If any SCP fails, `.deploy-state` is NOT updated — next run retries everything
+- **SSH ControlMaster**: Uses connection multiplexing for fast multi-file transfers
+- **Path safety**: Validates all paths against shell metacharacters before building SSH/SCP commands. Do NOT use `escapeshellarg()` on remote paths containing `~` — single quotes prevent tilde expansion on the remote shell.
+
 ## Database
 - **Engine**: MySQL
 - **Connection config**: `~/api/.env` on bigcats (contains `DB_*` variables)
