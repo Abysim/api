@@ -29,6 +29,7 @@ class FreeNewsService implements NewsServiceInterface
     private GoogleNewsUrlDecoder $urlDecoder;
     private array $dnsCache = [];
     private array $blockedDomains = [];
+    private array $blockedUrlPatterns = [];
     private ?array $cachedExcludedDomains = null;
     private int $lastDecodeTotal = 0;
     private int $lastDecodeSuccess = 0;
@@ -73,6 +74,11 @@ class FreeNewsService implements NewsServiceInterface
         $path = resource_path('json/news/blocked_domains.json');
         if (file_exists($path)) {
             $this->blockedDomains = json_decode(file_get_contents($path), true) ?: [];
+        }
+
+        $urlPatternsPath = resource_path('json/news/blocked_url_patterns.json');
+        if (file_exists($urlPatternsPath)) {
+            $this->blockedUrlPatterns = json_decode(file_get_contents($urlPatternsPath), true) ?: [];
         }
     }
 
@@ -147,6 +153,12 @@ class FreeNewsService implements NewsServiceInterface
             }
 
             if ($this->isDomainExcluded($article['clean_url'] ?? '', $article['link'] ?? '')) {
+                $this->markUrlSeen($article);
+                continue;
+            }
+
+            if ($matchedPattern = $this->isUrlPathExcluded($article['link'] ?? '')) {
+                Log::info('FreeNews: URL path excluded [' . $matchedPattern . '] for ' . ($article['link'] ?? ''));
                 $this->markUrlSeen($article);
                 continue;
             }
@@ -323,6 +335,22 @@ class FreeNewsService implements NewsServiceInterface
         }
 
         return false;
+    }
+
+    /**
+     * Check if URL path contains any blocked pattern (e.g. CMS exploit paths).
+     * Returns the matched pattern string, or null if no match.
+     * No URL decoding — patterns match literal path characters only.
+     */
+    private function isUrlPathExcluded(string $url): ?string
+    {
+        $path = parse_url($url, PHP_URL_PATH) ?: '';
+        foreach ($this->blockedUrlPatterns as $pattern) {
+            if (str_contains($path, $pattern)) {
+                return $pattern;
+            }
+        }
+        return null;
     }
 
     private function allExcludedDomains(): array

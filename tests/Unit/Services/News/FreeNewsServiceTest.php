@@ -695,6 +695,103 @@ class FreeNewsServiceTest extends TestCase
         $this->assertCount(2, $result);
     }
 
+    public function test_get_news_filters_articles_with_blocked_url_path_fckeditor(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $junkArticle = $this->makeArticle('Some page', 'https://bau.edu.jo/fckeditor/editor/filemanager/browser/default/browser.html', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $junkArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_filters_articles_with_blocked_url_path_pannellum(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $junkArticle = $this->makeArticle('3D viewer', 'https://silkroad3d.com/wp-content/pannellum/pannellum.htm?config=foo', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $junkArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_url_path_filter_allows_legitimate_urls_through(): void
+    {
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/lion-spotted', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion conservation efforts', 'https://wwf.org/species/lion-conservation', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(2, $result);
+    }
+
+    public function test_get_news_url_path_filter_works_regardless_of_domain(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $junkArticle = $this->makeArticle('University page', 'https://legitimate-university.edu/fckeditor/editor/filemanager/browser.html', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $junkArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_url_path_filter_allows_all_when_patterns_empty(): void
+    {
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion page with junk path', 'https://example.com/fckeditor/editor/filemanager/browser.html', '2024-01-15 11:00:00');
+
+        // Clear blocked URL patterns to simulate missing/empty JSON file
+        $ref = new \ReflectionProperty($this->service, 'blockedUrlPatterns');
+        $ref->setValue($this->service, []);
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(2, $result);
+    }
+
+    public function test_get_news_url_path_filter_ignores_query_string_matches(): void
+    {
+        $article1 = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $article2 = $this->makeArticle('Lion article with query param', 'https://example.com/news/article?ref=fckeditor/editor/filemanager', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article1, $article2]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(2, $result);
+    }
+
     public function test_get_news_exclude_words_filter_rejects_title_with_exclude_term(): void
     {
         $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://example.com/1', '2024-01-15 10:00:00');
