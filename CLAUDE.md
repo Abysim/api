@@ -16,8 +16,7 @@ Pet project that supports other projects. Laravel 10 API application.
 ## Tech Stack
 - **Framework**: Laravel 10.48.28
 - **Language**: PHP
-- **PHP version (web)**: 8.2 (ea-php82 via cPanel `.htaccess` handler)
-- **PHP version (CLI)**: 8.3 (differs from web — always test against 8.2)
+- **PHP version**: 8.4 (both local `p` alias and production bigcats — web and CLI)
 
 ## Deployment
 - **Production server**: SSH host `bigcats` (connect via `ssh bigcats`)
@@ -78,7 +77,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
 ## Gotchas
-- **NEVER redeclare properties defined by Laravel traits** — `Queueable` defines `public $connection`, `public $queue`, etc. Redeclaring with a different type OR a different default value causes a **fatal error** in PHP 8.2+ ("definition differs and is considered incompatible"). To override: set the value in the constructor (`$this->connection = 'long_running'`), never as a class property.
+- **NEVER redeclare properties defined by Laravel traits** — `Queueable` defines `public $connection`, `public $queue`, etc. Redeclaring with a different type OR a different default value causes a **fatal error** ("definition differs and is considered incompatible"). To override: set the value in the constructor (`$this->connection = 'long_running'`), never as a class property.
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
 - **Single cron entry on bigcats**: `* * * * * php artisan schedule:run` — ALL scheduling is inside Laravel `Kernel.php`, no external cron entries
@@ -92,6 +91,8 @@ Pet project that supports other projects. Laravel 10 API application.
 - **`composer install` on bigcats runs `filament:upgrade`** which clears config cache — always run `php artisan config:cache` after
 - **`FlickrPhotoStatus` is an int-backed enum** — CREATED=0, REJECTED_BY_TAG=1, REJECTED_BY_CLASSIFICATION=2, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, PUBLISHED=6, REMOVED_BY_AUTHOR=7, REJECTED_BY_DUPLICATION=8
 - **ApplyNewsAnalysisJob system prompt** is constructed by slicing `analyzer.md` via `Str::before('1.')` + `Str::afterLast("\n")` — this extracts ONLY the 3-line preamble + date, stripping all 24 numbered rules. This is intentional (the applier applies corrections, doesn't need analyzer rules), but the slicing is fragile and breaks if `analyzer.md` structure changes.
+
+- **Google News URLs bypass pre-fetch filters** — `$article['link']` from Google News is `news.google.com/...` (a redirect), not the real URL. Domain/path filters in the `getNews()` loop only catch GDELT articles (direct URLs). For Google News articles, filtering must also happen inside `extractContent()` after `urlDecoder->decode()` resolves the real URL (line ~444).
 
 ## News Search Architecture
 - **Species query routing** (NewsController lines ~358-414): species with `exclude` terms in `resources/json/news/species/{lang}.json` get **separate queries** (one per species with their exclusions). Species with empty `exclude` arrays get **batched into one combined query** (grouped by query length limit).

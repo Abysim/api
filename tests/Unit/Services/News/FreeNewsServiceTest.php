@@ -1240,6 +1240,54 @@ class FreeNewsServiceTest extends TestCase
         $this->assertSame(0, $this->service->getLastDecodeSuccess());
     }
 
+    public function test_post_decode_domain_exclusion_blocks_google_redirect_to_blocked_domain(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Decode resolves to a blocked domain (walmart.com is in blocked_domains.json)
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('https://walmart.com/some-product');
+
+        $this->seedDnsCache(['news.google.com' => true, 'walmart.com' => true]);
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // Article should be skipped (title-only fallback → filtered out)
+        $this->assertCount(0, $result);
+        // No HTTP calls to walmart.com
+        Http::assertNotSent(fn($req) => str_contains($req->url(), 'walmart.com'));
+    }
+
+    public function test_post_decode_path_exclusion_blocks_google_redirect_to_blocked_path(): void
+    {
+        $article = $this->makeArticle('Lion spotted', 'https://news.google.com/articles/abc', '2024-01-15 10:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$article]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        // Decode resolves to URL with blocked path pattern (fckeditor)
+        $this->urlDecoder->shouldReceive('decode')
+            ->with('https://news.google.com/articles/abc')
+            ->once()
+            ->andReturn('https://cfn.org.br/wp-content/uploads/forum/fckeditor/editor/filemanager/browser.html');
+
+        $this->seedDnsCache(['news.google.com' => true, 'cfn.org.br' => true]);
+        $result = $this->service->getNews('(lion OR lions)');
+
+        // Article should be skipped
+        $this->assertCount(0, $result);
+        // No HTTP calls to cfn.org.br
+        Http::assertNotSent(fn($req) => str_contains($req->url(), 'cfn.org.br'));
+    }
+
     public function test_was_gdelt_rate_limited_defaults_to_false(): void
     {
         $this->assertFalse($this->service->wasGdeltRateLimited());

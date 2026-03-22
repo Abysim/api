@@ -441,6 +441,16 @@ class FreeNewsService implements NewsServiceInterface
                 }
             }
 
+            // Post-decode filtering: catch junk URLs hidden behind Google News redirects
+            if ($this->isDomainExcluded('', $url)) {
+                Log::info('FreeNews: resolved domain excluded: ' . $url);
+                return $this->buildArticleArray($article, $article['title'], $originalUrl);
+            }
+            if ($matchedPattern = $this->isUrlPathExcluded($url)) {
+                Log::info('FreeNews: resolved URL path excluded [' . $matchedPattern . '] for ' . $url);
+                return $this->buildArticleArray($article, $article['title'], $originalUrl);
+            }
+
             // --- Fallback chain: fetch content ---
             $content = null;
             $author = null;
