@@ -91,6 +91,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->refresh();
+                    $originalSentenceCount = count(SentenceHasher::splitSentences($model->publish_content));
                     $content = trim(Str::after($response->choices[0]->message->content, '```markdown'));
                     [$title, $content] = explode("\n", $content, 2);
                     $newTitle = trim($title, '*# ');

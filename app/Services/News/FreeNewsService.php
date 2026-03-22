@@ -219,8 +219,10 @@ class FreeNewsService implements NewsServiceInterface
             $enriched = $this->extractContent($article);
 
             // Mark URL as seen only if extraction succeeded (content != title fallback)
+            // Use $enriched['link'] (decoded real URL) instead of $article['link'] (may be a
+            // news.google.com redirect) so cross-source deduplication works correctly.
             if ($this->urlSeenMarker !== null && $enriched['content'] !== $article['title']) {
-                ($this->urlSeenMarker)($article['link']);
+                ($this->urlSeenMarker)($enriched['link']);
             }
 
             // Skip articles where content extraction failed (content == title fallback)
@@ -340,11 +342,11 @@ class FreeNewsService implements NewsServiceInterface
     /**
      * Check if URL path contains any blocked pattern (e.g. CMS exploit paths).
      * Returns the matched pattern string, or null if no match.
-     * No URL decoding — patterns match literal path characters only.
+     * Path is URL-decoded and lowercased before matching; patterns are already lowercase.
      */
     private function isUrlPathExcluded(string $url): ?string
     {
-        $path = parse_url($url, PHP_URL_PATH) ?: '';
+        $path = strtolower(rawurldecode(parse_url($url, PHP_URL_PATH) ?: ''));
         foreach ($this->blockedUrlPatterns as $pattern) {
             if (str_contains($path, $pattern)) {
                 return $pattern;

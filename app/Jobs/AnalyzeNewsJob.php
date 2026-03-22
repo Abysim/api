@@ -359,6 +359,11 @@ class AnalyzeNewsJob implements ShouldQueue
                 $content = $response->content[1]->text ?? $response->choices[0]->message->content ?? null;
                 if (!empty($content)) {
                     $model->refresh();
+                    if ($model->status != NewsStatus::BEING_PROCESSED) {
+                        Log::warning("AnalyzeNewsJob {$model->id}: status changed to {$model->status->name} during analysis, aborting");
+                        $this->clearState();
+                        return;
+                    }
                     $content = trim(Str::after($content, '</think>'), "#* \n\r\t\v\0");
                     if (Str::substr($content, 0, 2) != 'Ні' && Str::substr($content, 0, 3) != 'Так') {
                         if (Str::contains($content, 'Так.')) {

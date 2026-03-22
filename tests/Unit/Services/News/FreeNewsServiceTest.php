@@ -711,6 +711,38 @@ class FreeNewsServiceTest extends TestCase
         $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
     }
 
+    public function test_get_news_filters_articles_with_url_encoded_blocked_path(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $junkArticle = $this->makeArticle('Some page', 'https://bau.edu.jo/%66ckeditor/editor/filemanager/browser/default/browser.html', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $junkArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
+    public function test_get_news_filters_articles_with_mixed_case_blocked_path(): void
+    {
+        $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
+        $junkArticle = $this->makeArticle('Some page', 'https://bau.edu.jo/FCKeditor/editor/filemanager/browser/default/browser.html', '2024-01-15 11:00:00');
+
+        $this->googleSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->googleSource->shouldReceive('fetch')->once()->andReturn([$goodArticle, $junkArticle]);
+        $this->gdeltSource->shouldReceive('buildQuery')->once()->andReturn('query');
+        $this->gdeltSource->shouldReceive('fetch')->once()->andReturn([]);
+
+        $result = $this->service->getNews('(lion OR lions)');
+
+        $this->assertCount(1, $result);
+        $this->assertSame('Lion spotted in Kenya', $result[0]['title']);
+    }
+
     public function test_get_news_filters_articles_with_blocked_url_path_pannellum(): void
     {
         $goodArticle = $this->makeArticle('Lion spotted in Kenya', 'https://bbc.com/news/1', '2024-01-15 10:00:00');
