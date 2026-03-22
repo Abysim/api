@@ -59,7 +59,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         );
 
         $sentenceGuardRetried = false;
-        $originalSentenceCount = count(SentenceHasher::splitSentences($model->publish_content));
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");

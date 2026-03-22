@@ -218,11 +218,9 @@ class FreeNewsService implements NewsServiceInterface
         foreach ($filtered as $article) {
             $enriched = $this->extractContent($article);
 
-            // Mark URL as seen only if extraction succeeded (content != title fallback)
-            // Use $enriched['link'] (decoded real URL) instead of $article['link'] (may be a
-            // news.google.com redirect) so cross-source deduplication works correctly.
-            if ($this->urlSeenMarker !== null && $enriched['content'] !== $article['title']) {
-                ($this->urlSeenMarker)($enriched['link']);
+            // Mark decoded URL as seen only if extraction succeeded (content != title fallback)
+            if ($enriched['content'] !== $article['title']) {
+                $this->markUrlSeen($enriched);
             }
 
             // Skip articles where content extraction failed (content == title fallback)
