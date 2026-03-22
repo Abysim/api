@@ -7,8 +7,7 @@ use Illuminate\Console\Command;
 class DeployCommand extends Command
 {
     protected $signature = 'deploy
-        {--all : Deploy all tracked files (required for first deploy)}
-        {--force : Override risky file blocking}';
+        {--all : Redeploy all tracked files regardless of state}';
 
     protected $description = 'Deploy changed files to bigcats production server';
 
@@ -45,8 +44,7 @@ class DeployCommand extends Command
         $lastSha = $this->readDeployState();
 
         if ($lastSha === null && !$this->option('all')) {
-            $this->error('No deploy state found. Use --all for first deploy.');
-            return 1;
+            $this->info('No deploy state found. Deploying all tracked files...');
         }
 
         $files = $this->getChangedFiles($lastSha);
@@ -62,24 +60,6 @@ class DeployCommand extends Command
         }
 
         $riskyFiles = $this->findRiskyFiles($files);
-        if (!empty($riskyFiles) && !$this->option('force')) {
-            $this->error('Deploy blocked — risky files detected:');
-            foreach ($riskyFiles as $file) {
-                $this->error("  $file");
-            }
-            $this->line('');
-            $this->printRiskyFileCommands($riskyFiles, 'After deploying, run:');
-            $this->error('Use --force to deploy anyway.');
-            return 1;
-        }
-
-        if (!empty($riskyFiles)) {
-            $this->warn('Deploying with risky files (--force):');
-            foreach ($riskyFiles as $file) {
-                $this->warn("  $file");
-            }
-            $this->line('');
-        }
 
         $this->info('Deploying ' . count($files) . ' files to ' . self::REMOTE_HOST . '...');
         $this->line('');
@@ -135,7 +115,7 @@ class DeployCommand extends Command
 
     private function getChangedFiles(?string $lastSha): ?array
     {
-        if ($this->option('all')) {
+        if ($this->option('all') || $lastSha === null) {
             $output = [];
             exec('git ls-files', $output, $exitCode);
             if ($exitCode !== 0) {

@@ -33,10 +33,9 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ## Deploy Command
 - **`php artisan deploy`**: Deploys all changed files since last deploy to bigcats via SCP. Tracks state in `.deploy-state` (git SHA). **Use this instead of manual `scp` commands.**
-- **`php artisan deploy --all`**: Required for first deploy (no prior state). Deploys all tracked files minus exclusions.
-- **`php artisan deploy --force`**: Overrides risky file blocking (composer.json, composer.lock, database/migrations/).
-- **Risky file blocking**: Command aborts if composer.json/lock or migration files changed — prints exact SSH commands to run manually. Use `--force` to deploy anyway.
-- **Does NOT run migrations or `composer install`** — only copies files and runs `config:cache`/`queue:restart`. Composer install and migrations are manual steps; the command prints the exact commands to run.
+- **First run**: If no `.deploy-state` exists, automatically deploys all tracked files (no special flags needed)
+- **`php artisan deploy --all`**: Force redeploy all tracked files regardless of state (optional override)
+- **Does NOT run migrations or `composer install`** — only copies files and runs `config:cache`/`queue:restart`. If composer.json/lock or migration files are deployed, the command prints the exact manual commands to run.
 - **Smart post-deploy**: Auto-runs `config:cache` if config/ changed, `queue:restart` if app/routes/resources/ changed.
 - **Exclusions**: storage/, public/storage/, .omc/, .claude/, .idea/, .git/, vendor/, .env, .gitignore, .deploy-state
 - **Partial failure safety**: If any SCP fails, `.deploy-state` is NOT updated — next run retries everything
