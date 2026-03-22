@@ -6,7 +6,6 @@
 - **Destructive queue/DB operations are FORBIDDEN without user approval** — `queue:retry all`, `DELETE FROM jobs`, `queue:flush`, table truncation, etc. Always show the command and its impact first.
 - **NEVER use `git checkout <file>`, `git restore`, `git reset --hard`, or `git stash`** to revert changes — these destroy ALL uncommitted changes in the file/repo. To revert a specific change, use surgical edits. Only use destructive git commands if the user explicitly requests them by name.
 - **`scp` to bigcats IS a deployment action** — requires the same explicit user approval as any SSH command. Never deploy speculatively.
-- **`php artisan deploy` IS a deployment action** — it SCPs files to bigcats. Requires the same explicit user approval as manual `scp`. Never run it "just to test" — it deploys to production immediately.
 - **`queue:restart` kills workers mid-job** — running jobs (especially long AnalyzeNewsJob with batch polling) are terminated when `queue:restart` is issued. Only run after confirming no critical jobs are in progress, or wait for natural worker rotation (~4 min).
 - **Never reset article status via tinker without approval** — `News::find(X)->update(['status' => ...])` is a production write operation. Always show the command and wait for confirmation.
 
@@ -31,17 +30,6 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Verifying deployed code is running**: After `scp` + `queue:restart`, the restart only takes effect when the current job finishes. Long-running jobs (`AnalyzeNewsJob` polls for 30s×N) can delay pickup. Always verify with `grep 'expected_new_log_message' storage/logs/laravel.log` before assuming new code is active.
 - **After changing `.env` or config**, run `ssh bigcats "cd ~/api && php artisan config:cache"` — workers will load the new cached config on their next natural restart (~4 min)
 - **NEVER run `queue:retry all` as a "deployment step"** — it does NOT restart workers. It re-queues failed jobs and can flood the queue. Deploying code requires NO queue commands.
-
-## Deploy Command
-- **`php artisan deploy`**: Deploys all changed files since last deploy to bigcats via SCP. Tracks state in `.deploy-state` (git SHA). **Use this instead of manual `scp` commands.**
-- **First run**: If no `.deploy-state` exists, automatically deploys all tracked files (no special flags needed)
-- **`php artisan deploy --all`**: Force redeploy all tracked files regardless of state (optional override)
-- **Does NOT run migrations or `composer install`** — only copies files and runs `config:cache`/`queue:restart`. If composer.json/lock or migration files are deployed, the command prints the exact manual commands to run.
-- **Smart post-deploy**: Auto-runs `config:cache` if config/ changed, `queue:restart` if app/routes/resources/ changed.
-- **Exclusions**: storage/, public/storage/, .omc/, .claude/, .idea/, .git/, vendor/, .env, .gitignore, .deploy-state
-- **Partial failure safety**: If any SCP fails, `.deploy-state` is NOT updated — next run retries everything
-- **SSH ControlMaster**: Uses connection multiplexing for fast multi-file transfers
-- **Path safety**: Validates all paths against shell metacharacters before building SSH/SCP commands. Do NOT use `escapeshellarg()` on remote paths containing `~` — single quotes prevent tilde expansion on the remote shell.
 
 ## Database
 - **Engine**: MySQL
