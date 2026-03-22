@@ -6,6 +6,7 @@
 - **Destructive queue/DB operations are FORBIDDEN without user approval** — `queue:retry all`, `DELETE FROM jobs`, `queue:flush`, table truncation, etc. Always show the command and its impact first.
 - **NEVER use `git checkout <file>`, `git restore`, `git reset --hard`, or `git stash`** to revert changes — these destroy ALL uncommitted changes in the file/repo. To revert a specific change, use surgical edits. Only use destructive git commands if the user explicitly requests them by name.
 - **`scp` to bigcats IS a deployment action** — requires the same explicit user approval as any SSH command. Never deploy speculatively.
+- **`php artisan deploy` IS a deployment action** — it SCPs files to bigcats. Requires the same explicit user approval as manual `scp`. Never run it "just to test" — it deploys to production immediately.
 - **`queue:restart` kills workers mid-job** — running jobs (especially long AnalyzeNewsJob with batch polling) are terminated when `queue:restart` is issued. Only run after confirming no critical jobs are in progress, or wait for natural worker rotation (~4 min).
 - **Never reset article status via tinker without approval** — `News::find(X)->update(['status' => ...])` is a production write operation. Always show the command and wait for confirmation.
 
