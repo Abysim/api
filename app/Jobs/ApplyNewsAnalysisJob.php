@@ -58,6 +58,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             NewsController::getPrompt('editor', $isScience)
         );
 
+        $sentenceGuardRetried = false;
+        $originalSentenceCount = count(SentenceHasher::splitSentences($model->publish_content));
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
@@ -75,8 +77,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if ($i % 2) {
                     $params['provider'] = ['require_parameters' => true];
+                    $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
                 } else {
+                    $params['reasoning_effort'] = 'high';
                     $response = OpenAI::chat()->create($params);
                 }
 
@@ -96,6 +100,32 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     // Per-sentence oscillation detection
                     $hashTexts = SentenceHasher::hashSentences($newTitle, $newContent);
                     $currentHashes = array_keys($hashTexts);
+
+                    // Sentence count guard — detect accidental deletions/additions by applier
+                    // hashSentences includes one title: entry; subtract it to compare content-only counts
+                    $newSentenceCount = count($hashTexts) - 1;
+                    if (!$sentenceGuardRetried && $originalSentenceCount !== $newSentenceCount) {
+                        $sentenceGuardRetried = true;
+                        Log::warning("$model->id: Applier changed sentence count from $originalSentenceCount to $newSentenceCount at analysis_count $model->analysis_count $i");
+                        try {
+                            $verifyResponse = OpenAI::chat()->create([
+                                'model' => 'gpt-5-mini',
+                                'messages' => [
+                                    ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом.'],
+                                    ['role' => 'user', 'content' => "Оригінал:\n" . $model->publish_title . "\n\n" . $model->publish_content
+                                        . "\n\n---\nВиправлений:\n" . $newTitle . "\n\n" . $newContent
+                                        . "\n\n---\nЧи є випадкові видалення, додавання або зміни слів поза межами вказаних виправлень? Відповідай ТІЛЬКИ: OK або список проблем."],
+                                ],
+                            ]);
+                            $verifyResult = trim($verifyResponse->choices[0]->message->content ?? '');
+                            if ($verifyResult !== 'OK') {
+                                Log::warning("$model->id: Diff verification found issues: $verifyResult, retrying");
+                                continue;
+                            }
+                        } catch (Exception $e) {
+                            Log::warning("$model->id: Diff verification failed: {$e->getMessage()}, accepting result");
+                        }
+                    }
 
                     // Load stored cycles (backward compatible)
                     $stored = $model->content_hashes;

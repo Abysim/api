@@ -54,7 +54,7 @@ class ApplyNewsAnalysisJobTest extends TestCase
             'is_deep' => false,
             'is_deepest' => false,
             'publish_title' => 'Original Title',
-            'publish_content' => 'Original content sentence one. Original content sentence two.',
+            'publish_content' => 'Original content sentence.',
             'message_id' => 12345,
             'date' => Carbon::parse('2026-03-15'),
         ];
@@ -199,18 +199,18 @@ class ApplyNewsAnalysisJobTest extends TestCase
     public function test_partial_flipflop_resolves_via_variant_selection(): void
     {
         $title = 'Title';
-        // Cycle 0: "Sentence A. Sentence B." — Cycle 1: "Sentence A. Sentence C."
-        // Current apply returns: "Sentence A. Sentence B. Sentence D."
+        // Cycle 0: "Sentence A. Sentence B. Sentence E." — Cycle 1: "Sentence A. Sentence C. Sentence E."
+        // Current apply returns: "Sentence A. Sentence B. Sentence D." (same count: 3)
         // → "Sentence B." is a flip-flop (was in cycle 0), "Sentence D." is genuine new
-        $hashesAB = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence B.'));
-        $hashesAC = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence C.'));
+        $hashesABE = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence B. Sentence E.'));
+        $hashesACE = array_keys(SentenceHasher::hashSentences($title, 'Sentence A. Sentence C. Sentence E.'));
 
         $news = $this->makeNewsObject([
             'publish_title' => $title,
-            'publish_content' => 'Sentence A. Sentence C.',
+            'publish_content' => 'Sentence A. Sentence C. Sentence E.',
             'content_hashes' => ['cycles' => [
-                ['hashes' => $hashesAB],
-                ['hashes' => $hashesAC],
+                ['hashes' => $hashesABE],
+                ['hashes' => $hashesACE],
             ]],
         ]);
         $this->mockNewsFind($news);
