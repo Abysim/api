@@ -359,4 +359,192 @@ class ApplyNewsAnalysisJobTest extends TestCase
         $this->assertFalse($news->is_deep); // no escalation
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
+
+    // --- Test 9: flipflop_ni_count increments when all changes are flip-flops ---
+
+    public function test_flipflop_ni_count_increments_when_all_changes_are_flipflops(): void
+    {
+        $title = 'Title';
+        $contentA = 'Ягуари є верхівковими хижаками.';
+        $contentB = 'Ягуари є вищими хижаками.';
+        $hashesA = array_keys(SentenceHasher::hashSentences($title, $contentA));
+        $hashesB = array_keys(SentenceHasher::hashSentences($title, $contentB));
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $contentB,
+            'content_hashes' => [
+                'cycles' => [
+                    ['hashes' => $hashesA], // Cycle 0: state A
+                    ['hashes' => $hashesB], // Cycle 1: state B (last)
+                ],
+                'flipflop_ni_count' => 0,
+            ],
+        ]);
+        $this->mockNewsFind($news);
+        // Editor returns state A (flip-flop), variant selector picks A (keep current)
+        $this->fakeOpenAiResponses([
+            "# $title\n$contentA",
+            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
+        ]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // Counter incremented from 0 to 1
+        $this->assertSame(1, $news->content_hashes['flipflop_ni_count']);
+        // Does NOT escalate (count < 2)
+        $this->assertFalse($news->is_deep);
+        Queue::assertPushed(AnalyzeNewsJob::class);
+    }
+
+    // --- Test 10: flipflop_ni_count resets on real (non-flip-flop) changes ---
+
+    public function test_flipflop_ni_count_resets_on_real_changes(): void
+    {
+        $title = 'Title';
+        $contentOld = 'Old content sentence.';
+        $contentNew = 'Completely new content sentence.';
+        $hashesOld = array_keys(SentenceHasher::hashSentences($title, $contentOld));
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $contentOld,
+            'content_hashes' => [
+                'cycles' => [
+                    ['hashes' => $hashesOld],
+                ],
+                'flipflop_ni_count' => 1, // had a flip-flop before
+            ],
+        ]);
+        $this->mockNewsFind($news);
+        // Editor returns genuinely new content (no overlap with older cycles)
+        $this->fakeOpenAiResponses(["# $title\n$contentNew"]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // Counter resets to 0 — real changes happened
+        $this->assertSame(0, $news->content_hashes['flipflop_ni_count']);
+        $this->assertFalse($news->is_deep);
+        Queue::assertPushed(AnalyzeNewsJob::class);
+    }
+
+    // --- Test 11: Flip-flop escalation to deep at count=2 ---
+
+    public function test_flipflop_escalation_to_deep_at_count_2(): void
+    {
+        $title = 'Title';
+        $contentA = 'Ягуари є верхівковими хижаками.';
+        $contentB = 'Ягуари є вищими хижаками.';
+        $hashesA = array_keys(SentenceHasher::hashSentences($title, $contentA));
+        $hashesB = array_keys(SentenceHasher::hashSentences($title, $contentB));
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $contentB,
+            'analysis_count' => 5,
+            'content_hashes' => [
+                'cycles' => [
+                    ['hashes' => $hashesA],
+                    ['hashes' => $hashesB],
+                ],
+                'flipflop_ni_count' => 1, // one prior flip-flop-only detection
+            ],
+            'is_deep' => false,
+        ]);
+        $this->mockNewsFind($news);
+        $this->mockTelegramRequest();
+        // Editor returns state A (flip-flop), variant selector picks A
+        $this->fakeOpenAiResponses([
+            "# $title\n$contentA",
+            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
+        ]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // Counter incremented to 2 → flip-flop escalation to deep
+        $this->assertTrue($news->is_deep);
+        $this->assertSame(0, $news->analysis_count);
+        $this->assertNull($news->content_hashes);
+        $this->assertNull($news->previous_analysis);
+        $this->assertFalse($news->is_deepest);
+        Queue::assertPushed(AnalyzeNewsJob::class);
+    }
+
+    // --- Test 12: Flip-flop escalation to deepest at count=2 (already deep) ---
+
+    public function test_flipflop_escalation_to_deepest_at_count_2(): void
+    {
+        $title = 'Title';
+        $contentA = 'Ягуари є верхівковими хижаками.';
+        $contentB = 'Ягуари є вищими хижаками.';
+        $hashesA = array_keys(SentenceHasher::hashSentences($title, $contentA));
+        $hashesB = array_keys(SentenceHasher::hashSentences($title, $contentB));
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $contentB,
+            'analysis_count' => 3,
+            'content_hashes' => [
+                'cycles' => [
+                    ['hashes' => $hashesA],
+                    ['hashes' => $hashesB],
+                ],
+                'flipflop_ni_count' => 1,
+            ],
+            'is_deep' => true, // already deep
+            'is_deepest' => false,
+        ]);
+        $this->mockNewsFind($news);
+        $this->mockTelegramRequest();
+        // Editor returns state A (flip-flop), variant selector picks A
+        $this->fakeOpenAiResponses([
+            "# $title\n$contentA",
+            CreateResponse::fake(['choices' => [['message' => ['content' => '{"1": "A"}']]]])
+        ]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // Counter incremented to 2 → flip-flop escalation to deepest (already deep)
+        $this->assertTrue($news->is_deepest);
+        $this->assertFalse($news->is_auto);
+        $this->assertNull($news->content_hashes);
+        $this->assertNull($news->previous_analysis);
+        Queue::assertNotPushed(AnalyzeNewsJob::class); // stops, no more dispatching
+    }
+
+    // --- Test 13: Zero-change cycles do not affect flipflop_ni_count ---
+
+    public function test_zero_changes_do_not_affect_flipflop_ni_count(): void
+    {
+        $title = 'Same Title';
+        $content = 'Same content.';
+        $hashTexts = SentenceHasher::hashSentences($title, $content);
+
+        $news = $this->makeNewsObject([
+            'publish_title' => $title,
+            'publish_content' => $content,
+            'content_hashes' => [
+                'cycles' => [
+                    ['hashes' => array_keys($hashTexts)],
+                    ['hashes' => array_keys($hashTexts)],
+                ],
+                'flipflop_ni_count' => 1, // had a flip-flop before
+            ],
+        ]);
+        $this->mockNewsFind($news);
+        // Editor returns identical content (zero changes)
+        $this->fakeOpenAiResponses(["# $title\n$content"]);
+
+        $job = new ApplyNewsAnalysisJob(1);
+        $job->handle();
+
+        // Counter persists at 1 — zero-change path does not modify content_hashes
+        $this->assertSame(1, $news->content_hashes['flipflop_ni_count']);
+        $this->assertFalse($news->is_deep);
+        Queue::assertPushed(AnalyzeNewsJob::class);
+    }
 }

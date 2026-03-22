@@ -106,6 +106,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                     // Detect flip-flops
                     $detection = SentenceHasher::detectFlipFlops($currentHashes, $cycles);
+                    $allChangesAreFlipFlops = $detection['flipflop_changes'] > 0
+                        && $detection['flipflop_changes'] === count($detection['additions']);
 
                     if ($detection['total_changes'] === 0) {
                         // No changes — applier produced identical content, let analyzer re-evaluate
@@ -177,9 +179,19 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     }
 
                     if ($detection['total_changes'] > 0) {
+                        // Consecutive all-flip-flop cycles signal the applier is stuck; 2+ triggers early escalation
+                        // Removals are not checked — they are the replaced side of sentence swaps, not independent changes
+                        $flipflopNiCount = $stored['flipflop_ni_count'] ?? 0;
+                        if ($allChangesAreFlipFlops) {
+                            $flipflopNiCount++;
+                            Log::info("$model->id: All changes are flip-flops at analysis_count $model->analysis_count, flipflop_ni_count: $flipflopNiCount");
+                        } else {
+                            $flipflopNiCount = 0;
+                        }
+
                         // Save content and hashes — post-iteration check dispatches AnalyzeNewsJob
                         $cycles[] = ['hashes' => $currentHashes];
-                        $model->content_hashes = ['cycles' => $cycles];
+                        $model->content_hashes = ['cycles' => $cycles, 'flipflop_ni_count' => $flipflopNiCount];
                         $model->previous_analysis = $model->analysis;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis = null;
@@ -194,38 +206,14 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
             if (empty($model->analysis)) {
                 if ($model->is_auto) {
-                   if ($model->analysis_count < ($model->platform == 'article' ? 32 : 16)) {
-                       AnalyzeNewsJob::dispatch($model->id);
-                   } else {
-                       if (!$model->is_deep) {
-                           $model->is_deep = true;
-                           $model->analysis_count = 0;
-                           $model->content_hashes = null;
-                           $model->previous_analysis = null;
-                           $model->save();
-
-                           Request::sendMessage([
-                               'chat_id' => explode(',', config('telegram.admins'))[0],
-                               'reply_to_message_id' => $model->message_id,
-                               'text' => 'Deep analysis limit reached without success',
-                               'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                           ]);
-
-                           AnalyzeNewsJob::dispatch($model->id);
-                       } else {
-                           $model->is_auto = false;
-                           $model->content_hashes = null;
-                           $model->previous_analysis = null;
-                           $model->save();
-
-                           Request::sendMessage([
-                               'chat_id' => explode(',', config('telegram.admins'))[0],
-                               'reply_to_message_id' => $model->message_id,
-                               'text' => 'Deepest analysis limit reached without success',
-                               'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
-                           ]);
-                       }
-                   }
+                    $storedNiCount = $model->content_hashes['flipflop_ni_count'] ?? 0;
+                    if ($storedNiCount >= 2) {
+                        $this->escalate($model, 'Flip-flop escalation to deep', 'Flip-flop escalation — deepest analysis needed');
+                    } elseif ($model->analysis_count < ($model->platform == 'article' ? 32 : 16)) {
+                        AnalyzeNewsJob::dispatch($model->id);
+                    } else {
+                        $this->escalate($model, 'Deep analysis limit reached without success', 'Deepest analysis limit reached without success');
+                    }
                 }
 
                 break;
@@ -233,4 +221,39 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         }
     }
 
+    /**
+     * @throws TelegramException
+     */
+    private function escalate($model, string $deepText, string $deepestText): void
+    {
+        $model->content_hashes = null;
+        $model->previous_analysis = null;
+
+        if (!$model->is_deep) {
+            $model->is_deep = true;
+            $model->analysis_count = 0;
+            $model->save();
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => $deepText,
+                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            ]);
+
+            AnalyzeNewsJob::dispatch($model->id);
+        } else {
+            // is_deepest aligns with AnalyzeNewsJob:419 — old cycle-limit path omitted this (bug)
+            $model->is_deepest = true;
+            $model->is_auto = false;
+            $model->save();
+
+            Request::sendMessage([
+                'chat_id' => explode(',', config('telegram.admins'))[0],
+                'reply_to_message_id' => $model->message_id,
+                'text' => $deepestText,
+                'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
+            ]);
+        }
+    }
 }
