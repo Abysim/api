@@ -401,6 +401,7 @@ class NewsController extends Controller
             }
 
             $accumulateMetrics();
+            DailyStat::flushCache();
 
             if ($interSpeciesDelay > 0) {
                 Sleep::for($interSpeciesDelay)->seconds();
@@ -423,6 +424,7 @@ class NewsController extends Controller
                 }
 
                 $accumulateMetrics();
+                DailyStat::flushCache();
 
                 if ($interSpeciesDelay > 0) {
                     Sleep::for($interSpeciesDelay)->seconds();
@@ -442,6 +444,7 @@ class NewsController extends Controller
             $query = $this->service->generateSearchQuery($batchWords, []);
             $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
             $accumulateMetrics();
+            DailyStat::flushCache();
         }
 
         // Rate-limited Telegram alerts for FreeNews
