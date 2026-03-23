@@ -27,7 +27,7 @@ class TelegramCustomFetchCommand extends TelegramFetchCommand
         $this->callSilent('telegram:delete-webhook');
 
         $options = [
-            'timeout' => 30
+            'timeout' => 10
         ];
 
         if ($this->option('all-update-types')) {
