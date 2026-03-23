@@ -77,16 +77,19 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
 ## Gotchas
-- **NEVER redeclare properties defined by Laravel traits** — `Queueable` defines `public $connection`, `public $queue`, etc. Redeclaring with a different type OR a different default value causes a **fatal error** ("definition differs and is considered incompatible"). To override: set the value in the constructor (`$this->connection = 'long_running'`), never as a class property.
+- **NEVER redeclare properties defined by Laravel traits** — `Queueable` defines `public $connection`, `public $queue`, etc. Redeclaring with a different type OR a different default value causes a **fatal error** ("definition differs and is considered incompatible"). To override: set the value in the constructor (`$this->connection = 'some_connection'`), never as a class property.
 - **PHP-only stack** — no Python/Node dependencies; everything must run in pure PHP on shared hosting
 - **Verify vendor packages on bigcats** after deploy — `composer install --no-dev` may skip packages
 - **Single cron entry on bigcats**: `* * * * * php artisan schedule:run` — ALL scheduling is inside Laravel `Kernel.php`, no external cron entries
 - **`NewsStatus` is an int-backed enum** (`app/Enums/NewsStatus.php`) — use integer values (not strings) in tinker/raw queries: CREATED=0, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, BEING_PROCESSED=10
+- **`DailyStat::flushCache()` runs after each species in `loadNews()`** — fetch counters (raw_http, jina, diffbot, scraperapi) accumulate via `Cache::increment()` during extraction but only persist to DB on flush. If flush calls are removed or the process dies before them, the dashboard "Content Fetching Today" shows 0.
+- **`gc_collect_cycles()` after each species fetch** — the HTML5 parser (masterminds/html5) used by Readability creates circular references that PHP's refcount GC doesn't reclaim. Without explicit GC, memory accumulates across species iterations and can exceed the 128MB limit, killing the process.
 - **`FlickrPhotoController::process()` chains into `NewsController::process()`** — the `flickr-photo` hourly scheduler command is the trigger for automated news loading, not a separate cron. Trace: `Kernel.php` → `flickr-photo` (hourly) → `FlickrPhotoController::process()` → `app(NewsController::class)->process()`
 - **When `.env` changes on bigcats**, always run `php artisan config:cache` (not just `config:clear`) — Laravel may serve cached config otherwise
 - **NEVER run `queue:retry all`** — this re-queues ALL failed jobs at once and can flood the queue with hundreds of stale jobs, blocking the entire pipeline. Always inspect failed jobs first with `DB::table('failed_jobs')->get()` and retry specific jobs by UUID: `php artisan queue:retry <uuid>`. There is no valid reason to blindly retry all failed jobs.
-- **Queue workers** spawn via `queue:work --max-time=180` every minute in Kernel.php — multiple workers run concurrently. Jobs with long timeouts (e.g. `NewsJob` at 3500s) can monopolize a worker
-- **`long_running` queue connection** (`config/queue.php`): `retry_after=1800` (30 min). Used by `AnalyzeNewsJob` via `$connection` property. Separate from `default` queue (`retry_after=180`) to prevent job row deletion during 2h batch polling. Workers spawned separately in Kernel.php.
+- **Queue workers use `runInBackground()`** in Kernel.php — this is critical to prevent `schedule:run` parent processes from piling up (~89MB each). Without it, each `schedule:run` waits 180s for foreground workers, stacking 6+ schedulers consuming ~534MB. NEVER remove `runInBackground()` and NEVER add additional queue worker lines — a previous attempt to add separate `long_running` workers doubled process count, pushed memory from ~400MB to ~700MB, and caused cPanel to kill the `flickr-photo` news fetching process.
+- **Single queue with `retry_after=1800`** (`config/queue.php`) — all jobs including `AnalyzeNewsJob` and `ApplyNewsAnalysisJob` use the default `database` connection. PID guards handle retry_after collisions (alive → release, dead → resume from cached state). No separate `long_running` queue.
+- **cPanel process killer** — shared hosting (1GB RAM, 128MB PHP memory_limit) kills processes exceeding memory/CPU thresholds. The `flickr-photo` command runs 20-50 minutes; reducing memory pressure (fewer workers, GC between species, blocking junk domains) is essential for run completion. On 2026-03-22, 6/16 hourly runs were killed before completing.
 - **MariaDB `XOR` is LOGICAL, not bitwise** — `XOR` returns 0 or 1 (boolean), `^` is the bitwise XOR operator. Always use `^` for bit operations: `BIT_COUNT(col ^ ?)`, never `BIT_COUNT(col XOR ?)`
 - **`composer install` on bigcats runs `filament:upgrade`** which clears config cache — always run `php artisan config:cache` after
 - **`FlickrPhotoStatus` is an int-backed enum** — CREATED=0, REJECTED_BY_TAG=1, REJECTED_BY_CLASSIFICATION=2, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, PUBLISHED=6, REMOVED_BY_AUTHOR=7, REJECTED_BY_DUPLICATION=8
@@ -112,6 +115,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Scrape.do and ScraperAPI** return raw HTML — goes through Readability extraction as before
 - **Config**: `config/scraper.php` — `JINA_URL`, `SCRAPEDO_URL`/`SCRAPEDO_KEY`, `SCRAPER_URL`/`SCRAPER_KEY`
 - **Empty API keys** cause the step to be silently skipped
+- **`blocked_domains.json`** (`resources/json/news/blocked_domains.json`): domains skipped entirely during content extraction. E-commerce/fashion sites (eBay, Amazon, etc.) pass Google News keyword filters but waste 30-60s + memory on the 4-step extraction chain for zero useful content. Add new junk domains here when they appear in logs.
 - `FileHelper::getUrl()` is NOT used by `extractContent()` — it has its own inline chain. `FileHelper::getUrl()` is still used by other callers (e.g. GoogleNewsUrlDecoder)
 - **`news:clear-url-cache`** artisan command clears cached news URLs without flushing other cache entries
 
@@ -129,7 +133,7 @@ Pet project that supports other projects. Laravel 10 API application.
 1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
 2. `ApplyNewsAnalysisJob` applies edits, clears `analysis` → dispatches `AnalyzeNewsJob` (which increments `analysis_count` at line 280 when it saves the result)
 3. Steps 1-2 repeat. Cycle limit checked in `ApplyNewsAnalysisJob`: **32** for `platform=='article'`, **16** for others
-4. **Known gap — orphaned articles**: Articles can get stuck at `status=10` (BEING_PROCESSED) with no pending job. Two causes: (a) all 4 inner-loop iterations throw caught exceptions and the for-loop exits silently, (b) **`retry_after=180` collision** — the database queue re-releases a reserved job after 180s while the original worker is still running. A second worker picks it up, the guard clause (`status != PENDING_REVIEW`) returns early, Laravel treats it as "success" and **deletes the job row**. The original worker continues but the job is gone. This affects any job running >180s (AnalyzeNewsJob, NewsJob). Check for orphans: `News::where('status', 10)->where('updated_at', '<', now()->subMinutes(30))->where('is_auto', true)->get(['id','analysis_count'])`
+4. **Known gap — orphaned articles**: Articles can get stuck at `status=10` (BEING_PROCESSED) with no pending job. Two causes: (a) all 4 inner-loop iterations throw caught exceptions and the for-loop exits silently, (b) **`retry_after=1800` collision** — the database queue re-releases a reserved job after 1800s while the original worker is still running. A second worker picks it up, the guard clause (`status != PENDING_REVIEW`) returns early, Laravel treats it as "success" and **deletes the job row**. The original worker continues but the job is gone. This affects jobs running >1800s (AnalyzeNewsJob with deep analysis). Check for orphans: `News::where('status', 10)->where('updated_at', '<', now()->subMinutes(30))->where('is_auto', true)->get(['id','analysis_count'])`
 5. **Escalation to deep**: two paths trigger `is_deep=true` + `analysis_count=0` + re-dispatch:
    - `AnalyzeNewsJob`: analysis says "Ні" (No) → escalates to deep immediately
    - `ApplyNewsAnalysisJob`: cycle limit exceeded → escalates to deep
@@ -160,7 +164,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **"Ні" two-strike confirmation is essential**: when `i=0` returns "Ні", the code retries at `i=1` before escalating. Both i=0 and i=1 use direct OpenAI (OpenRouter only at i>=2). ~36% of "Ні" results flip to "Так" on retry — do NOT suggest removing this as an optimization
 
 ### AnalyzeNewsJob kill recovery
-- **PID guard**: On `retry_after` re-release, guard checks `posix_kill($pid, 0)` from cached state. Alive → `release()`. Dead → resume from cached `$i`/`$j` + Telegram notification.
+- **PID guard**: On `retry_after` re-release (1800s), guard checks `posix_kill($pid, 0)` from cached state. Alive → `release()`. Dead → resume from cached `$i`/`$j` + Telegram notification.
 - **Cache state**: `Cache::get('analyze_job_state_{id}')` stores `{pid, i, j, batch_id, poll_start_time}`. Updated every polling iteration (30s). TTL = `TIMEOUT` (7200s).
 - **Scheduler safety net**: `news:resume-orphaned` runs every 5 min, catches articles stuck at `BEING_PROCESSED` longer than `TIMEOUT` with no live worker PID.
 
