@@ -290,22 +290,25 @@ class AnalyzeNewsJob implements ShouldQueue
                                         break;
                                     }
 
-                                    $response = $this->anthropicHttp($sleep)
+                                    $batchResult = $this->anthropicHttp($sleep)
                                         ->get($response->results_url)
                                         ->object();
 
-                                    if (empty($response->result->message)) {
+                                    if (empty($batchResult->result->message)) {
                                         throw new Exception(
                                             "$model->id: News analysis failed to get batch result $model->analysis_count $i: "
-                                            . json_encode($response, JSON_UNESCAPED_UNICODE)
+                                            . json_encode($batchResult, JSON_UNESCAPED_UNICODE)
                                         );
                                     }
 
-                                    $response = $response->result->message;
+                                    $response = $batchResult->result->message;
                                     break;
                                 }
                             } catch (Exception $e) {
                                 Log::error("$model->id: News analysis batch failed $model->analysis_count $i: {$e->getMessage()}");
+                                if (isset($response->processing_status) && $response->processing_status == 'ended') {
+                                    continue 2;
+                                }
                             }
 
                             $currentTime = now();
