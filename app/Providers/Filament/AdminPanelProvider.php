@@ -22,10 +22,18 @@ class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
     {
-        return $panel
+        $panel = $panel
             ->default()
             ->id('admin')
-            ->path('admin')
+            ->path('admin');
+
+        // Skip expensive discovery in CLI (queue workers, artisan commands)
+        // Saves ~10-20MB per worker by avoiding glob scans + class loading
+        if ($this->app->runningInConsole()) {
+            return $panel;
+        }
+
+        return $panel
             ->login()
             ->colors([
                 'primary' => Color::Amber,

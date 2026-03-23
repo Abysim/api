@@ -14,7 +14,7 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('telegram:custom-fetch')->runInBackground()->everyMinute();
         $schedule->command('flickr-photo')->withoutOverlapping()->runInBackground()->hourly();
-        $schedule->command('queue:work --max-time=180')->runInBackground()->everyMinute();
+        $schedule->command('queue:work-dynamic --max-workers=4 --max-time=55')->runInBackground()->everyMinute();
         $schedule->command('news:resume-orphaned')->everyFiveMinutes()->withoutOverlapping();
     }
 
