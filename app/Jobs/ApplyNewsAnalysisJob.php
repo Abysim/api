@@ -146,13 +146,15 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     if ($originalSentenceCount !== $newSentenceCount) {
                         Log::warning("$model->id: Applier changed sentence count from $originalSentenceCount to $newSentenceCount at analysis_count $model->analysis_count $i");
                         try {
+                            $corrections = self::extractCorrectionsList($model->analysis);
                             $verifyResponse = OpenAI::chat()->create([
                                 'model' => 'gpt-5-mini',
                                 'messages' => [
-                                    ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом.'],
+                                    ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом, враховуючи список виправлень. Об\'єднання або розділення речень, вказане у виправленнях, є очікуваною зміною кількості речень.'],
                                     ['role' => 'user', 'content' => "Оригінал:\n" . $model->publish_title . "\n\n" . $model->publish_content
                                         . "\n\n---\nВиправлений:\n" . $newTitle . "\n\n" . $newContent
-                                        . "\n\n---\nЧи є випадкові видалення, додавання або зміни слів поза межами вказаних виправлень? Відповідай ТІЛЬКИ: OK або список проблем."],
+                                        . "\n\n---\nВказані виправлення:\n" . $corrections
+                                        . "\n\n---\nЧи є у виправленому тексті зміни, які НЕ відповідають вказаним виправленням (випадкові видалення, додавання або заміни)? Якщо всі зміни відповідають виправленням — відповідай OK. Інакше — перелічи лише ті зміни, які виходять за межі виправлень."],
                                 ],
                             ]);
                             $verifyResult = trim($verifyResponse->choices[0]->message->content ?? '');
@@ -335,5 +337,20 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 'reply_markup' => new InlineKeyboard([['text' => '❌Delete', 'callback_data' => 'delete']]),
             ]);
         }
+    }
+
+    public static function extractCorrectionsList(string $analysis): string
+    {
+        $stripped = preg_replace('/^\s*\*{0,2}Так\.?\*{0,2}\s*/u', '', $analysis);
+        $stripped = preg_replace('/\*\*(.+?)\*\*/u', '$1', $stripped);
+        $stripped = preg_replace('/^#{1,4}\s+.+$/mu', '', $stripped);
+
+        preg_match_all('/^\s*(?:\d+\.|-)\s+.+$/mu', $stripped, $matches);
+
+        if (empty($matches[0])) {
+            return $analysis;
+        }
+
+        return implode("\n", array_map('trim', $matches[0]));
     }
 }

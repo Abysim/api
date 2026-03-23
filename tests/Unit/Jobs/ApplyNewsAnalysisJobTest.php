@@ -547,4 +547,70 @@ class ApplyNewsAnalysisJobTest extends TestCase
         $this->assertFalse($news->is_deep);
         Queue::assertPushed(AnalyzeNewsJob::class);
     }
+
+    // --- extractCorrectionsList tests ---
+
+    public function test_extract_corrections_numbered_with_bold_and_headers(): void
+    {
+        $analysis = "Так.\n\n**Орфографічна помилка:**\n\n1. **«вічноземельних»** → **«вічнозелених»** — слова «вічноземельний» не існує.\n\n**Граматичні помилки:**\n\n2. **«островів Балі та Ява»** → **«островів Балі та Яви»** — родовий відмінок.";
+
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList($analysis);
+
+        $this->assertStringContainsString('вічноземельних', $result);
+        $this->assertStringContainsString('островів Балі та Яви', $result);
+        $this->assertStringNotContainsString('**', $result);
+        $this->assertStringNotContainsString('Орфографічна помилка', $result);
+        $this->assertStringNotContainsString('Граматичні помилки', $result);
+        $this->assertSame(2, substr_count($result, "\n") + 1);
+    }
+
+    public function test_extract_corrections_with_markdown_headers(): void
+    {
+        $analysis = "Так.\n\n### Чергування і/й\n\n1. **«довгі, і часто»** → **«довгі, й часто»** — після голосної.\n\n### Чергування у/в\n\n2. **«а у прохолодніших»** → **«а в прохолодніших»** — після голосної.";
+
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList($analysis);
+
+        $this->assertStringContainsString('довгі, й часто', $result);
+        $this->assertStringContainsString('а в прохолодніших', $result);
+        $this->assertStringNotContainsString('###', $result);
+        $this->assertStringNotContainsString('**', $result);
+    }
+
+    public function test_extract_corrections_simple_numbered_no_headers(): void
+    {
+        $analysis = "Так.\n\n1. «у світі» → «в світі» — чергування у/в.\n2. «і зник» → «й зник» — чергування і/й.";
+
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList($analysis);
+
+        $this->assertStringContainsString('у світі', $result);
+        $this->assertStringContainsString('і зник', $result);
+        $this->assertSame(2, substr_count($result, "\n") + 1);
+    }
+
+    public function test_extract_corrections_prose_fallback(): void
+    {
+        $analysis = 'Так. Виправлення: «у світі» → «в світі»';
+
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList($analysis);
+
+        // Prose format has no numbered items — falls back to full analysis
+        $this->assertSame($analysis, $result);
+    }
+
+    public function test_extract_corrections_dash_prefixed(): void
+    {
+        $analysis = "Так.\n\n- «у світі» → «в світі» — чергування у/в\n- «і зник» → «й зник» — чергування і/й";
+
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList($analysis);
+
+        $this->assertStringContainsString('у світі', $result);
+        $this->assertStringContainsString('і зник', $result);
+        $this->assertSame(2, substr_count($result, "\n") + 1);
+    }
+
+    public function test_extract_corrections_empty_input(): void
+    {
+        $result = ApplyNewsAnalysisJob::extractCorrectionsList('');
+        $this->assertSame('', $result);
+    }
 }
