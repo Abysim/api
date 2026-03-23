@@ -57,7 +57,10 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                 $this->release(config('queue.connections.database.retry_after'));
                 return;
             }
-            // Dead worker — resume
+            // Dead worker — resume, but only if there's actually work to apply
+            if (empty($model->analysis) || Str::substr(trim($model->analysis, '*# '), 0, 2) == 'Ні') {
+                return; // Stale job — article moved past Apply phase
+            }
             $model->touch();
             Log::warning("$model->id: Resuming orphaned apply job");
             if (!empty($model->message_id)) {
