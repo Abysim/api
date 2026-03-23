@@ -149,6 +149,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                             $corrections = self::extractCorrectionsList($model->analysis);
                             $verifyResponse = OpenAI::chat()->create([
                                 'model' => 'gpt-5-mini',
+                                'reasoning_effort' => 'high',
                                 'messages' => [
                                     ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом, враховуючи список виправлень. Об\'єднання або розділення речень, вказане у виправленнях, є очікуваною зміною кількості речень.'],
                                     ['role' => 'user', 'content' => "Оригінал:\n" . $model->publish_title . "\n\n" . $model->publish_content
