@@ -15,6 +15,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -22,6 +23,8 @@ use Illuminate\Support\Str;
 class TranslateNewsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public const CACHE_KEY_PREFIX = 'translate_job_state_';
 
     public int $tries = 2;
 
@@ -37,11 +40,28 @@ class TranslateNewsJob implements ShouldQueue
     public function handle(): void
     {
         $model = News::find($this->id);
-        if ($model->is_translated || $model->status == NewsStatus::BEING_PROCESSED) {
+        if (!$model) {
             return;
         }
+
+        // PID guard — detect duplicate execution from retry_after re-release
+        if ($model->status == NewsStatus::BEING_PROCESSED) {
+            $state = Cache::get(self::CACHE_KEY_PREFIX . $this->id);
+            $pid = $state['pid'] ?? null;
+            if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
+                $this->release(config('queue.connections.database.retry_after'));
+                return;
+            }
+            // Dead worker — let it restart translation
+            $model->touch();
+            Log::warning("$model->id: Resuming orphaned translate job");
+        } elseif ($model->is_translated) {
+            return;
+        }
+
         $model->status = NewsStatus::BEING_PROCESSED;
         $model->save();
+        Cache::put(self::CACHE_KEY_PREFIX . $this->id, ['pid' => getmypid()], $this->timeout + 120);
 
         for ($i = 0; $i < 4; $i++) {
             try {
@@ -88,6 +108,8 @@ class TranslateNewsJob implements ShouldQueue
             }
 
             if ($model->is_translated) {
+                Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
+
                 if ($model->is_auto) {
                     AnalyzeNewsJob::dispatch($model->id);
                 }
@@ -95,5 +117,7 @@ class TranslateNewsJob implements ShouldQueue
                 break;
             }
         }
+
+        Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
     }
 }
