@@ -99,7 +99,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => $i % 2 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
+                    'model' => $i > 1 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
                         [
@@ -110,7 +110,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     ],
                 ];
 
-                if ($i % 2) {
+                if ($i > 1) {
                     $params['provider'] = ['require_parameters' => true];
                     $params['reasoning'] = ['effort' => 'high'];
                     $response = AI::client('openrouter')->chat()->create($params);
