@@ -37,6 +37,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
     public function __construct(private readonly int $id)
     {
+        $this->connection = 'long_running';
     }
 
     /**
@@ -54,7 +55,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             $state = Cache::get(self::CACHE_KEY_PREFIX . $this->id);
             $pid = $state['pid'] ?? null;
             if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
-                $this->release(config('queue.connections.database.retry_after'));
+                $this->release(config('queue.connections.long_running.retry_after'));
                 return;
             }
             // Dead worker — resume, but only if there's actually work to apply
@@ -94,7 +95,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             NewsController::getPrompt('editor', $isScience)
         );
 
-        $sentenceGuardRetried = false;
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
@@ -109,6 +109,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         ],
                     ],
                 ];
+                $originalSentenceCount = count(SentenceHasher::splitSentences($model->publish_content));
 
                 if ($i > 1) {
                     $params['provider'] = ['require_parameters' => true];
@@ -126,11 +127,14 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
                 if (!empty($response->choices[0]->message->content)) {
                     $model->refresh();
-                    $originalSentenceCount = count(SentenceHasher::splitSentences($model->publish_content));
+                    if ($model->status != NewsStatus::BEING_PROCESSED) {
+                        Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
+                        return;
+                    }
                     $content = trim(Str::after($response->choices[0]->message->content, '```markdown'));
-                    [$title, $content] = explode("\n", $content, 2);
-                    $newTitle = trim($title, '*# ');
-                    $newContent = trim(trim($content, '`'));
+                    $parts = explode("\n", $content, 2);
+                    $newTitle = trim($parts[0], '*# ');
+                    $newContent = trim(trim($parts[1] ?? '', '`'));
                     $newContent = preg_replace('/\s*(\n\s*---\s*)+\s*$/', '', $newContent);
 
                     // Per-sentence oscillation detection
@@ -140,8 +144,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     // Sentence count guard — detect accidental deletions/additions by applier
                     // hashSentences includes one title: entry; subtract it to compare content-only counts
                     $newSentenceCount = count($hashTexts) - 1;
-                    if (!$sentenceGuardRetried && $originalSentenceCount !== $newSentenceCount) {
-                        $sentenceGuardRetried = true;
+                    if ($originalSentenceCount !== $newSentenceCount) {
                         Log::warning("$model->id: Applier changed sentence count from $originalSentenceCount to $newSentenceCount at analysis_count $model->analysis_count $i");
                         try {
                             $verifyResponse = OpenAI::chat()->create([
@@ -154,12 +157,13 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                                 ],
                             ]);
                             $verifyResult = trim($verifyResponse->choices[0]->message->content ?? '');
-                            if ($verifyResult !== 'OK') {
+                            if (!preg_match('/^\*{0,2}OK\b/i', $verifyResult)) {
                                 Log::warning("$model->id: Diff verification found issues: $verifyResult, retrying");
                                 continue;
                             }
                         } catch (Exception $e) {
-                            Log::warning("$model->id: Diff verification failed: {$e->getMessage()}, accepting result");
+                            Log::warning("$model->id: Diff verification failed: {$e->getMessage()}, retrying");
+                            continue;
                         }
                     }
 
@@ -273,7 +277,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             if (empty($model->analysis)) {
                 Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
                 if ($model->is_auto) {
-                    $storedNiCount = $model->content_hashes['flipflop_ni_count'] ?? 0;
+                    $storedNiCount = is_array($model->content_hashes) ? ($model->content_hashes['flipflop_ni_count'] ?? 0) : 0;
                     if ($storedNiCount >= 2) {
                         $this->escalate($model, 'Flip-flop escalation to deep', 'Flip-flop escalation — deepest analysis needed');
                     } elseif ($model->analysis_count < ($model->platform == 'article' ? 32 : 16)) {
@@ -287,6 +291,12 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             }
         }
 
+        if (!empty($model->analysis)) {
+            Log::error("$model->id: All 4 apply iterations failed, resetting to PENDING_REVIEW");
+            $model->status = NewsStatus::PENDING_REVIEW;
+            $model->save();
+        }
+
         Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
     }
 
@@ -298,6 +308,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
         Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
         $model->content_hashes = null;
         $model->previous_analysis = null;
+        $model->analysis = null;
 
         if (!$model->is_deep) {
             $model->is_deep = true;

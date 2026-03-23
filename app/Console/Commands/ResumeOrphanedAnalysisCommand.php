@@ -8,6 +8,7 @@ use App\Jobs\ApplyNewsAnalysisJob;
 use App\Models\News;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class ResumeOrphanedAnalysisCommand extends Command
 {
@@ -35,14 +36,22 @@ class ResumeOrphanedAnalysisCommand extends Command
                 }
             }
 
+            $lockKey = 'orphan_dispatched_' . $article->id;
+            if (Cache::has($lockKey)) {
+                $this->info("Skipping article {$article->id} — already dispatched recently");
+                continue;
+            }
+
             AnalyzeNewsJob::dispatch($article->id);
+            Cache::put($lockKey, true, 600);
+            Log::warning("Orphan recovery: dispatched AnalyzeNewsJob for article {$article->id}");
             $this->info("Dispatched analyze resume for article {$article->id}");
         }
 
         // Apply orphans: status=10, analysis set (applier was running)
         $applyOrphaned = News::where('status', NewsStatus::BEING_PROCESSED)
             ->whereNotNull('analysis')
-            ->where('updated_at', '<', now()->subSeconds(ApplyNewsAnalysisJob::TIMEOUT + 60))
+            ->where('updated_at', '<', now()->subSeconds(300))
             ->where('updated_at', '>', now()->subWeek())
             ->where('is_auto', true)
             ->get();
@@ -57,7 +66,15 @@ class ResumeOrphanedAnalysisCommand extends Command
                 }
             }
 
+            $lockKey = 'orphan_dispatched_' . $article->id;
+            if (Cache::has($lockKey)) {
+                $this->info("Skipping article {$article->id} — already dispatched recently");
+                continue;
+            }
+
             ApplyNewsAnalysisJob::dispatch($article->id);
+            Cache::put($lockKey, true, 600);
+            Log::warning("Orphan recovery: dispatched ApplyNewsAnalysisJob for article {$article->id}");
             $this->info("Dispatched apply resume for article {$article->id}");
         }
     }
