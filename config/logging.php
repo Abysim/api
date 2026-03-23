@@ -60,6 +60,7 @@ return [
 
         'single' => [
             'driver' => 'single',
+            'tap' => [App\Logging\AddProcessId::class],
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
