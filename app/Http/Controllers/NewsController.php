@@ -402,6 +402,7 @@ class NewsController extends Controller
 
             $accumulateMetrics();
             DailyStat::flushCache();
+            gc_collect_cycles();
 
             if ($interSpeciesDelay > 0) {
                 Sleep::for($interSpeciesDelay)->seconds();
@@ -425,6 +426,7 @@ class NewsController extends Controller
 
                 $accumulateMetrics();
                 DailyStat::flushCache();
+                gc_collect_cycles();
 
                 if ($interSpeciesDelay > 0) {
                     Sleep::for($interSpeciesDelay)->seconds();
@@ -445,6 +447,7 @@ class NewsController extends Controller
             $this->fetchAndSave($query, $lang, $batchKeys, $models, $consecutiveFailures);
             $accumulateMetrics();
             DailyStat::flushCache();
+            gc_collect_cycles();
         }
 
         // Rate-limited Telegram alerts for FreeNews
