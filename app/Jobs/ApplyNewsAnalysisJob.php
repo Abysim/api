@@ -37,7 +37,6 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
     public function __construct(private readonly int $id)
     {
-        $this->connection = 'long_running';
     }
 
     /**
@@ -55,7 +54,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             $state = Cache::get(self::CACHE_KEY_PREFIX . $this->id);
             $pid = $state['pid'] ?? null;
             if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
-                $this->release(config('queue.connections.long_running.retry_after'));
+                $this->release(config('queue.connections.database.retry_after'));
                 return;
             }
             // Dead worker — resume, but only if there's actually work to apply

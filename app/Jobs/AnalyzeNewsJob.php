@@ -38,7 +38,6 @@ class AnalyzeNewsJob implements ShouldQueue
 
     public function __construct(private readonly int $id)
     {
-        $this->connection = 'long_running';
     }
 
     /**
@@ -56,7 +55,7 @@ class AnalyzeNewsJob implements ShouldQueue
                 $pid = $state['pid'] ?? null;
                 if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
                     // Original worker still alive — re-queue for next check
-                    $this->release(config('queue.connections.long_running.retry_after'));
+                    $this->release(config('queue.connections.database.retry_after'));
                     return;
                 }
                 // Original worker is dead — resume this job
