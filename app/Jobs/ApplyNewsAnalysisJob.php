@@ -29,7 +29,9 @@ class ApplyNewsAnalysisJob implements ShouldQueue
 
     public const CACHE_KEY_PREFIX = 'apply_job_state_';
 
-    public int $tries = 2;
+    public int $tries = 0;
+
+    public int $maxExceptions = 2;
 
     public int $timeout = self::TIMEOUT;
 
