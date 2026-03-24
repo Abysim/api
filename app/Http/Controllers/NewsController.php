@@ -183,6 +183,7 @@ class NewsController extends Controller
 
         if (empty($lastPublishedTime) || $lastPublishedTime->diffInMinutes(now()) >= $publishInterval) {
             $news = News::where('status', NewsStatus::APPROVED)
+                ->where('platform', '!=', 'article')
                 ->where(function ($q) {
                     $q->where('platform', '!=', 'FreeNews')
                       ->orWhere('is_content_cleaned', true);
@@ -1147,6 +1148,33 @@ class NewsController extends Controller
                 ['text' => '❌Cancel Approval', 'callback_data' => 'news_cancel ' . $model->id],
             ]),
         ]);
+    }
+
+    public function publishArticle(News $model, Message $message): void
+    {
+        if ($model->status === NewsStatus::PUBLISHED) {
+            return;
+        }
+
+        $result = (new BigCatsService())->publishArticle($model);
+
+        if ($result !== false) {
+            $model->status = NewsStatus::PUBLISHED;
+            $model->published_at = now();
+            $model->save();
+
+            Request::editMessageReplyMarkup([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+                'reply_markup' => new InlineKeyboard([]),
+            ]);
+        } else {
+            Request::sendMessage([
+                'chat_id' => $message->getChat()->getId(),
+                'reply_to_message_id' => $message->getMessageId(),
+                'text' => 'Article not published to BigCats!',
+            ]);
+        }
     }
 
     /**

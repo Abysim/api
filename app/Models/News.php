@@ -167,7 +167,11 @@ class News extends Model
             'callback_data' => 'news_reset ' . $this->id
         ];
         if ($this->language == 'uk' || $this->is_translated && $this->is_deepest) {
-            $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
+            if ($this->platform == 'article') {
+                $secondLine[] = ['text' => '📤Publish', 'callback_data' => 'news_publishArticle ' . $this->id];
+            } else {
+                $secondLine[] = ['text' => '✅Approve', 'callback_data' => 'news_approve ' . $this->id];
+            }
         } else {
             $secondLine[] = $reset;
         }
