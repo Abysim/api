@@ -155,7 +155,8 @@ class QueueWorkDynamic extends Command
     protected function spawnWorker(): void
     {
         $cmd = sprintf(
-            'php %s %s --max-workers=%d --max-time=%d --sleep=%d --memory=%d > /dev/null 2>&1 &',
+            '%s %s %s --max-workers=%d --max-time=%d --sleep=%d --memory=%d > /dev/null 2>&1 &',
+            PHP_BINARY,
             base_path('artisan'),
             $this->getName(),
             $this->option('max-workers'),
