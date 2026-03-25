@@ -6,7 +6,7 @@
 - **Destructive queue/DB operations are FORBIDDEN without user approval** — `queue:retry all`, `DELETE FROM jobs`, `queue:flush`, table truncation, etc. Always show the command and its impact first.
 - **NEVER use `git checkout <file>`, `git restore`, `git reset --hard`, or `git stash`** to revert changes — these destroy ALL uncommitted changes in the file/repo. To revert a specific change, use surgical edits. Only use destructive git commands if the user explicitly requests them by name.
 - **`scp` to bigcats IS a deployment action** — requires the same explicit user approval as any SSH command. Never deploy speculatively.
-- **`queue:restart` kills workers mid-job** — running jobs (especially long AnalyzeNewsJob with batch polling) are terminated when `queue:restart` is issued. Only run after confirming no critical jobs are in progress, or wait for natural worker rotation (~4 min).
+- **`queue:restart` kills workers mid-job** — running jobs (especially long AnalyzeNewsJob with batch polling) are terminated when `queue:restart` is issued. Only run after confirming no critical jobs are in progress, or wait for natural worker rotation (~1 min).
 - **Never reset article status via tinker without approval** — `News::find(X)->update(['status' => ...])` is a production write operation. Always show the command and wait for confirmation.
 
 ## Overview
@@ -25,9 +25,9 @@ Pet project that supports other projects. Laravel 10 API application.
 - **New files** created outside the IDE (e.g. by Claude) do NOT auto-sync — manually `scp` them to bigcats
 - **Modified files** edited by Claude (not via IDE save) also may not auto-sync — verify with `md5sum` comparison between local and remote
 - **No local or staging environment** — bigcats is the only runtime environment
-- **After deploying code changes** to bigcats, queue workers automatically pick up the new code within ~4 minutes (workers restart due to `--max-time=180` in Kernel.php). No manual restart needed — just wait. Optionally run `ssh bigcats "cd ~/api && php artisan queue:restart"` to speed up propagation (graceful, no job loss).
-- **Verifying deployed code is running**: After `scp` + `queue:restart`, the restart only takes effect when the current job finishes. Long-running jobs (`AnalyzeNewsJob` polls for 30s×N) can delay pickup. Always verify with `grep 'expected_new_log_message' storage/logs/laravel.log` before assuming new code is active.
-- **After changing `.env` or config**, run `ssh bigcats "cd ~/api && php artisan config:cache"` — workers will load the new cached config on their next natural restart (~4 min)
+- **After deploying code changes** to bigcats, queue workers pick up new code within ~1 minute. `QueueWorkDynamic` workers are one-shot (process one job then exit) with `--max-time=55`, and the scheduler seeds a new worker every minute. No manual restart needed. `queue:restart` is unnecessary for code deploys.
+- **Verifying deployed code is running**: After `scp`, new workers (spawned every ~1 min) use updated code immediately. A worker mid-job on `AnalyzeNewsJob` won't pick up changes until it finishes and a new worker starts. Verify with `grep 'expected_new_log_message' storage/logs/laravel.log`.
+- **After changing `.env` or config**, run `ssh bigcats "cd ~/api && php artisan config:cache"` — workers will load the new cached config on their next natural restart (~1 min)
 - **NEVER run `queue:retry all` as a "deployment step"** — it does NOT restart workers. It re-queues failed jobs and can flood the queue. Deploying code requires NO queue commands.
 
 ## Database
@@ -90,6 +90,8 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Queue workers use `runInBackground()`** in Kernel.php — this is critical to prevent `schedule:run` parent processes from piling up (~89MB each). Without it, each `schedule:run` waits 180s for foreground workers, stacking 6+ schedulers consuming ~534MB. NEVER remove `runInBackground()` and NEVER add additional queue worker lines — a previous attempt to add separate `long_running` workers doubled process count, pushed memory from ~400MB to ~700MB, and caused cPanel to kill the `flickr-photo` news fetching process.
 - **Single queue with `retry_after=1800`** (`config/queue.php`) — all jobs including `AnalyzeNewsJob` and `ApplyNewsAnalysisJob` use the default `database` connection. PID guards handle retry_after collisions (alive → release, dead → resume from cached state). No separate `long_running` queue.
 - **cPanel process killer** — shared hosting (1GB RAM, 128MB PHP memory_limit) kills processes exceeding memory/CPU thresholds. The `flickr-photo` command runs 20-50 minutes; reducing memory pressure (fewer workers, GC between species, blocking junk domains) is essential for run completion. On 2026-03-22, 6/16 hourly runs were killed before completing.
+- **Multiple PHP binaries on bigcats** — `/usr/local/bin/php` and `/opt/alt/php84/usr/bin/php` coexist. The scheduler/cron uses the alt path. When spawning PHP subprocesses from artisan commands, always use `PHP_BINARY` constant (not bare `php`) to ensure the child uses the same binary, config, and extensions as the parent.
+- **`QueueWorkDynamic` is one-shot** — each worker processes ONE job (`queue:work --once`) then exits. Before taking a job, it spawns a replacement via `exec()` if under `--max-workers` cap. The scheduler (`everyMinute()`) seeds one worker per minute; spawn cascade fills remaining slots. Idle workers exit within 55s (`--max-time`).
 - **MariaDB `XOR` is LOGICAL, not bitwise** — `XOR` returns 0 or 1 (boolean), `^` is the bitwise XOR operator. Always use `^` for bit operations: `BIT_COUNT(col ^ ?)`, never `BIT_COUNT(col XOR ?)`
 - **`composer install` on bigcats runs `filament:upgrade`** which clears config cache — always run `php artisan config:cache` after
 - **`FlickrPhotoStatus` is an int-backed enum** — CREATED=0, REJECTED_BY_TAG=1, REJECTED_BY_CLASSIFICATION=2, PENDING_REVIEW=3, REJECTED_MANUALLY=4, APPROVED=5, PUBLISHED=6, REMOVED_BY_AUTHOR=7, REJECTED_BY_DUPLICATION=8
