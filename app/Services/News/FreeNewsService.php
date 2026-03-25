@@ -24,12 +24,15 @@ class FreeNewsService implements NewsServiceInterface
 
     private const LANG = NewsServiceInterface::DEFAULT_LANG;
 
+    private const DOMAIN_FAIL_THRESHOLD = 3;
+
     private GoogleNewsSource $googleSource;
     private GdeltSource $gdeltSource;
     private GoogleNewsUrlDecoder $urlDecoder;
     private array $dnsCache = [];
     private array $blockedDomains = [];
     private array $blockedUrlPatterns = [];
+    private array $domainFailCounts = [];
     private ?array $cachedExcludedDomains = null;
     private int $lastDecodeTotal = 0;
     private int $lastDecodeSuccess = 0;
@@ -451,6 +454,13 @@ class FreeNewsService implements NewsServiceInterface
                 return $this->buildArticleArray($article, $article['title'], $originalUrl);
             }
 
+            // --- Auto-skip domains that consistently fail all fetch methods ---
+            $domainForTracking = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
+            if ($domainForTracking && ($this->domainFailCounts[$domainForTracking] ?? 0) >= self::DOMAIN_FAIL_THRESHOLD) {
+                Log::info('FreeNews: auto-skipped (domain failed ' . $this->domainFailCounts[$domainForTracking] . ' URLs): ' . $url);
+                return $this->buildArticleArray($article, $article['title'], $url);
+            }
+
             // --- Fallback chain: fetch content ---
             $content = null;
             $author = null;
@@ -581,11 +591,20 @@ class FreeNewsService implements NewsServiceInterface
             // All methods exhausted
             if ($content === null) {
                 Log::warning('FreeNews: all fetch methods failed for ' . $url);
+                if ($domainForTracking) {
+                    $this->domainFailCounts[$domainForTracking] = ($this->domainFailCounts[$domainForTracking] ?? 0) + 1;
+                    if ($this->domainFailCounts[$domainForTracking] === self::DOMAIN_FAIL_THRESHOLD) {
+                        Log::warning('FreeNews: domain auto-blocked for this run (failed ' . self::DOMAIN_FAIL_THRESHOLD . ' URLs): ' . $domainForTracking);
+                    }
+                }
                 return $this->buildArticleArray($article, $article['title'], $url);
             }
 
             return $this->buildArticleArray($article, $content, $url, $author, $image);
         } catch (\Throwable $e) {
+            if (isset($domainForTracking) && $domainForTracking) {
+                $this->domainFailCounts[$domainForTracking] = ($this->domainFailCounts[$domainForTracking] ?? 0) + 1;
+            }
             Log::warning('FreeNews: content extraction failed for ' . $url . ' (original: ' . $originalUrl . '): ' . $e->getMessage());
             return $this->buildArticleArray($article, $article['title'], $originalUrl);
         }
