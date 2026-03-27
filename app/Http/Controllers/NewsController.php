@@ -1134,7 +1134,7 @@ class NewsController extends Controller
             && $model->language === 'uk'
             && !$model->is_content_cleaned
         ) {
-            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+            CleanFreeNewsContentJob::dispatch($model->id);
         }
 
         if (empty($model->filename)) {
@@ -1285,7 +1285,7 @@ class NewsController extends Controller
             return;
         }
 
-        CleanNewsContentJob::dispatch($model->id)->afterResponse();
+        CleanNewsContentJob::dispatch($model->id);
     }
 
     public function translate(News $model, Message $message): void
@@ -1323,10 +1323,10 @@ class NewsController extends Controller
 
     private function dispatchTranslationPipeline(News $model): void
     {
-        if ($model->platform === 'FreeNews') {
-            CleanFreeNewsContentJob::dispatch($model->id)->afterResponse();
+        if ($model->platform === 'FreeNews' && !$model->is_content_cleaned) {
+            CleanFreeNewsContentJob::dispatch($model->id);
         } else {
-            TranslateNewsJob::dispatch($model->id)->afterResponse();
+            TranslateNewsJob::dispatch($model->id);
         }
     }
 
