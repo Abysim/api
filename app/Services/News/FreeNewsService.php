@@ -555,7 +555,42 @@ class FreeNewsService implements NewsServiceInterface
                 }
             }
 
-            // Step 4: ScraperAPI (paid, last resort)
+            // Step 4: VPS Scraper (self-hosted, before paid ScraperAPI)
+            if ($content === null) {
+                $vpsKey = config('scraper.vps_key');
+                if (!empty($vpsKey)) {
+                    try {
+                        $res = Http::timeout(20)->get(config('scraper.vps_url'), [
+                            'api_key' => $vpsKey,
+                            'url' => $url,
+                        ]);
+                        if ($res->status() === 503) {
+                            Log::info('FreeNews: VPS Scraper busy (503) for ' . $url);
+                            throw new \Exception('VPS Scraper busy');
+                        }
+                        if ($res->status() >= 400) {
+                            throw new \Exception('VPS Scraper HTTP ' . $res->status());
+                        }
+                        $vpsHtml = $res->body();
+                        if (!empty($vpsHtml)) {
+                            Log::info('FreeNews: VPS Scraper fetched HTML for ' . $url);
+                            $extracted = $this->extractFromHtml($vpsHtml, $url);
+                            if ($extracted !== null) {
+                                $content = $extracted['content'];
+                                $author = $extracted['author'];
+                                $image = $extracted['image'];
+                                Cache::increment(DailyStat::cacheKey('fetch_vps_scraper'));
+                            } else {
+                                Log::info('FreeNews: VPS Scraper HTML fetched but extraction failed for ' . $url);
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::info('FreeNews: VPS Scraper failed for ' . $url . ': ' . $e->getMessage());
+                    }
+                }
+            }
+
+            // Step 5: ScraperAPI (paid, last resort)
             if ($content === null) {
                 $scraperKey = config('scraper.key');
                 if (!empty($scraperKey)) {

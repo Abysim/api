@@ -28,6 +28,8 @@ class FetchFunnelStats extends StatsOverviewWidget
                 ->icon('heroicon-o-document-text'),
             Stat::make('Diffbot', $stat?->fetch_diffbot ?? 0)
                 ->icon('heroicon-o-cloud'),
+            Stat::make('VPS Scraper', $stat?->fetch_vps_scraper ?? 0)
+                ->icon('heroicon-o-cpu-chip'),
             Stat::make('ScraperAPI', $stat?->fetch_scraperapi ?? 0)
                 ->icon('heroicon-o-server'),
         ];

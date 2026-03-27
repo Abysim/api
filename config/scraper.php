@@ -8,5 +8,7 @@ return [
     // 'scrapedo_key' => env('SCRAPEDO_KEY', ''),
     'diffbot_url' => env('DIFFBOT_URL', 'https://api.diffbot.com/v3/article'),
     'diffbot_token' => env('DIFFBOT_TOKEN', ''),
+    'vps_url' => env('VPSCRAPER_URL', ''),
+    'vps_key' => env('VPSCRAPER_KEY', ''),
 ];
 
