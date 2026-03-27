@@ -50,10 +50,13 @@ class QueueWorkDynamic extends Command
                     break;
                 }
 
-                if (!$this->hasAvailableJob()) {
+                $jobCount = $this->availableJobCount();
+                if ($jobCount === 0) {
                     sleep($sleep);
                     continue;
                 }
+
+                Log::info("[queue:dynamic] Worker {$pid} found {$jobCount} job(s) after " . (time() - $startTime) . "s");
 
                 // Job found — spawn replacement if under cap
                 // Note: TOCTOU race exists between hasAvailableJob() and queue:work --once.
@@ -80,11 +83,16 @@ class QueueWorkDynamic extends Command
 
     protected function hasAvailableJob(): bool
     {
+        return $this->availableJobCount() > 0;
+    }
+
+    protected function availableJobCount(): int
+    {
         return DB::table('jobs')
             ->where('queue', 'default')
             ->whereNull('reserved_at')
             ->where('available_at', '<=', now()->getTimestamp())
-            ->exists();
+            ->count();
     }
 
     protected function registerWorker(int $pid, int $maxWorkers): bool
