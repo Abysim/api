@@ -22,6 +22,7 @@ interface NewsServiceInterface
         'facebook.com',
         'instagram.com',
         'linkedin.com',
+        'flickr.com',
         'reddit.com',
         'espn.com',
     ];
