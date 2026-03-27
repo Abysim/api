@@ -94,6 +94,55 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             NewsController::getPrompt('editor', $isScience)
         );
 
+        // Correction-pair flip-flop detection (sub-sentence level)
+        $correctionPairs = SentenceHasher::extractCorrectionPairs($model->analysis);
+        $priorPairCycles = [];
+        if (is_array($model->content_hashes) && !SentenceHasher::isOldFormat($model->content_hashes)) {
+            foreach (($model->content_hashes['cycles'] ?? []) as $cycle) {
+                $priorPairCycles[] = $cycle['pairs'] ?? [];
+            }
+        }
+        $pairDetection = SentenceHasher::detectPairFlipFlops($correctionPairs, $priorPairCycles);
+        $pairFlipFlops = $pairDetection['flipflops'];
+        $analysisForEditor = $model->analysis;
+        $pairFlipFlopWarning = '';
+        $appliedPairs = array_map(fn($p) => ['old' => $p['old'], 'new' => $p['new']], $correctionPairs);
+
+        if (!empty($pairFlipFlops)) {
+            $warnings = [];
+            foreach ($pairFlipFlops as $ff) {
+                $pair = $correctionPairs[$ff['pair_index']];
+                $warnings[] = "- «{$pair['raw_old']}» → «{$pair['raw_new']}»";
+            }
+            $pairFlipFlopWarning = "\n\nУВАГА — осциляція виправлень (ці виправлення скасовують раніше застосовані, їх пропущено):\n" . implode("\n", $warnings);
+            Log::info("$model->id: Pair flip-flop detected: " . count($pairFlipFlops) . '/' . count($correctionPairs) . ' corrections are reversals');
+
+            foreach ($pairFlipFlops as $ff) {
+                $pair = $correctionPairs[$ff['pair_index']];
+                $analysisForEditor = str_replace($pair['full_match'], '', $analysisForEditor);
+            }
+            $analysisForEditor = preg_replace('/^\s*(?:\d+\.|-)\s*[\n\r]/mu', '', $analysisForEditor);
+            $analysisForEditor = preg_replace('/\n{3,}/', "\n\n", $analysisForEditor);
+
+            // If ALL corrections are flip-flops, short-circuit to "no changes" path
+            if (count($pairFlipFlops) >= count($correctionPairs)) {
+                Log::info("$model->id: All corrections are pair flip-flops, treating as no-change");
+                $model->previous_analysis = $model->analysis . $pairFlipFlopWarning;
+                $model->status = NewsStatus::PENDING_REVIEW;
+                $model->analysis = null;
+                $model->save();
+                Cache::forget(self::CACHE_KEY_PREFIX . $this->id);
+                if ($model->is_auto) {
+                    AnalyzeNewsJob::dispatch($model->id);
+                }
+                return;
+            }
+
+            // Keep only non-flip-flop pairs for storage
+            $flipflopIndices = array_flip(array_column($pairFlipFlops, 'pair_index'));
+            $appliedPairs = array_values(array_filter($appliedPairs, fn($_, $idx) => !isset($flipflopIndices[$idx]), ARRAY_FILTER_USE_BOTH));
+        }
+
         for ($i = 0; $i < 4; $i++) {
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
@@ -104,7 +153,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         [
                             'role' => 'user',
                             'content' => '# ' . $model->publish_title . "\n\n" . $model->publish_content
-                                . "\n\n---\nВиправлення філолога:\n" . $model->analysis,
+                                . "\n\n---\nВиправлення філолога:\n" . $analysisForEditor,
                         ],
                     ],
                 ];
@@ -184,7 +233,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                     if ($detection['total_changes'] === 0) {
                         // No changes — applier produced identical content, let analyzer re-evaluate
                         Log::info("$model->id: No changes at analysis_count $model->analysis_count, letting analyzer re-evaluate");
-                        $model->previous_analysis = $model->analysis;
+                        $model->previous_analysis = $model->analysis . $pairFlipFlopWarning;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis = null;
                         $model->save();
@@ -262,9 +311,9 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         }
 
                         // Save content and hashes — post-iteration check dispatches AnalyzeNewsJob
-                        $cycles[] = ['hashes' => $currentHashes];
+                        $cycles[] = ['hashes' => $currentHashes, 'pairs' => $appliedPairs];
                         $model->content_hashes = ['cycles' => $cycles, 'flipflop_ni_count' => $flipflopNiCount];
-                        $model->previous_analysis = $model->analysis;
+                        $model->previous_analysis = $model->analysis . $pairFlipFlopWarning;
                         $model->status = NewsStatus::PENDING_REVIEW;
                         $model->analysis = null;
                         $model->publish_title = $newTitle;

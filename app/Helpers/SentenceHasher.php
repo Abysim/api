@@ -52,7 +52,12 @@ class SentenceHasher
 
     public static function hash(string $text): string
     {
-        return md5(mb_strtolower(preg_replace('/\s+/', ' ', trim($text))));
+        return md5(self::normalize($text));
+    }
+
+    private static function normalize(string $text): string
+    {
+        return mb_strtolower(preg_replace('/\s+/', ' ', trim($text)));
     }
 
     public static function stripTitlePrefix(string $text): string
@@ -155,5 +160,88 @@ class SentenceHasher
         }
 
         return trim($prompt);
+    }
+
+    /**
+     * Extract correction pairs from analysis text.
+     * Parses «old» → «new» format with optional **bold** wrapping.
+     * Returns array of ['old' => normalized, 'new' => normalized, 'raw_old' => original, 'raw_new' => original, 'full_match' => matched string].
+     */
+    public static function extractCorrectionPairs(string $analysis): array
+    {
+        $pairs = [];
+        if (preg_match_all('/\*{0,2}«([^»]+)»\*{0,2}\s*→\s*\*{0,2}«([^»]+)»\*{0,2}/u', $analysis, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $pairs[] = [
+                    'old' => self::normalizePair($match[1]),
+                    'new' => self::normalizePair($match[2]),
+                    'raw_old' => $match[1],
+                    'raw_new' => $match[2],
+                    'full_match' => $match[0],
+                ];
+            }
+        }
+        return $pairs;
+    }
+
+    public static function normalizePair(string $text): string
+    {
+        return self::normalize($text);
+    }
+
+    /**
+     * Detect flip-flops at the correction-pair level.
+     * Catches sub-sentence oscillations invisible to sentence-level hashing.
+     *
+     * @param array $currentPairs Pairs from extractCorrectionPairs() for current analysis
+     * @param array $priorPairCycles Array of arrays — each element is one cycle's stored pairs [['old'=>..,'new'=>..], ...]
+     * @return array ['flipflops' => [...]]
+     */
+    public static function detectPairFlipFlops(array $currentPairs, array $priorPairCycles): array
+    {
+        $result = ['flipflops' => []];
+
+        if (empty($priorPairCycles) || empty($currentPairs)) {
+            return $result;
+        }
+
+        // Build lookup maps from all prior cycles
+        $priorNewValues = []; // normalized new_value => first cycle index
+        $priorOldValues = []; // normalized old_value => first cycle index
+
+        foreach ($priorPairCycles as $cycleIdx => $cyclePairs) {
+            foreach ($cyclePairs as $pair) {
+                if (!isset($priorNewValues[$pair['new'] ?? ''])) {
+                    $priorNewValues[$pair['new'] ?? ''] = $cycleIdx;
+                }
+                if (!isset($priorOldValues[$pair['old'] ?? ''])) {
+                    $priorOldValues[$pair['old'] ?? ''] = $cycleIdx;
+                }
+            }
+        }
+
+        foreach ($currentPairs as $pairIdx => $pair) {
+            // Direct reversal: current correction undoes a prior correction
+            // current.old == prior.new means "the text we want to change was itself produced by a prior correction"
+            if (isset($priorNewValues[$pair['old']])) {
+                $result['flipflops'][] = [
+                    'pair_index' => $pairIdx,
+                    'type' => 'direct_reversal',
+                    'matched_cycle' => $priorNewValues[$pair['old']],
+                ];
+                continue; // Direct reversal is more specific than drift; skip drift check
+            }
+
+            // 3-state drift: current.new matches a prior.old (A→B→...→A)
+            if (isset($priorOldValues[$pair['new']])) {
+                $result['flipflops'][] = [
+                    'pair_index' => $pairIdx,
+                    'type' => 'drift',
+                    'matched_cycle' => $priorOldValues[$pair['new']],
+                ];
+            }
+        }
+
+        return $result;
     }
 }
