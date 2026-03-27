@@ -147,7 +147,8 @@ class AnalyzeNewsJob implements ShouldQueue
                     ];
 
                     $params['max_tokens'] = 128000;
-                    $params['thinking'] = ['type' => 'enabled', 'budget_tokens' => 100000];
+                    $params['thinking'] = ['type' => 'adaptive'];
+                    $params['output_config'] = ['effort' => 'max'];
                 } else {
                     $params['messages'] = [
                         [
@@ -161,7 +162,7 @@ class AnalyzeNewsJob implements ShouldQueue
                     if ($model->is_deep) {
                         $params['max_tokens'] = 128000;
                         $params['provider'] = ['require_parameters' => true];
-                        $params['reasoning'] = ['effort' => 'high'];
+                        $params['reasoning'] = ['max_tokens' => 100000];
                     } elseif ($isOA) {
                         if ($i > 1) {
                             $params['provider'] = ['require_parameters' => true];
@@ -235,7 +236,6 @@ class AnalyzeNewsJob implements ShouldQueue
                             // PATH A: Fresh start — submit new batch
                             $response = $this->anthropicHttp(config('services.anthropic.api_timeout'))
                                 ->asJson()
-                                ->withHeaders(['anthropic-beta' => 'output-128k-2025-02-19'])
                                 ->post(
                                     'https://' . config('services.anthropic.api_endpoint') . '/messages/batches',
                                     [
