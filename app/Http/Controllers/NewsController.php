@@ -11,7 +11,6 @@ use App\Helpers\FileHelper;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
-use App\Jobs\CleanFreeNewsContentJob;
 use App\Jobs\CleanNewsContentJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
@@ -1134,7 +1133,7 @@ class NewsController extends Controller
             && $model->language === 'uk'
             && !$model->is_content_cleaned
         ) {
-            CleanFreeNewsContentJob::dispatch($model->id);
+            CleanNewsContentJob::dispatch($model->id, 'auto');
         }
 
         if (empty($model->filename)) {
@@ -1285,7 +1284,7 @@ class NewsController extends Controller
             return;
         }
 
-        CleanNewsContentJob::dispatch($model->id);
+        CleanNewsContentJob::dispatch($model->id, 'manual');
     }
 
     public function translate(News $model, Message $message): void
@@ -1324,7 +1323,7 @@ class NewsController extends Controller
     private function dispatchTranslationPipeline(News $model): void
     {
         if ($model->platform === 'FreeNews' && !$model->is_content_cleaned) {
-            CleanFreeNewsContentJob::dispatch($model->id);
+            CleanNewsContentJob::dispatch($model->id, 'auto');
         } else {
             TranslateNewsJob::dispatch($model->id);
         }

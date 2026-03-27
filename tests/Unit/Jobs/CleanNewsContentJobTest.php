@@ -57,6 +57,19 @@ class CleanNewsContentJobTest extends TestCase
         return $obj;
     }
 
+    private function makeBasicObject(array $attributes = []): object
+    {
+        $defaults = [
+            'id' => 1,
+            'platform' => 'FreeNews',
+            'language' => 'en',
+            'is_content_cleaned' => false,
+            'publish_content' => 'Some article content. ' . str_repeat('Real text. ', 20),
+        ];
+
+        return (object) array_merge($defaults, $attributes);
+    }
+
     private function fakeOpenAiResponse(string $content): void
     {
         OpenAI::fake([
@@ -68,7 +81,7 @@ class CleanNewsContentJobTest extends TestCase
         ]);
     }
 
-    // handle — model not found
+    // handle — model not found (both modes)
 
     public function test_handle_returns_early_when_model_not_found(): void
     {
@@ -80,14 +93,14 @@ class CleanNewsContentJobTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    // handle — already cleaned
+    // manual mode — handle — already cleaned
 
-    public function test_handle_skips_when_already_cleaned(): void
+    public function test_manual_skips_when_already_cleaned(): void
     {
         $news = $this->makeNewsObject(['is_content_cleaned' => true]);
         $this->mockNewsFind($news);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         Queue::assertNothingPushed();
@@ -95,14 +108,14 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — untranslated articles: cleans publish_content for various platforms
 
-    public function test_handle_cleans_content_for_free_news(): void
+    public function test_manual_cleans_content_for_free_news(): void
     {
         $cleanedText = str_repeat('Cleaned article content. ', 10);
         $news = $this->makeNewsObject(['platform' => 'FreeNews', 'language' => 'en']);
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($cleanedText, $news->publish_content);
@@ -110,14 +123,14 @@ class CleanNewsContentJobTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_handle_cleans_content_for_newscatcher(): void
+    public function test_manual_cleans_content_for_newscatcher(): void
     {
         $cleanedText = str_repeat('Cleaned article content. ', 10);
         $news = $this->makeNewsObject(['platform' => 'NewsCatcher3', 'language' => 'en']);
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($cleanedText, $news->publish_content);
@@ -125,14 +138,14 @@ class CleanNewsContentJobTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_handle_cleans_content_for_article(): void
+    public function test_manual_cleans_content_for_article(): void
     {
         $cleanedText = str_repeat('Cleaned article content. ', 10);
         $news = $this->makeNewsObject(['platform' => 'article', 'language' => 'en']);
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($cleanedText, $news->publish_content);
@@ -142,20 +155,20 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — updateReplyMarkup conditional behavior
 
-    public function test_handle_does_not_call_update_reply_markup_when_content_changed(): void
+    public function test_manual_does_not_call_update_reply_markup_when_content_changed(): void
     {
         $cleanedText = str_repeat('Cleaned article content. ', 10);
         $news = $this->makeNewsObject(['language' => 'en']);
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertFalse($news->updateReplyMarkupCalled);
     }
 
-    public function test_handle_calls_update_reply_markup_when_content_not_changed(): void
+    public function test_manual_calls_update_reply_markup_when_content_not_changed(): void
     {
         $news = $this->makeNewsObject(['language' => 'en']);
         $this->mockNewsFind($news);
@@ -165,7 +178,7 @@ class CleanNewsContentJobTest extends TestCase
             ->once()
             ->withArgs(fn ($msg) => str_contains($msg, 'insufficient content'));
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertTrue($news->updateReplyMarkupCalled);
@@ -173,14 +186,14 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — untranslated articles: no TranslateNewsJob
 
-    public function test_handle_does_not_dispatch_translate_job_for_untranslated_article(): void
+    public function test_manual_does_not_dispatch_translate_job_for_untranslated_article(): void
     {
         $cleanedText = str_repeat('Cleaned article content. ', 10);
         $news = $this->makeNewsObject(['language' => 'en', 'is_translated' => false]);
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         Queue::assertNothingPushed();
@@ -188,7 +201,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — AI returns short content
 
-    public function test_handle_keeps_original_when_ai_returns_short_content(): void
+    public function test_manual_keeps_original_when_ai_returns_short_content(): void
     {
         $originalContent = 'Some article content. ' . str_repeat('Real text. ', 20);
         $news = $this->makeNewsObject(['language' => 'en']);
@@ -199,7 +212,7 @@ class CleanNewsContentJobTest extends TestCase
             ->once()
             ->withArgs(fn ($msg) => str_contains($msg, 'insufficient content'));
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($originalContent, $news->publish_content);
@@ -209,7 +222,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — exception re-thrown for retry
 
-    public function test_handle_rethrows_exception_for_retry(): void
+    public function test_manual_rethrows_exception_for_retry(): void
     {
         $news = $this->makeNewsObject(['language' => 'en']);
         $this->mockNewsFind($news);
@@ -225,13 +238,13 @@ class CleanNewsContentJobTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Connection timeout');
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
     }
 
     // failed — marks cleaned as fallback
 
-    public function test_failed_marks_cleaned_as_fallback(): void
+    public function test_manual_failed_marks_cleaned_as_fallback(): void
     {
         $news = $this->makeNewsObject(['language' => 'en', 'is_content_cleaned' => false]);
         $this->mockNewsFind($news);
@@ -240,20 +253,20 @@ class CleanNewsContentJobTest extends TestCase
             ->once()
             ->withArgs(fn ($msg) => str_contains($msg, 'exhausted retries'));
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->failed(new \RuntimeException('API timeout'));
 
         $this->assertTrue($news->is_content_cleaned);
     }
 
-    public function test_failed_calls_update_reply_markup(): void
+    public function test_manual_failed_calls_update_reply_markup(): void
     {
         $news = $this->makeNewsObject(['language' => 'en', 'is_content_cleaned' => false]);
         $this->mockNewsFind($news);
 
         Log::shouldReceive('warning')->once();
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->failed(new \RuntimeException('API timeout'));
 
         $this->assertTrue($news->updateReplyMarkupCalled);
@@ -261,7 +274,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — translated non-UK articles
 
-    public function test_handle_cleans_original_content_for_translated_article(): void
+    public function test_manual_cleans_original_content_for_translated_article(): void
     {
         $cleanedText = str_repeat('Cleaned original content. ', 10);
         $originalContent = 'Original English article. ' . str_repeat('Original text. ', 20);
@@ -276,7 +289,7 @@ class CleanNewsContentJobTest extends TestCase
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($cleanedText, $news->original_content);
@@ -285,7 +298,7 @@ class CleanNewsContentJobTest extends TestCase
         $this->assertTrue($news->is_content_cleaned);
     }
 
-    public function test_handle_dispatches_translate_job_for_translated_article(): void
+    public function test_manual_dispatches_translate_job_for_translated_article(): void
     {
         $cleanedText = str_repeat('Cleaned original content. ', 10);
         $originalContent = 'Original English article. ' . str_repeat('Original text. ', 20);
@@ -300,13 +313,13 @@ class CleanNewsContentJobTest extends TestCase
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         Queue::assertPushed(TranslateNewsJob::class);
     }
 
-    public function test_handle_resets_is_translated_for_translated_article(): void
+    public function test_manual_resets_is_translated_for_translated_article(): void
     {
         $cleanedText = str_repeat('Cleaned original content. ', 10);
         $originalContent = 'Original English article. ' . str_repeat('Original text. ', 20);
@@ -321,7 +334,7 @@ class CleanNewsContentJobTest extends TestCase
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertFalse($news->is_translated);
@@ -329,7 +342,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — Ukrainian articles: never dispatch TranslateNewsJob
 
-    public function test_handle_does_not_dispatch_translate_for_ukrainian_article(): void
+    public function test_manual_does_not_dispatch_translate_for_ukrainian_article(): void
     {
         $cleanedText = str_repeat('Очищений текст статті. ', 10);
         $news = $this->makeNewsObject([
@@ -340,7 +353,7 @@ class CleanNewsContentJobTest extends TestCase
         $this->mockNewsFind($news);
         $this->fakeOpenAiResponse($cleanedText);
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertSame($cleanedText, $news->publish_content);
@@ -350,7 +363,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // handle — translated article with unchanged content
 
-    public function test_handle_does_not_reset_translation_when_content_unchanged(): void
+    public function test_manual_does_not_reset_translation_when_content_unchanged(): void
     {
         $originalContent = 'Original English article. ' . str_repeat('Original text. ', 20);
         $news = $this->makeNewsObject([
@@ -368,7 +381,7 @@ class CleanNewsContentJobTest extends TestCase
             ->once()
             ->withArgs(fn ($msg) => str_contains($msg, 'insufficient content'));
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->handle();
 
         $this->assertTrue($news->is_translated);
@@ -380,7 +393,7 @@ class CleanNewsContentJobTest extends TestCase
 
     // failed — does not touch translation state
 
-    public function test_failed_does_not_touch_translation_state(): void
+    public function test_manual_failed_does_not_touch_translation_state(): void
     {
         $news = $this->makeNewsObject([
             'language' => 'en',
@@ -393,12 +406,212 @@ class CleanNewsContentJobTest extends TestCase
 
         Log::shouldReceive('warning')->once();
 
-        $job = new CleanNewsContentJob(1);
+        $job = new CleanNewsContentJob(1, 'manual');
         $job->failed(new \RuntimeException('API timeout'));
 
         $this->assertTrue($news->is_translated);
         $this->assertTrue($news->is_content_cleaned);
         $this->assertTrue($news->updateReplyMarkupCalled);
+        Queue::assertNothingPushed();
+    }
+
+    // auto mode — handle — already cleaned or non-FreeNews → dispatch translate for non-uk
+
+    public function test_auto_dispatches_translate_when_already_cleaned_and_language_is_not_uk(): void
+    {
+        $news = $this->makeBasicObject(['is_content_cleaned' => true, 'language' => 'en']);
+        $this->mockNewsFind($news);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        Queue::assertPushed(TranslateNewsJob::class);
+    }
+
+    public function test_auto_does_not_dispatch_translate_when_already_cleaned_and_language_is_uk(): void
+    {
+        $news = $this->makeBasicObject(['is_content_cleaned' => true, 'language' => 'uk']);
+        $this->mockNewsFind($news);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_auto_dispatches_translate_for_non_free_news_platform(): void
+    {
+        $news = $this->makeBasicObject(['platform' => 'NewsCatcher3', 'language' => 'en']);
+        $this->mockNewsFind($news);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        Queue::assertPushed(TranslateNewsJob::class);
+    }
+
+    // handle — AI cleaning succeeds
+
+    public function test_auto_cleans_content_and_dispatches_translate_for_non_uk(): void
+    {
+        $cleanedText = str_repeat('Cleaned article content. ', 10);
+        $news = $this->makeNewsObject(['language' => 'en']);
+        $this->mockNewsFind($news);
+        $this->fakeOpenAiResponse($cleanedText);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        $this->assertSame($cleanedText, $news->publish_content);
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertPushed(TranslateNewsJob::class);
+    }
+
+    public function test_auto_cleans_content_and_does_not_dispatch_translate_for_uk(): void
+    {
+        $cleanedText = str_repeat('Очищений текст статті. ', 10);
+        $news = $this->makeNewsObject(['language' => 'uk']);
+        $this->mockNewsFind($news);
+        $this->fakeOpenAiResponse($cleanedText);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        $this->assertSame($cleanedText, $news->publish_content);
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertNothingPushed();
+    }
+
+    // handle — AI returns insufficient content (fallback: mark cleaned with original)
+
+    public function test_auto_marks_cleaned_with_original_when_ai_returns_short_content(): void
+    {
+        $originalContent = 'Some article content. ' . str_repeat('Real text. ', 20);
+        $news = $this->makeNewsObject(['language' => 'en']);
+        $this->mockNewsFind($news);
+        $this->fakeOpenAiResponse('Too short');
+
+        Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(fn ($msg) => str_contains($msg, 'insufficient content'));
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        $this->assertSame($originalContent, $news->publish_content);
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertPushed(TranslateNewsJob::class);
+    }
+
+    public function test_auto_marks_cleaned_with_original_when_ai_returns_empty(): void
+    {
+        $news = $this->makeNewsObject(['language' => 'uk']);
+        $this->mockNewsFind($news);
+        $this->fakeOpenAiResponse('');
+
+        Log::shouldReceive('warning')->once();
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertNothingPushed();
+    }
+
+    // handle — AI throws exception → re-thrown for retry
+
+    public function test_auto_rethrows_exception_for_retry(): void
+    {
+        $news = $this->makeNewsObject(['language' => 'en']);
+        $this->mockNewsFind($news);
+
+        OpenAI::fake([
+            new \RuntimeException('Connection timeout'),
+        ]);
+
+        Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(fn ($msg) => str_contains($msg, 'cleanup failed'));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Connection timeout');
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->handle();
+    }
+
+    public function test_auto_does_not_dispatch_translate_on_exception(): void
+    {
+        $news = $this->makeNewsObject(['language' => 'en']);
+        $this->mockNewsFind($news);
+
+        OpenAI::fake([
+            new \RuntimeException('Connection timeout'),
+        ]);
+
+        Log::shouldReceive('warning')->once();
+
+        try {
+            $job = new CleanNewsContentJob(1, 'auto');
+            $job->handle();
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertFalse($news->is_content_cleaned);
+        Queue::assertNothingPushed();
+    }
+
+    // failed — marks cleaned as fallback after retries exhausted
+
+    public function test_auto_failed_marks_cleaned_and_dispatches_translate_for_non_uk(): void
+    {
+        $news = $this->makeNewsObject(['language' => 'en', 'is_content_cleaned' => false]);
+        $this->mockNewsFind($news);
+
+        Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(fn ($msg) => str_contains($msg, 'exhausted retries'));
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->failed(new \RuntimeException('API timeout'));
+
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertPushed(TranslateNewsJob::class);
+    }
+
+    public function test_auto_failed_marks_cleaned_without_translate_for_uk(): void
+    {
+        $news = $this->makeNewsObject(['language' => 'uk', 'is_content_cleaned' => false]);
+        $this->mockNewsFind($news);
+
+        Log::shouldReceive('warning')->once();
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->failed(new \RuntimeException('API timeout'));
+
+        $this->assertTrue($news->is_content_cleaned);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_auto_failed_skips_when_already_cleaned(): void
+    {
+        $news = $this->makeBasicObject(['is_content_cleaned' => true]);
+        $this->mockNewsFind($news);
+
+        $job = new CleanNewsContentJob(1, 'auto');
+        $job->failed(new \RuntimeException('error'));
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_auto_failed_skips_when_model_not_found(): void
+    {
+        $this->mockNewsFind(null, 999);
+
+        $job = new CleanNewsContentJob(999, 'auto');
+        $job->failed(new \RuntimeException('error'));
+
         Queue::assertNothingPushed();
     }
 }

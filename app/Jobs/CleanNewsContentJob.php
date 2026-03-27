@@ -20,10 +20,15 @@ class CleanNewsContentJob implements ShouldQueue
     public int $timeout = 60;
 
     protected int $id;
+    protected string $mode;
 
-    public function __construct(int $id)
+    /**
+     * @param string $mode 'auto' (pipeline cleaning for FreeNews) or 'manual' (Telegram button, any platform)
+     */
+    public function __construct(int $id, string $mode = 'manual')
     {
         $this->id = $id;
+        $this->mode = $mode;
     }
 
     public function handle(): void
@@ -33,6 +38,45 @@ class CleanNewsContentJob implements ShouldQueue
             return;
         }
 
+        if ($this->mode === 'auto') {
+            $this->handleAuto($model);
+        } else {
+            $this->handleManual($model);
+        }
+    }
+
+    private function handleAuto($model): void
+    {
+        if ($model->platform !== 'FreeNews' || $model->is_content_cleaned) {
+            if ($model->language !== 'uk') {
+                TranslateNewsJob::dispatch($model->id);
+            }
+            return;
+        }
+
+        try {
+            $cleaned = $this->cleanViaAI($model->publish_content);
+
+            if (!empty($cleaned) && mb_strlen($cleaned) > 100) {
+                $model->publish_content = $cleaned;
+            } else {
+                Log::warning("{$model->id}: AI cleanup returned insufficient content, proceeding with original");
+            }
+
+            $model->is_content_cleaned = true;
+            $model->save();
+
+            if ($model->language !== 'uk') {
+                TranslateNewsJob::dispatch($model->id);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("{$model->id}: AI content cleanup failed: {$e->getMessage()}");
+            throw $e;
+        }
+    }
+
+    private function handleManual($model): void
+    {
         if ($model->is_content_cleaned) {
             return;
         }
@@ -41,15 +85,7 @@ class CleanNewsContentJob implements ShouldQueue
         $textToClean = $needsRetranslation ? $model->original_content : $model->publish_content;
 
         try {
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-5-mini',
-                'messages' => [
-                    ['role' => 'system', 'content' => NewsController::getPrompt('cleaner')],
-                    ['role' => 'user', 'content' => $textToClean],
-                ],
-            ]);
-
-            $cleaned = $response->choices[0]->message->content ?? null;
+            $cleaned = $this->cleanViaAI($textToClean);
 
             $contentChanged = !empty($cleaned) && mb_strlen($cleaned) > 100;
 
@@ -80,10 +116,35 @@ class CleanNewsContentJob implements ShouldQueue
         }
     }
 
+    private function cleanViaAI(string $text): ?string
+    {
+        $response = OpenAI::chat()->create([
+            'model' => 'gpt-5-mini',
+            'messages' => [
+                ['role' => 'system', 'content' => NewsController::getPrompt('cleaner')],
+                ['role' => 'user', 'content' => $text],
+            ],
+        ]);
+
+        return $response->choices[0]->message->content ?? null;
+    }
+
     public function failed(?\Throwable $exception): void
     {
         $model = News::find($this->id);
-        if ($model && !$model->is_content_cleaned) {
+        if (!$model || $model->is_content_cleaned) {
+            return;
+        }
+
+        if ($this->mode === 'auto') {
+            Log::warning("{$model->id}: AI cleanup exhausted retries, publishing with original content");
+            $model->is_content_cleaned = true;
+            $model->save();
+
+            if ($model->language !== 'uk') {
+                TranslateNewsJob::dispatch($model->id);
+            }
+        } else {
             Log::warning("{$model->id}: AI cleanup exhausted retries, marking cleaned with original content");
             $model->is_content_cleaned = true;
             $model->save();

@@ -2,7 +2,7 @@
 
 ## Running Tests
 - All unit tests: `p vendor/bin/phpunit --testsuite=Unit --no-coverage`
-- Single file: `p vendor/bin/phpunit tests/Unit/Jobs/CleanFreeNewsContentJobTest.php --no-coverage`
+- Single file: `p vendor/bin/phpunit tests/Unit/Jobs/CleanNewsContentJobTest.php --no-coverage`
 - Single test: `p vendor/bin/phpunit --filter test_handle_cleans_content --no-coverage`
 - Live API tests (skipped by default): `SKIP_LIVE_API_TESTS=false p vendor/bin/phpunit tests/Feature/Services/News/LiveApiTest.php --no-coverage`
 

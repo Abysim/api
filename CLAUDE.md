@@ -125,8 +125,8 @@ Pet project that supports other projects. Laravel 10 API application.
 - Local MySQL is not running — use env overrides to bypass DB: `TELEGRAM_API_TOKEN="" DB_CONNECTION=sqlite DB_DATABASE=":memory:" p artisan tinker`
 
 ## News Processing Pipeline (Jobs)
-- **Pipeline order**: `CleanFreeNewsContentJob`/`CleanNewsContentJob` → `TranslateNewsJob` → `AnalyzeNewsJob` ↔ `ApplyNewsAnalysisJob` (cycle)
-- **`CleanFreeNewsContentJob` / `CleanNewsContentJob`**: Content cleanup via `gpt-5-mini` (OpenAI facade). Prompt loaded from `resources/prompts/cleaner.md`. No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
+- **Pipeline order**: `CleanNewsContentJob` → `TranslateNewsJob` → `AnalyzeNewsJob` ↔ `ApplyNewsAnalysisJob` (cycle)
+- **`CleanNewsContentJob`**: Content cleanup via `gpt-5-mini` (OpenAI facade). Prompt loaded from `resources/prompts/cleaner.md`. Two modes: `'auto'` (pipeline cleaning for FreeNews, chains to TranslateNewsJob) and `'manual'` (Telegram button, handles retranslation). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
 - **`TranslateNewsJob`**: Translates via Gemini (`gemini-3.1-pro-preview`). 4-iteration inner retry loop, `$tries=2`, `$timeout=3600`. On success dispatches `AnalyzeNewsJob` if `is_auto`
 - **`AnalyzeNewsJob`**: Quality analysis. 4-iteration inner retry loop with model alternation. `$tries=2`, `$timeout=7200`
 - **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `gpt-5-mini` (OpenAI) / `openai/gpt-5-mini` (OpenRouter), both with `reasoning_effort: high`. `$tries=2`, `$timeout=360`
