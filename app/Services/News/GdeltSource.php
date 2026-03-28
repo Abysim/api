@@ -143,12 +143,11 @@ class GdeltSource
 
     private function fetchGdelt(array $params): \Illuminate\Http\Client\Response
     {
-        // Try direct first — faster, no VPS hop
         $response = Http::timeout(30)->get(self::BASE_URL, $params);
 
-        // If rate-limited, retry via VPS proxy (different IP)
+        $body = $response->body();
         $isRateLimited = $response->status() === 429
-            || (!is_array($response->json()) && str_contains($response->body(), 'limit requests'));
+            || (!is_array($response->json()) && str_contains($body, 'limit requests'));
 
         if ($isRateLimited) {
             $vpsKey = config('scraper.vps_key');
