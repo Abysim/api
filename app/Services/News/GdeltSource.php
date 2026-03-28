@@ -64,7 +64,7 @@ class GdeltSource
 
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             try {
-                $response = Http::timeout(30)->get(self::BASE_URL, $params);
+                $response = $this->fetchGdelt($params);
 
                 if ($response->status() === 429) {
                     $this->rateLimited = true;
@@ -139,6 +139,35 @@ class GdeltSource
     public function wasRateLimited(): bool
     {
         return $this->rateLimited;
+    }
+
+    private function fetchGdelt(array $params): \Illuminate\Http\Client\Response
+    {
+        // Try direct first — faster, no VPS hop
+        $response = Http::timeout(30)->get(self::BASE_URL, $params);
+
+        // If rate-limited, retry via VPS proxy (different IP)
+        $isRateLimited = $response->status() === 429
+            || (!is_array($response->json()) && str_contains($response->body(), 'limit requests'));
+
+        if ($isRateLimited) {
+            $vpsKey = config('scraper.vps_key');
+            if (!empty($vpsKey)) {
+                Log::info('GdeltSource: rate limited, retrying via VPS proxy');
+                $gdeltUrl = self::BASE_URL . '?' . http_build_query($params);
+                $vpsResponse = Http::timeout(30)->get(config('scraper.vps_url'), [
+                    'api_key' => $vpsKey,
+                    'url' => $gdeltUrl,
+                    'raw' => 'true',
+                ]);
+                if ($vpsResponse->successful() && strlen($vpsResponse->body()) > 0) {
+                    return $vpsResponse;
+                }
+                Log::info('GdeltSource: VPS proxy also failed (' . $vpsResponse->status() . ')');
+            }
+        }
+
+        return $response;
     }
 
     private function parseDate(string $dateStr): string
