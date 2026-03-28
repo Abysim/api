@@ -160,6 +160,7 @@ class GdeltSource
                     'raw' => 'true',
                 ]);
                 if ($vpsResponse->successful() && strlen($vpsResponse->body()) > 0) {
+                    $this->rateLimited = true;
                     return $vpsResponse;
                 }
                 Log::info('GdeltSource: VPS proxy also failed (' . $vpsResponse->status() . ')');
