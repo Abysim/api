@@ -147,7 +147,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
             try {
                 Log::info("$model->id: News applying analysis $model->analysis_count $i");
                 $params = [
-                    'model' => $i > 1 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
+                    'model' => $i > 1 ? 'openai/gpt-5.4-mini' : 'gpt-5.4-mini',
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
                         [
@@ -197,7 +197,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         try {
                             $corrections = self::extractCorrectionsList($model->analysis);
                             $verifyResponse = OpenAI::chat()->create([
-                                'model' => 'gpt-5-mini',
+                                'model' => 'gpt-5.4-mini',
                                 'reasoning_effort' => 'high',
                                 'messages' => [
                                     ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом, враховуючи список виправлень. Об\'єднання або розділення речень, вказане у виправленнях, є очікуваною зміною кількості речень.'],
@@ -267,7 +267,7 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                             try {
                                 $articleContext = $newTitle . "\n\n" . $newContent;
                                 $selectionResponse = OpenAI::chat()->create([
-                                    'model' => 'gpt-5-mini',
+                                    'model' => 'gpt-5.4-mini',
                                     'messages' => [
                                         ['role' => 'system', 'content' => 'Ти — редактор української мови. Обирай граматично та стилістично кращий варіант.'],
                                         ['role' => 'user', 'content' => SentenceHasher::buildVariantSelectionPrompt($flipflopPairs, $articleContext)],

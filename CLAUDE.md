@@ -61,18 +61,18 @@ Pet project that supports other projects. Laravel 10 API application.
 - `phpunit.xml` sets `TELEGRAM_API_TOKEN=""` to prevent TelegramServiceProvider from connecting to DB during tests
 
 ## AI Client Patterns
-- **OpenAI GPT models** (`gpt-5-nano`, `gpt-5-mini`, `gpt-5.4`, `o3`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
+- **OpenAI GPT models** (`gpt-5.4-nano`, `gpt-5.4-mini`, `gpt-5.4`, `o3`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
 - **Via OpenRouter** (alternating with OpenAI): `AI::client('openrouter')->chat()->create($params)` with `openai/` model prefix. Config: `services.openrouter.*` → `OPENROUTER_API_KEY`
 - **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen3-30B-A3B-Instruct-2507`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
 - **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Model: `gemini-3.1-pro-preview`. Config: `services.gemini.*` → `GEMINI_API_KEY`
 - **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-6`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
 - **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
 - **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
-- **GPT-5 family does NOT support `temperature`** — `gpt-5`, `gpt-5-mini`, `gpt-5-nano` all reject any temperature value other than the default (1), both via OpenAI directly and via OpenRouter. Use `reasoning_effort` instead for output control. Only non-GPT-5 models (Qwen, Gemini) accept custom temperature.
-- **`reasoning_effort` levels**: `gpt-5-mini` and `gpt-5-nano` support only up to `high`. `xhigh` is only available on larger models (`gpt-5.4`, `o3`). Using unsupported levels causes API errors.
+- **GPT-5 family does NOT support `temperature`** — `gpt-5`, `gpt-5.4-mini`, `gpt-5.4-nano` all reject any temperature value other than the default (1), both via OpenAI directly and via OpenRouter. Use `reasoning_effort` instead for output control. Only non-GPT-5 models (Qwen, Gemini) accept custom temperature.
+- **`reasoning_effort` levels**: `gpt-5.4-mini` and `gpt-5.4-nano` support only up to `high`. `xhigh` is only available on larger models (`gpt-5.4`, `o3`). Using unsupported levels causes API errors.
 
 ## AI Cost Management
-- **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.4`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5-mini`, `gpt-5-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
+- **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.4`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5.4-mini`, `gpt-5.4-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
 - **Daily token tracking**: `AiUsage` model tracks daily OpenAI token consumption. `AnalyzeNewsJob` checks `AiUsage.total_tokens` against the 1M daily limit before using large OpenAI models (`o3`). When limit is reached, `$isOA` is set to `false` and the job falls back to **Gemini** (`gemini-3.1-pro-preview`) instead — this is the cost-control mechanism to stay within the free tier
 - **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
@@ -99,6 +99,13 @@ Pet project that supports other projects. Laravel 10 API application.
 
 - **Google News URLs bypass pre-fetch filters** — `$article['link']` from Google News is `news.google.com/...` (a redirect), not the real URL. Domain/path filters in the `getNews()` loop only catch GDELT articles (direct URLs). For Google News articles, filtering must also happen inside `extractContent()` after `urlDecoder->decode()` resolves the real URL (line ~444).
 
+## Resetting Articles for Re-processing
+- **Full re-translation reset** requires clearing ALL of: `publish_title`, `publish_content`, `is_translated` (set to false), `status` (set to 10), `analysis`, `previous_analysis`, `content_hashes`, `analysis_count` (set to 0), `is_deep`/`is_deepest` (set to false), `is_auto` (set to true)
+- **TranslateNewsJob skips** if `is_translated=true` (line 58) — MUST clear this flag or translation won't run
+- **TranslateNewsJob reads from `publish_content`** (line 77), not `content` — if `publish_content` has corrupted text, translation will re-translate the corruption. Reset `publish_content = content` and `publish_title = title` to restore original English
+- **Always check queue first**: `DB::table('jobs')->where('payload', 'like', '%{article_id}%')->get()` — delete stale jobs BEFORE dispatching new ones, or old jobs will run concurrently and corrupt content
+- **Job constructors take `int $id`**, not model instances: `TranslateNewsJob::dispatch($id)`, `AnalyzeNewsJob::dispatch($id, $isAuto)`
+
 ## News Search Architecture
 - **Species query routing** (NewsController lines ~358-414): species with `exclude` terms in `resources/json/news/species/{lang}.json` get **separate queries** (one per species with their exclusions). Species with empty `exclude` arrays get **batched into one combined query** (grouped by query length limit).
 - **Species config**: `resources/json/news/species/en.json` — each species has `words` (positive search terms), `exclude` (title-filter exclusion terms), `excludeCase` (case-sensitive excludes for proper nouns)
@@ -121,15 +128,18 @@ Pet project that supports other projects. Laravel 10 API application.
 - `FileHelper::getUrl()` is NOT used by `extractContent()` — it has its own inline chain. `FileHelper::getUrl()` is still used by other callers (e.g. GoogleNewsUrlDecoder)
 - **`news:clear-url-cache`** artisan command clears cached news URLs without flushing other cache entries
 
+## Related Projects (local sibling directories)
+- **VPS Scraper**: `/DATA/xampp/htdocs/scrap/` — self-hosted scraping API at `scrap.abysim.com`. Has its own `CLAUDE.md` with SSH alias (`vps-web`), architecture, and log commands. **Always read the sibling CLAUDE.md before SSH-ing to the VPS.**
+
 ## Running artisan tinker locally (no DB)
 - Local MySQL is not running — use env overrides to bypass DB: `TELEGRAM_API_TOKEN="" DB_CONNECTION=sqlite DB_DATABASE=":memory:" p artisan tinker`
 
 ## News Processing Pipeline (Jobs)
 - **Pipeline order**: `CleanNewsContentJob` → `TranslateNewsJob` → `AnalyzeNewsJob` ↔ `ApplyNewsAnalysisJob` (cycle)
-- **`CleanNewsContentJob`**: Content cleanup via `gpt-5-mini` (OpenAI facade). Prompt loaded from `resources/prompts/cleaner.md`. Two modes: `'auto'` (pipeline cleaning for FreeNews, chains to TranslateNewsJob) and `'manual'` (Telegram button, handles retranslation). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
+- **`CleanNewsContentJob`**: Content cleanup via `gpt-5.4-mini` (OpenAI facade). Prompt loaded from `resources/prompts/cleaner.md`. Two modes: `'auto'` (pipeline cleaning for FreeNews, chains to TranslateNewsJob) and `'manual'` (Telegram button, handles retranslation). No inner retry loop, `$tries=2`. On exhausted retries, marks cleaned with original content and proceeds
 - **`TranslateNewsJob`**: Translates via Gemini (`gemini-3.1-pro-preview`). 4-iteration inner retry loop, `$tries=2`, `$timeout=3600`. On success dispatches `AnalyzeNewsJob` if `is_auto`
 - **`AnalyzeNewsJob`**: Quality analysis. 4-iteration inner retry loop with model alternation. `$tries=2`, `$timeout=7200`
-- **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `gpt-5-mini` (OpenAI) / `openai/gpt-5-mini` (OpenRouter), both with `reasoning_effort: high`. `$tries=2`, `$timeout=360`
+- **`ApplyNewsAnalysisJob`**: Applies analysis edits to the article. 4-iteration inner loop alternating `gpt-5.4-mini` (OpenAI) / `openai/gpt-5.4-mini` (OpenRouter), both with `reasoning_effort: high`. `$tries=2`, `$timeout=360`
 
 ### Analyze ↔ Apply auto-cycle (when `is_auto=true`)
 1. `AnalyzeNewsJob` produces analysis. If "Так" (Yes) → dispatches `ApplyNewsAnalysisJob`
@@ -144,7 +154,7 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ### Oscillation detection (content_hashes + previous_analysis)
 - **`content_hashes`** (JSON): Per-sentence hashing via `SentenceHasher`. Structure: `{cycles: [{hashes: [sentence1_md5, sentence2_md5, ...]}, ...]}`. Each cycle entry = one Apply iteration's snapshot of all sentence hashes. Title is hashed with `title:` prefix to distinguish from content sentences
-- **Flip-flop detection** (`SentenceHasher::detectFlipFlops`): Level 1 (full reversion) compares sorted hash set against older cycles; Level 2 (partial) checks if any new sentence hash appeared in an older cycle. Needs **2+ prior cycles** minimum for set comparison. When flip-flop detected: AI selects best variant per oscillating sentence via `gpt-5-mini`, saves resolved content, then **hands back to analyzer** (never escalates directly). The analyzer gets the final say on escalation via the existing "Ні" two-strike logic.
+- **Flip-flop detection** (`SentenceHasher::detectFlipFlops`): Level 1 (full reversion) compares sorted hash set against older cycles; Level 2 (partial) checks if any new sentence hash appeared in an older cycle. Needs **2+ prior cycles** minimum for set comparison. When flip-flop detected: AI selects best variant per oscillating sentence via `gpt-5.4-mini`, saves resolved content, then **hands back to analyzer** (never escalates directly). The analyzer gets the final say on escalation via the existing "Ні" two-strike logic.
 - **`SentenceHasher`** (`app/Helpers/SentenceHasher.php`): Pure helper — `splitSentences()`, `hashSentences()`, `detectFlipFlops()`, `hash()`, `stripTitlePrefix()`, `isOldFormat()`, `buildVariantSelectionPrompt()`. Ukrainian abbreviation protection via `ABBREV_PATTERN` constant.
 - **`previous_analysis`** (TEXT): Previous round's corrections injected into analyzer's user message so it can choose the better variant instead of flip-flopping
 - Both fields reset on tier escalation (each tier starts fresh)
