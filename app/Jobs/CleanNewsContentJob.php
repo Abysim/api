@@ -119,7 +119,7 @@ class CleanNewsContentJob implements ShouldQueue
     private function cleanViaAI(string $text): ?string
     {
         $response = OpenAI::chat()->create([
-            'model' => 'gpt-5.4-mini',
+            'model' => 'gpt-5-mini',
             'messages' => [
                 ['role' => 'system', 'content' => NewsController::getPrompt('cleaner')],
                 ['role' => 'user', 'content' => $text],
