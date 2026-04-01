@@ -560,7 +560,7 @@ class FreeNewsService implements NewsServiceInterface
                 $vpsKey = config('scraper.vps_key');
                 if (!empty($vpsKey)) {
                     try {
-                        $res = Http::timeout(20)->get(config('scraper.vps_url'), [
+                        $res = Http::timeout(55)->get(config('scraper.vps_url'), [
                             'api_key' => $vpsKey,
                             'url' => $url,
                         ]);
