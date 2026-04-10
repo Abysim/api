@@ -19,7 +19,14 @@ use Illuminate\Support\Carbon;
  */
 class AiUsage extends Model
 {
+    protected $fillable = ['date'];
+
     protected $casts = [
         'date' => 'date',
     ];
+
+    public static function today(): self
+    {
+        return static::firstOrCreate(['date' => now()->format('Y-m-d')]);
+    }
 }

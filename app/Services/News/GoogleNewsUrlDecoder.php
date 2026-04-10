@@ -354,6 +354,9 @@ class GoogleNewsUrlDecoder
 
         $url = substr($start, 0, $endQuote);
 
+        // URL was extracted from inside a JSON string — decode unicode escapes (\u003d → =, \u0026 → &)
+        $url = json_decode('"' . $url . '"') ?? $url;
+
         if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
             return $url;
         }

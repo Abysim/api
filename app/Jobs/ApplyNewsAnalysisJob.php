@@ -196,9 +196,8 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                         Log::warning("$model->id: Applier changed sentence count from $originalSentenceCount to $newSentenceCount at analysis_count $model->analysis_count $i");
                         try {
                             $corrections = self::extractCorrectionsList($model->analysis);
-                            $verifyResponse = OpenAI::chat()->create([
-                                'model' => 'gpt-5-mini',
-                                'reasoning_effort' => 'high',
+                            $verifyParams = [
+                                'model' => $i > 1 ? 'openai/gpt-5-mini' : 'gpt-5-mini',
                                 'messages' => [
                                     ['role' => 'system', 'content' => 'Ти — верифікатор тексту. Порівняй оригінал із виправленим текстом, враховуючи список виправлень. Об\'єднання або розділення речень, вказане у виправленнях, є очікуваною зміною кількості речень.'],
                                     ['role' => 'user', 'content' => "Оригінал:\n" . $model->publish_title . "\n\n" . $model->publish_content
@@ -206,7 +205,15 @@ class ApplyNewsAnalysisJob implements ShouldQueue
                                         . "\n\n---\nВказані виправлення:\n" . $corrections
                                         . "\n\n---\nЧи є у виправленому тексті зміни, які НЕ відповідають вказаним виправленням (випадкові видалення, додавання або заміни)? Якщо всі зміни відповідають виправленням — відповідай OK. Інакше — перелічи лише ті зміни, які виходять за межі виправлень."],
                                 ],
-                            ]);
+                            ];
+                            if ($i > 1) {
+                                $verifyParams['provider'] = ['require_parameters' => true];
+                                $verifyParams['reasoning'] = ['effort' => 'high'];
+                                $verifyResponse = AI::client('openrouter')->chat()->create($verifyParams);
+                            } else {
+                                $verifyParams['reasoning_effort'] = 'high';
+                                $verifyResponse = OpenAI::chat()->create($verifyParams);
+                            }
                             $verifyResult = trim($verifyResponse->choices[0]->message->content ?? '');
                             if (!preg_match('/^\*{0,2}OK\b/i', $verifyResult)) {
                                 Log::warning("$model->id: Diff verification found issues: $verifyResult, retrying");

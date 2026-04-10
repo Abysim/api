@@ -86,7 +86,7 @@ class AnalyzeNewsJob implements ShouldQueue
         if (
             $isOA
             && !$model->is_deep
-            && AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])->total_tokens + $model->max_tokens * 2 > 1000000
+            && AiUsage::today()->total_tokens + $model->max_tokens * 2 > 1000000
         ) {
             Log::warning("$model->id: News analysis $model->analysis_count: OpenAI token limit exceeded");
             if ($model->platform == 'article') {
@@ -173,6 +173,14 @@ class AnalyzeNewsJob implements ShouldQueue
                     }
                 }
 
+                // Pre-debit estimated tokens to protect against billed-but-untracked calls
+                $estimatedTokens = 0;
+                if ($isOA && !$model->is_deep && $model->max_tokens > 0) {
+                    $estimatedTokens = $model->max_tokens;
+                    AiUsage::today()
+                        ->increment('total_tokens', $estimatedTokens);
+                }
+
                 if (!$model->is_deep && !$isOA) {
                     $response = Http::asJson()
                         ->withToken(config('services.gemini.api_key'))
@@ -181,8 +189,12 @@ class AnalyzeNewsJob implements ShouldQueue
                         ->object();
                 } elseif (!$model->is_deep && $isOA && $i <= 1) {
                     $response = OpenAI::chat()->create($params);
-                    AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
-                        ->increment('total_tokens', $response->usage->totalTokens ?? 0);
+                    $actualTokens = $response->usage->totalTokens ?? 0;
+                    $adjustment = $actualTokens - $estimatedTokens;
+                    if ($adjustment != 0) {
+                        AiUsage::today()
+                            ->increment('total_tokens', $adjustment);
+                    }
                 } elseif ($model->is_deep && $i <= 1) {
                     $batchId = null;
                     $resumingBatch = $resumeState && !empty($resumeState['batch_id']) && ($resumeState['i'] ?? -1) == $i;
@@ -345,11 +357,12 @@ class AnalyzeNewsJob implements ShouldQueue
                 } else {
                     $response = AI::client('openrouter')->chat()->create($params);
                     if ($isOA && !$model->is_deep) {
-                        AiUsage::firstOrCreate(['date' => now()->format('Y-m-d')])
-                            ->increment(
-                                'total_tokens',
-                                $response->usage->totalTokens ?? $response->usage->total_tokens ??  0
-                            );
+                        $actualTokens = $response->usage->totalTokens ?? $response->usage->total_tokens ?? 0;
+                        $adjustment = $actualTokens - $estimatedTokens;
+                        if ($adjustment != 0) {
+                            AiUsage::today()
+                                ->increment('total_tokens', $adjustment);
+                        }
                     }
                 }
 
