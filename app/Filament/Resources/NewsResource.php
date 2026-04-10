@@ -4,13 +4,15 @@ namespace App\Filament\Resources;
 
 use App\Enums\NewsStatus;
 use App\Filament\Resources\NewsResource\Pages;
+use App\Http\Controllers\NewsController;
 use App\Models\News;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class NewsResource extends Resource
 {
@@ -105,6 +107,15 @@ class NewsResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('publish_tags')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->color(fn (NewsStatus $state): string => match ($state) {
+                        NewsStatus::PENDING_REVIEW => 'warning',
+                        NewsStatus::APPROVED => 'success',
+                        NewsStatus::REJECTED_MANUALLY => 'danger',
+                        NewsStatus::REJECTED_AS_OFF_TOPIC => 'danger',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('posted_at')
                     ->dateTime()
                     ->sortable(),
@@ -116,9 +127,20 @@ class NewsResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\ViewColumn::make('review_actions')
+                    ->label('')
+                    ->disabledClick()
+                    ->view('filament.tables.columns.news-review-actions'),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('status')
+                    ->options([
+                        NewsStatus::PENDING_REVIEW->value => 'Pending Review',
+                        NewsStatus::APPROVED->value => 'Approved',
+                        NewsStatus::REJECTED_MANUALLY->value => 'Rejected Manually',
+                        NewsStatus::REJECTED_AS_OFF_TOPIC->value => 'Rejected Off-topic',
+                    ])
+                    ->default(NewsStatus::PENDING_REVIEW->value),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -127,12 +149,122 @@ class NewsResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
-    }
+                Tables\Actions\BulkAction::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        foreach ($records as $record) {
+                            $controller->approve($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            == NewsStatus::PENDING_REVIEW->value
+                    ),
+                Tables\Actions\BulkAction::make('decline')
+                    ->label('Decline')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        foreach ($records as $record) {
+                            $controller->decline($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            == NewsStatus::PENDING_REVIEW->value
+                    ),
+                Tables\Actions\BulkAction::make('offtopic')
+                    ->label('Off-topic')
+                    ->icon('heroicon-o-no-symbol')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        foreach ($records as $record) {
+                            $controller->offtopic($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            == NewsStatus::PENDING_REVIEW->value
+                    ),
+                Tables\Actions\BulkAction::make('publish')
+                    ->label('Publish')
+                    ->icon('heroicon-o-arrow-up-on-square')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        foreach ($records as $record) {
+                            $controller->publishArticle($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            == NewsStatus::APPROVED->value
+                    ),
+                Tables\Actions\BulkAction::make('sendToReview')
+                    ->label('Send to Review')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        foreach ($records as $record) {
+                            $controller->cancel($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        ($livewire->getTableFilterState('status')['value'] ?? null)
+                            == NewsStatus::APPROVED->value
+                    ),
+                Tables\Actions\BulkAction::make('restore')
+                    ->label('Restore to Review')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = app(NewsController::class);
+                        $restored = 0;
+                        $queued = 0;
+                        foreach ($records as $record) {
+                            $result = $controller->restore($record);
+                            if ($result === true) {
+                                $restored++;
+                            } elseif ($result === 'queued') {
+                                $queued++;
+                            }
+                        }
 
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()->where('status', NewsStatus::PENDING_REVIEW);
+                        $message = $restored > 0 ? "{$restored} restored" : '';
+                        if ($queued > 0) {
+                            $message .= ($message ? ', ' : '') . "{$queued} queued for media download";
+                        }
+
+                        Notification::make()
+                            ->title($message ?: 'No articles restored')
+                            ->{($restored > 0 || $queued > 0) ? 'success' : 'danger'}()
+                            ->send();
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(fn (Tables\Contracts\HasTable $livewire): bool =>
+                        in_array(
+                            $livewire->getTableFilterState('status')['value'] ?? null,
+                            [NewsStatus::REJECTED_MANUALLY->value, NewsStatus::REJECTED_AS_OFF_TOPIC->value]
+                        )
+                    ),
+            ]);
     }
 
     public static function getRelations(): array

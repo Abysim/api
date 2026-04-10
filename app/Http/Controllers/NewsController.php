@@ -12,6 +12,7 @@ use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
 use App\Jobs\CleanNewsContentJob;
+use App\Jobs\ReloadNewsMediaJob;
 use App\Jobs\TranslateNewsJob;
 use App\Models\BlueskyConnection;
 use App\Models\DailyStat;
@@ -1117,12 +1118,12 @@ class NewsController extends Controller
 
     /**
      * @param News $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      * @throws Exception
      */
-    public function approve(News $model, Message $message): void
+    public function approve(News $model, ?Message $message = null): void
     {
         $model->status = NewsStatus::APPROVED;
         $model->save();
@@ -1140,16 +1141,21 @@ class NewsController extends Controller
             $model->loadMediaFile();
         }
 
-        Request::editMessageReplyMarkup([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-            'reply_markup' => new InlineKeyboard([
-                ['text' => '❌Cancel Approval', 'callback_data' => 'news_cancel ' . $model->id],
-            ]),
-        ]);
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            Request::editMessageReplyMarkup([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => new InlineKeyboard([
+                    ['text' => '❌Cancel Approval', 'callback_data' => 'news_cancel ' . $model->id],
+                ]),
+            ]);
+        }
     }
 
-    public function publishArticle(News $model, Message $message): void
+    public function publishArticle(News $model, ?Message $message = null): void
     {
         if ($model->status === NewsStatus::PUBLISHED) {
             return;
@@ -1162,45 +1168,57 @@ class NewsController extends Controller
             $model->published_at = now();
             $model->save();
 
-            Request::editMessageReplyMarkup([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-                'reply_markup' => new InlineKeyboard([]),
-            ]);
+            $messageId = $message?->getMessageId() ?? $model->message_id;
+            if ($messageId) {
+                $chatId = $message?->getChat()?->getId()
+                    ?? explode(',', config('telegram.admins'))[0];
+                Request::editMessageReplyMarkup([
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                    'reply_markup' => new InlineKeyboard([]),
+                ]);
+            }
         } else {
-            Request::sendMessage([
-                'chat_id' => $message->getChat()->getId(),
-                'reply_to_message_id' => $message->getMessageId(),
-                'text' => 'Article not published to BigCats!',
+            if ($message) {
+                Request::sendMessage([
+                    'chat_id' => $message->getChat()->getId(),
+                    'reply_to_message_id' => $message->getMessageId(),
+                    'text' => 'Article not published to BigCats!',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param News $model
+     * @param Message|null $message
+     *
+     * @return void
+     */
+    public function cancel(News $model, ?Message $message = null): void
+    {
+        $model->status = NewsStatus::PENDING_REVIEW;
+        $model->save();
+
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            Request::editMessageReplyMarkup([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => $model->getInlineKeyboard(),
             ]);
         }
     }
 
     /**
      * @param News $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function cancel(News $model, Message $message): void
-    {
-        $model->status = NewsStatus::PENDING_REVIEW;
-        $model->save();
-
-        Request::editMessageReplyMarkup([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-            'reply_markup' => $model->getInlineKeyboard(),
-        ]);
-    }
-
-    /**
-     * @param News $model
-     * @param Message $message
-     *
-     * @return void
-     */
-    public function decline(News $model, Message $message): void
+    public function decline(News $model, ?Message $message = null): void
     {
         $model->status = NewsStatus::REJECTED_MANUALLY;
         $model->save();
@@ -1210,11 +1228,11 @@ class NewsController extends Controller
 
     /**
      * @param News $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function offtopic(News $model, Message $message): void
+    public function offtopic(News $model, ?Message $message = null): void
     {
         $model->status = NewsStatus::REJECTED_AS_OFF_TOPIC;
         $model->save();
@@ -1224,23 +1242,104 @@ class NewsController extends Controller
 
     /**
      * @param News $model
-     * @param Message $message
+     * @param Message|null $message
      *
      * @return void
      */
-    public function delete(News $model, Message $message): void
+    public function delete(News $model, ?Message $message = null): void
     {
         $model->deleteFile();
 
-        $response = Request::deleteMessage([
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
-        ]);
+        $messageId = $message?->getMessageId() ?? $model->message_id;
+        if ($messageId) {
+            $chatId = $message?->getChat()?->getId()
+                ?? explode(',', config('telegram.admins'))[0];
+            $response = Request::deleteMessage([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+            ]);
 
-        if ($response->isOk()) {
-            $model->message_id = null;
-            $model->save();
+            if ($response->isOk()) {
+                $model->message_id = null;
+                $model->save();
+            }
         }
+    }
+
+    /**
+     * Restore a REJECTED_MANUALLY article to PENDING_REVIEW.
+     * Re-downloads media (inline 4s attempt, queued fallback) and re-posts to Telegram.
+     * Does NOT re-run the Clean/Translate/Analyze pipeline.
+     *
+     * @return bool|string true=success, false=failure, 'queued'=media download queued
+     */
+    public function restore(News $model): bool|string
+    {
+        if (!in_array($model->status, [NewsStatus::REJECTED_MANUALLY, NewsStatus::REJECTED_AS_OFF_TOPIC])) {
+            return false;
+        }
+
+        $originalStatus = $model->status;
+
+        // Text-only path: skip media re-download
+        if ($model->platform === 'article') {
+            return $this->restoreToReview($model, $originalStatus);
+        }
+
+        // With-media path: try inline 4s fetch first
+        if (!empty($model->media) && empty($model->filename)) {
+            try {
+                $file = Http::timeout(4)->get($model->media)->body();
+                if (!empty($file)) {
+                    $mime = FileHelper::getMimeType($file);
+                    if (Str::startsWith($mime, 'image/')) {
+                        $extension = Str::after($mime, 'image/') ?: 'jpg';
+                        $hash = md5($file);
+                        $path = storage_path('app/public/news/' . $model->id . $hash . '.' . $extension);
+                        if (File::put($path, $file)) {
+                            $model->filename = $model->id . $hash . '.' . $extension;
+                            $model->save();
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // Inline fetch failed — fall through to queued path
+            }
+        }
+
+        // If inline download succeeded, send to Telegram
+        if (!empty($model->filename)) {
+            return $this->restoreToReview($model, $originalStatus);
+        }
+
+        // Inline failed — queue the full fallback chain
+        ReloadNewsMediaJob::dispatch($model->id);
+        return 'queued';
+    }
+
+    /**
+     * Send to Telegram review with FAILED-status protection.
+     * If sendNewsToReview() sets FAILED (Telegram error), resets to REJECTED_MANUALLY.
+     */
+    private function restoreToReview(News $model, NewsStatus $fallbackStatus = NewsStatus::REJECTED_MANUALLY): bool
+    {
+        $this->sendNewsToReview($model);
+
+        if ($model->status === NewsStatus::FAILED) {
+            $model->status = $fallbackStatus;
+            $model->save();
+            return false;
+        }
+
+        return $model->status === NewsStatus::PENDING_REVIEW;
+    }
+
+    /**
+     * Public wrapper for sendNewsToReview() — used by ReloadNewsMediaJob.
+     */
+    public function sendNewsToReviewPublic(News $model): void
+    {
+        $this->sendNewsToReview($model);
     }
 
     /**
