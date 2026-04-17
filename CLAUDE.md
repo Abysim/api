@@ -185,6 +185,35 @@ Pet project that supports other projects. Laravel 10 API application.
 - **`ProcessTelegramChannelPost`**: Media group coordination via Cache. Photo download retry (5 attempts), media group wait loop (4 iterations with sleep)
 - **`PostToSocial`**: Posts to social platforms. No loops. `$timeout=180`
 
+## Telegram Album Publishing Pipeline
+
+Telegram channel albums (media groups with N photos) fan out into N separate `channel_post` webhooks from the Telegram Bot API, one per photo. Each maps to its own `ProcessTelegramChannelPost` job. The pipeline coordinates these N jobs through a Cache-based rendezvous before a single "head" worker publishes the complete album as a chain to X, Bluesky, Fediverse, etc.
+
+### 4-Stage Flow
+1. **Webhook fan-out**: Telegram delivers N `channel_post` messages (one per photo) sharing `media_group_id`. The Telegram custom-fetch scheduler dispatches N `ProcessTelegramChannelPost` jobs.
+2. **Cache rendezvous**: Each job reads `Cache::get($mediaGroupId)`. The first arrival elects itself "head" (`isHead=true`), creates the cache entry with a 60s TTL. Subsequent arrivals append their own `{isHead=false, text, url, path}` slot. See `app/Jobs/ProcessTelegramChannelPost.php:83-92`.
+3. **Head wait loop**: Head worker sleeps `8s × up to 4 iterations` (max ~32s), polling the cache each iteration for all slots to have `path` populated. Non-head workers sleep `1s × 4` and return after their own slot is filled. See `app/Jobs/ProcessTelegramChannelPost.php:148-207`.
+4. **Chain publish**: Head dispatches `PostToSocial` with the full assembled `$media` array. `Social::splitPost` (`app/Social.php:163-173`) chunks media into groups of `MAX_MEDIA_COUNT` (4 for Bluesky+Twitter), producing a chain of posts: first post carries the caption, subsequent posts carry 4 more photos each.
+
+### Invariants — DO NOT BREAK
+Future changes to the queue worker pool, `ProcessTelegramChannelPost`, or `PostToSocial` must preserve:
+
+1. **Spawn-on-exit in `QueueWorkDynamic::handle()` `finally` block** — when the pool was at `--max-workers` AND jobs are still pending at exit time, the exiting worker MUST spawn a replacement. Without this, N-photo albums with N > max-workers drop the tail photos (the head's 32s cache wait expires before workers arrive to populate slots 7, 8, …). The spawn check (`count($pids) >= $maxWorkers && availableJobCount() > 0`) AND the self-removal from the PID list MUST run inside a single `withPidLock()` scope so concurrent exits can't each see count-at-cap independently and produce a burst of `spawnWorker()` forks — on 1GB bigcats a 6-wide spawn burst would peak process memory past the cPanel killer threshold. Startup-rejected workers (the `!registerWorker(...)` `return 0` at the top of `handle()`) correctly skip spawn-on-exit because they exit BEFORE the `try` block, so `finally` never runs.
+2. **Head wait ≥ 32s** (4 iterations × 8s sleep). Shorter = misses late photos under load. Longer is fine but adds webhook-to-post latency.
+3. **`--max-workers` ≥ 4** in `Kernel.php` schedule. With fewer workers, even a 4-photo album saturates the pool and the head cannot advance.
+4. **`MAX_MEDIA_COUNT = 4`** in both `app/Bluesky.php` and `app/Twitter.php` matches the platform API limits — do not raise above platform caps.
+5. **Cache TTL 60s on `$mediaGroupId`** in `ProcessTelegramChannelPost` — must exceed the head's 32s wait plus network/download slack.
+
+### Symptom → Root-Cause Table
+| Symptom in X/Bluesky | Likely root cause | Where to look |
+|----------------------|------------------|---------------|
+| `N of M` photos posted, `M > N` | Worker pool exited at cap without spawning replacements | `QueueWorkDynamic::handle()` `finally` block — confirm `$shouldSpawnOnExit` + `spawnWorker()` still present |
+| All photos posted but as one non-chained long post | `splitPost` not chunking | `app/Social.php:163-173`; verify `MAX_MEDIA_COUNT` constant on subclass |
+| Caption appears on every post instead of the first only | Head's caption-hoisting loop broken | `ProcessTelegramChannelPost.php:186-203` |
+| Album posted twice (two heads) | `isHead` collision not resolved | `ProcessTelegramChannelPost.php:166-178` collision handler |
+| Entire album dropped silently | `$mediaGroupId` cache TTL expired before head finished waiting | Cache TTL at `ProcessTelegramChannelPost.php:86,90,144,160,169` |
+| Posts have empty/missing images | Photo download retry (5 attempts) exhausted OR `PHP_BINARY` regression in spawn `exec()` | `ProcessTelegramChannelPost.php:112-123`; `QueueWorkDynamic::spawnWorker()` |
+
 ## FlickrPhoto Deduplication
 - **Perceptual hashing** via `jenssegers/imagehash` (pHash algorithm) — 64-bit hash stored as signed `BIGINT` in `perceptual_hash` column on `flickr_photos`
 - **Pipeline**: after classification in `processPhotos()`, `checkDuplicate()` computes hash, compares via `BIT_COUNT(perceptual_hash ^ ?) <= threshold`

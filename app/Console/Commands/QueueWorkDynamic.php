@@ -16,7 +16,7 @@ class QueueWorkDynamic extends Command
         {--sleep=3 : Seconds between queue polls}
         {--memory=100 : Memory limit in MB}';
 
-    protected $description = 'Self-scaling queue worker: spawns replacements when busy, exits when idle';
+    protected $description = 'Self-scaling queue worker: spawns replacements when busy (pre-job) and on exit at cap with pending jobs, exits when idle';
 
     const CACHE_KEY = 'queue:dynamic:pids';
     const LOCK_KEY = 'queue:dynamic:pids:lock';
@@ -75,7 +75,30 @@ class QueueWorkDynamic extends Command
                 break;
             }
         } finally {
-            $this->deregisterWorker($pid);
+            // Spawn-on-exit: if the pool was at cap with jobs still pending,
+            // release a replacement so the queue keeps moving. Without this,
+            // N-photo Telegram albums (N parallel ProcessTelegramChannelPost jobs)
+            // drop tail photos when N > max-workers and workers exit unreplaced.
+            //
+            // Check + deregister are merged under a single lock so concurrent
+            // exits can't each independently see count==max and spawn in a
+            // burst — on 1GB bigcats a 6-wide burst spawn would peak process
+            // memory past the cPanel killer threshold.
+            $shouldSpawnOnExit = false;
+            $this->withPidLock(function () use ($pid, $maxWorkers, &$shouldSpawnOnExit) {
+                $pids = $this->getAlivePids();
+                // Check BEFORE removing self — $pid is still counted.
+                $shouldSpawnOnExit = $this->availableJobCount() > 0
+                    && count($pids) >= $maxWorkers;
+                // Remove self atomically with the decision above.
+                $pids = array_values(array_filter($pids, fn($p) => $p !== $pid));
+                Cache::put(self::CACHE_KEY, $pids, self::CACHE_TTL);
+            });
+
+            if ($shouldSpawnOnExit) {
+                Log::info("[queue:dynamic] Worker {$pid} spawning on exit: pool at cap with jobs pending");
+                $this->spawnWorker();
+            }
         }
 
         return 0;
