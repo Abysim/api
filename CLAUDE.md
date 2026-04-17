@@ -65,7 +65,7 @@ Pet project that supports other projects. Laravel 10 API application.
 - **Via OpenRouter** (alternating with OpenAI): `AI::client('openrouter')->chat()->create($params)` with `openai/` model prefix. Config: `services.openrouter.*` → `OPENROUTER_API_KEY`
 - **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen3-30B-A3B-Instruct-2507`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
 - **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Model: `gemini-3.1-pro-preview`. Config: `services.gemini.*` → `GEMINI_API_KEY`
-- **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-6`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
+- **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-7`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
 - **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
 - **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
 - **GPT-5 family does NOT support `temperature`** — `gpt-5`, `gpt-5-mini`, `gpt-5-nano` all reject any temperature value other than the default (1), both via OpenAI directly and via OpenRouter. Use `reasoning_effort` instead for output control. Only non-GPT-5 models (Qwen, Gemini) accept custom temperature.
@@ -163,8 +163,8 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ### AnalyzeNewsJob model routing
 - `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
-- `is_deep` + `$i<=1`: `claude-opus-4-6` via Anthropic Batches API (polls for result with 30s sleep loop)
-- `is_deep` + `$i>1`: `anthropic/claude-opus-4-6` via OpenRouter
+- `is_deep` + `$i<=1`: `claude-opus-4-7` via Anthropic Batches API (polls for result with 30s sleep loop)
+- `is_deep` + `$i>1`: `anthropic/claude-opus-4-7` via OpenRouter
 - `!is_deep` + `$isOA` + `$i<=1`: `gpt-5.4` via OpenAI facade
 - `!is_deep` + `$isOA` + `$i>1`: `openai/gpt-5.4` via OpenRouter
 - `!is_deep` + `!$isOA` (all `$i`): `gemini-3.1-pro-preview` via direct Gemini HTTP
