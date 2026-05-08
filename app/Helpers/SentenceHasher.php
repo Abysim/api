@@ -30,6 +30,31 @@ class SentenceHasher
         ));
     }
 
+    public static function truncateAtSentence(string $text, int $maxLength, string $ellipsis = '…'): string
+    {
+        if (mb_strlen($text) <= $maxLength) {
+            return $text;
+        }
+
+        $budget = $maxLength - mb_strlen($ellipsis);
+        $sentences = self::splitSentences($text);
+        $result = '';
+
+        foreach ($sentences as $sentence) {
+            $separator = $result === '' ? '' : ' ';
+            if (mb_strlen($result) + mb_strlen($separator) + mb_strlen($sentence) > $budget) {
+                break;
+            }
+            $result .= $separator . $sentence;
+        }
+
+        if ($result === '') {
+            return mb_substr($text, 0, $budget) . $ellipsis;
+        }
+
+        return $result . $ellipsis;
+    }
+
     /**
      * Compute sentence hashes for title + content.
      * Returns [hash => original_sentence_text, ...].

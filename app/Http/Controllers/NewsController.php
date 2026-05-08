@@ -8,6 +8,7 @@ use App\Enums\FlickrPhotoStatus;
 use App\Exceptions\NewsCatcherQuotaExceededException;
 use App\Enums\NewsStatus;
 use App\Helpers\FileHelper;
+use App\Helpers\SentenceHasher;
 use App\Jobs\AnalyzeNewsJob;
 use App\Jobs\ApplyNewsAnalysisJob;
 use App\Jobs\NewsJob;
@@ -235,11 +236,11 @@ class NewsController extends Controller
             [
                 'value1' => $model->getShortCaption(),
                 'value2' => (!empty($image) && $image !== true) ? $image : ($model->media ?: $model->getFileUrl()),
-                'value3' => trim(Str::replace(
+                'value3' => SentenceHasher::truncateAtSentence(trim(Str::replace(
                     ['### ', '## ', '# ', '---'],
                     '',
                     Str::of(Str::inlineMarkdown($model->publish_content))->stripTags()
-                )),
+                )), 20000),
             ]
         );
 
@@ -276,11 +277,11 @@ class NewsController extends Controller
                     [
                         'value1' => $caption,
                         'value2' => (!empty($image) && $image !== true) ? $image : ($model->media ?: $model->getFileUrl()),
-                        'value3' => trim(Str::replace(
+                        'value3' => SentenceHasher::truncateAtSentence(trim(Str::replace(
                             ['### ', '## ', '# ', '---'],
                             '',
                             Str::of(Str::inlineMarkdown($model->original_content))->stripTags()
-                        )),
+                        )), 20000),
                     ]
                 );
 
