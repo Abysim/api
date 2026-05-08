@@ -265,6 +265,21 @@ class AnalyzeNewsJob implements ShouldQueue
                                 . json_encode($response, JSON_UNESCAPED_UNICODE)
                             );
 
+                            if (
+                                isset($response->error->message)
+                                && Str::contains($response->error->message, 'credit balance', true)
+                                && Cache::add('anthropic_credit_alert', true, now()->addHours(24))
+                            ) {
+                                Request::sendMessage([
+                                    'chat_id' => explode(',', config('telegram.admins'))[0],
+                                    'text' => '⚠️ Anthropic credit balance too low — top up to restore deep analysis. '
+                                        . 'Falling back to OpenRouter until then.',
+                                    'reply_markup' => new InlineKeyboard([
+                                        ['text' => '❌Delete', 'callback_data' => 'delete']
+                                    ]),
+                                ]);
+                            }
+
                             if (empty($response->id)) {
                                 throw new Exception("$model->id: Failed to get batch ID $model->analysis_count $i");
                             }
