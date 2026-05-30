@@ -22,5 +22,7 @@ yarn-error.log
 /.idea
 /.vscode
 .ftpquota
-.claude
+.claude/*
+!.claude/skills/
+!.claude/agents/
 .omc
