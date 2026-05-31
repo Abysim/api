@@ -95,13 +95,16 @@ Workflow({ scriptPath: "/tmp/tqa-ID-run.mjs" })    // NO args — title/content/
 `bake-workflow.mjs` reads `source.json`, derives `isScience` (platform=='article'), `language`, `isTranslated`, `dateFormatted`, and inlines them into the workflow's `const A = {…}` via `JSON.stringify` (always valid + byte-exact). The workflow then: if `language != 'uk' && !isTranslated` (or `--translate true`) it invokes `translation-translator[-science]` (Opus) to render Ukrainian first, then loops `translation-analyzer[-science]` (Opus) + `translation-editor[-science]` (Sonnet) BY agentType until **two consecutive «Ні»**. It returns `{ title, content, outcome, cyclesRun, lastAnalysis, appliedCycles, isScience, translated, … }`. **Record the task-output file path** from the completion notification — Phase D needs it.
 
 ## Phase D — Present + gated write-back (via the writeback helper — no AI-handled base64)
-1. **Preview (writes nothing):** the helper reads the corrected text from the workflow's task-output
-   file and the snapshot from `source.json`, then prints the decoded new title/content + the exact command:
+1. **Preview (writes nothing — purely local, never gated):** run the **inert diff helper**. It writes two
+   local files (`/tmp/tqa-ID-orig.txt` from `source.json`'s `publish_*`, `/tmp/tqa-ID-new.txt` from the
+   task-output's `.result`) and prints a unified diff — original → corrected:
    ```bash
-   node .claude/skills/translation-qa/writeback.mjs --id ID --result <TASK_OUTPUT_JSON_PATH> --source /tmp/tqa-ID-source.json
+   node .claude/skills/translation-qa/preview-diff.mjs --id ID --result <TASK_OUTPUT_JSON_PATH> --source /tmp/tqa-ID-source.json
    ```
-   Show that decoded title/content to the user as the before/after (vs the originals in `source.json`).
-   You never reproduce the text or base64 — the helper does the bytes (base64 computed in-script, byte-exact).
+   Show that diff to the user as the before/after. You never reproduce the text/base64 — the helper does the
+   bytes (reads/writes files, byte-exact). It does **zero** remote I/O, so the auto-mode permission gate never
+   stops it. (`writeback.mjs` with no `--apply` also previews, but the gate flags it — exact reason unconfirmed;
+   it *can* write to prod under `--apply` — so prefer `preview-diff.mjs`.)
 2. If `--dry-run` / `--text` / `--no-write`: stop here (never write).
 3. **Side-effect note (informational):** the write is a query-builder MASS UPDATE — **no** Eloquent
    events fire, so it does NOT refresh the Telegram review caption and does NOT re-sync `original_*`
