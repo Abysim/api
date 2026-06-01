@@ -31,4 +31,26 @@ enum FlickrPhotoStatus: int
             'Dupe' => self::REJECTED_BY_DUPLICATION,
         ];
     }
+
+    /**
+     * Rejected statuses that may be manually sent back to the review queue from
+     * the admin panel. Excludes REMOVED_BY_AUTHOR — that photo is gone from
+     * Flickr's side, so review() → loadPhotoFile() can no longer re-download the
+     * image if its local file was already deleted.
+     *
+     * @return self[]
+     */
+    public static function reviewableRejectedCases(): array
+    {
+        return array_values(array_filter(
+            self::rejectedCases(),
+            static fn (self $case): bool => $case !== self::REMOVED_BY_AUTHOR,
+        ));
+    }
+
+    /** @return int[] */
+    public static function reviewableRejectedValues(): array
+    {
+        return array_map(static fn (self $case): int => $case->value, self::reviewableRejectedCases());
+    }
 }

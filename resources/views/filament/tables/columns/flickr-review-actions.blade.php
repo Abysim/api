@@ -10,9 +10,10 @@
 
     $isPendingReview = ($statusFilterValue === FlickrPhotoStatus::PENDING_REVIEW->value);
     $isApproved = ($statusFilterValue === FlickrPhotoStatus::APPROVED->value);
+    $isReviewableRejected = in_array($statusFilterValue, FlickrPhotoStatus::reviewableRejectedValues(), true);
 @endphp
 
-@if (($isPendingReview || $isApproved) && $recordKey)
+@if (($isPendingReview || $isApproved || $isReviewableRejected) && $recordKey)
     <div
         class="flex flex-col items-end gap-0.5"
     >
@@ -38,7 +39,7 @@
             </x-filament::link>
         @endif
 
-        @if ($isApproved)
+        @if ($isApproved || $isReviewableRejected)
             <x-filament::link
                 color="warning"
                 size="sm"

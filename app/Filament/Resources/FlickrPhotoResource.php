@@ -163,6 +163,26 @@ class FlickrPhotoResource extends Resource
                         ($livewire->getTableFilterState('status')['value'] ?? null)
                             == FlickrPhotoStatus::PENDING_REVIEW->value
                     ),
+                Tables\Actions\BulkAction::make('sendToReview')
+                    ->label('Send to Review')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->action(function (Collection $records): void {
+                        $controller = new FlickrPhotoController();
+                        foreach ($records as $record) {
+                            $controller->review($record);
+                        }
+                    })
+                    ->deselectRecordsAfterCompletion()
+                    ->visible(function (Tables\Contracts\HasTable $livewire): bool {
+                        $value = $livewire->getTableFilterState('status')['value'] ?? null;
+                        if (!is_numeric($value)) {
+                            return false;
+                        }
+
+                        return in_array((int) $value, FlickrPhotoStatus::reviewableRejectedValues(), true);
+                    }),
                 Tables\Actions\BulkAction::make('addTagToTitle')
                     ->label('Add Tag to Title')
                     ->icon('heroicon-o-arrow-left')
