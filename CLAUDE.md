@@ -61,18 +61,18 @@ Pet project that supports other projects. Laravel 10 API application.
 - `phpunit.xml` sets `TELEGRAM_API_TOKEN=""` to prevent TelegramServiceProvider from connecting to DB during tests
 
 ## AI Client Patterns
-- **OpenAI GPT models** (`gpt-5-nano`, `gpt-5-mini`, `gpt-5.4`, `o3`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
+- **OpenAI GPT models** (`gpt-5-nano`, `gpt-5-mini`, `gpt-5.5`, `o3`, `o4-mini`): Use `OpenAI::chat()->create($params)` facade. Import: `use OpenAI\Laravel\Facades\OpenAI;`. Config: `config/openai.php` → `OPENAI_API_KEY`
 - **Via OpenRouter** (alternating with OpenAI): `AI::client('openrouter')->chat()->create($params)` with `openai/` model prefix. Config: `services.openrouter.*` → `OPENROUTER_API_KEY`
 - **Via Nebius** (non-OpenAI models only, e.g. `Qwen/Qwen3-30B-A3B-Instruct-2507`): `AI::client('nebius')->chat()->create($params)`. Config: `services.nebius.*` → `NEBIUS_API_KEY`
 - **Via Gemini** (translation/analysis): Raw `Http::asJson()->withToken(config('services.gemini.api_key'))->post('https://' . config('services.gemini.api_endpoint') . '/chat/completions', $params)`. Model: `gemini-3.1-pro-preview`. Config: `services.gemini.*` → `GEMINI_API_KEY`
-- **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-7`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
+- **Via Anthropic direct** (deep analysis batches): Raw HTTP to Messages Batches API with `x-api-key` header. Model: `claude-opus-4-8`. Config: `services.anthropic.*` → `ANTHROPIC_API_KEY`
 - **`AI::client($name)`** (in `app/AI.php`): Factory that creates OpenAI SDK clients using `config("services.$name.api_key")` and `config("services.$name.api_endpoint")`. Used for openrouter, nebius, anthropic.
 - **NEVER** use raw HTTP for OpenAI GPT models — always use the `OpenAI` facade. NEVER use Nebius credentials for GPT models.
 - **GPT-5 family does NOT support `temperature`** — `gpt-5`, `gpt-5-mini`, `gpt-5-nano` all reject any temperature value other than the default (1), both via OpenAI directly and via OpenRouter. Use `reasoning_effort` instead for output control. Only non-GPT-5 models (Qwen, Gemini) accept custom temperature.
-- **`reasoning_effort` levels**: `gpt-5-mini` and `gpt-5-nano` support only up to `high`. `xhigh` is only available on larger models (`gpt-5.4`, `o3`). Using unsupported levels causes API errors.
+- **`reasoning_effort` levels**: `gpt-5-mini` and `gpt-5-nano` support only up to `high`. `xhigh` is only available on larger models (`gpt-5.5`, `o3`). Using unsupported levels causes API errors.
 
 ## AI Cost Management
-- **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.4`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5-mini`, `gpt-5-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
+- **OpenAI free token program**: Data-sharing program gives 1M tokens/day for larger models (`gpt-5.5`, `o3`, etc.) and 10M tokens/day for smaller models (`gpt-5-mini`, `gpt-5-nano`, `o4-mini`, etc.). Check eligible models at OpenAI dashboard before switching to a new model
 - **Daily token tracking**: `AiUsage` model tracks daily OpenAI token consumption. `AnalyzeNewsJob` checks `AiUsage.total_tokens` against the 1M daily limit before using large OpenAI models (`o3`). When limit is reached, `$isOA` is set to `false` and the job falls back to **Gemini** (`gemini-3.1-pro-preview`) instead — this is the cost-control mechanism to stay within the free tier
 - **Gemini free tier**: Only Flash models (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`) have free tier. Pro models (`gemini-3.1-pro-preview`) require paid billing — used as fallback when OpenAI free quota is exhausted because it's still cheaper than paid OpenAI
 
@@ -98,6 +98,9 @@ Pet project that supports other projects. Laravel 10 API application.
 - **ApplyNewsAnalysisJob system prompt** is constructed by slicing `analyzer.md` via `Str::before('1.')` + `Str::afterLast("\n")` — this extracts ONLY the 3-line preamble + date, stripping all 24 numbered rules. This is intentional (the applier applies corrections, doesn't need analyzer rules), but the slicing is fragile and breaks if `analyzer.md` structure changes.
 
 - **Google News URLs bypass pre-fetch filters** — `$article['link']` from Google News is `news.google.com/...` (a redirect), not the real URL. Domain/path filters in the `getNews()` loop only catch GDELT articles (direct URLs). For Google News articles, filtering must also happen inside `extractContent()` after `urlDecoder->decode()` resolves the real URL (line ~444).
+
+- **API routes have NO `/api` prefix** — `RouteServiceProvider::boot()` loads `routes/api.php` with `Route::middleware('api')->group(...)` but **without** `->prefix('api')`. So api.php routes live at the **subdomain root**: `https://api.abysim.com/news`, `/bluesky`, `/flickr-photo`, etc. — `https://api.abysim.com/api/...` 404s. (`api` is the subdomain, not a path segment; `php artisan route:list` shows the real, prefix-free URIs.) The app also can't `route:cache` (the `/user` route is a closure), so new routes go live the instant files land on bigcats — only `config:cache` matters after a deploy.
+- **translation-QA internal endpoints** (`GET`/`POST /news/{id}/translation`, `NewsTranslationController`, added 2026-06-02) — called by the `translation-qa` skill's haiku agents (`fetch-api.mjs`/`post-api.mjs`). Bearer-auth via `TQA_API_TOKEN` (`.env` + `VerifyApiToken` middleware, alias `api.token`); callers **must send `Accept: application/json`** or a validation failure returns a `302` redirect instead of `422` JSON. POST uses `$model->save()` (observer fires → Telegram caption refresh) and does ALL verification server-side (optimistic md5 lock → 409; UTF-8 + C0-strip; **64 KB BYTE cap via `strlen`**, not char `max:`; sets `is_translated/is_deep/is_deepest=1, is_auto=0` + optional `cycles`→`analysis_count`).
 
 ## Resetting Articles for Re-processing
 - **Full re-translation reset** requires clearing ALL of: `publish_title`, `publish_content`, `is_translated` (set to false), `status` (set to 10), `analysis`, `previous_analysis`, `content_hashes`, `analysis_count` (set to 0), `is_deep`/`is_deepest` (set to false), `is_auto` (set to true)
@@ -163,10 +166,10 @@ Pet project that supports other projects. Laravel 10 API application.
 
 ### AnalyzeNewsJob model routing
 - `$isOA` = `platform == 'article'` OR `config('app.is_news_by_openai')`
-- `is_deep` + `$i<=1`: `claude-opus-4-7` via Anthropic Batches API (polls for result with 30s sleep loop)
-- `is_deep` + `$i>1`: `anthropic/claude-opus-4-7` via OpenRouter
-- `!is_deep` + `$isOA` + `$i<=1`: `gpt-5.4` via OpenAI facade
-- `!is_deep` + `$isOA` + `$i>1`: `openai/gpt-5.4` via OpenRouter
+- `is_deep` + `$i<=1`: `claude-opus-4-8` via Anthropic Batches API (polls for result with 30s sleep loop)
+- `is_deep` + `$i>1`: `anthropic/claude-opus-4-8` via OpenRouter
+- `!is_deep` + `$isOA` + `$i<=1`: `gpt-5.5` via OpenAI facade
+- `!is_deep` + `$isOA` + `$i>1`: `openai/gpt-5.5` via OpenRouter
 - `!is_deep` + `!$isOA` (all `$i`): `gemini-3.1-pro-preview` via direct Gemini HTTP
 
 ### Job inner retry pattern
