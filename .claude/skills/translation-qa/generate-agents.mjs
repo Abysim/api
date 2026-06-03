@@ -48,7 +48,7 @@ function buildEditorBody(isScience) {
   return editorText;
 }
 
-function frontmatter(name, description, model) {
+function frontmatter(name, description, model, effort) {
   // description quoted for YAML safety; body follows the closing ---.
   // Web research IS wanted — verifying Ukrainian terminology / proper names / facts against
   // authoritative sources is legitimate translation QA. Researching the Laravel CODEBASE the agent
@@ -56,7 +56,12 @@ function frontmatter(name, description, model) {
   // while leaving WebSearch/WebFetch available. A denylist (not an allowlist) is used so the workflow's
   // StructuredOutput tool is never accidentally blocked (an empty allowlist might block it).
   // (2026-05-30: translation-analyzer did 6 WebSearches [OK, kept] + a Bash codebase poke [blocked now].)
-  return `---\nname: ${name}\ndescription: "${description.replace(/"/g, '\\"')}"\ndisallowedTools: Read, Write, Edit, NotebookEdit, Bash, Grep, Glob\nmodel: ${model}\n---\n\n`;
+  // `effort: max` forces maximum reasoning for the Opus judgment agents (analyzer/translator). The
+  // frontmatter `effort` field OVERRIDES the session effort level, so we set it ONLY for Opus and omit
+  // it for the Sonnet editor (Sonnet has no xhigh/max). `agent()` has no effort option — frontmatter is
+  // the only documented per-agent knob.
+  const effortLine = effort ? `effort: ${effort}\n` : '';
+  return `---\nname: ${name}\ndescription: "${description.replace(/"/g, '\\"')}"\ndisallowedTools: Read, Write, Edit, NotebookEdit, Bash, Grep, Glob\nmodel: ${model}\n${effortLine}---\n\n`;
 }
 
 mkdirSync(AGENTS_DIR, { recursive: true });
@@ -65,7 +70,7 @@ const written = [];
 for (const sci of [false, true]) {
   const aName = 'translation-analyzer' + (sci ? '-science' : '');
   const aDesc = `Translation-QA analyzer for ${sci ? 'SCIENTIFIC' : 'publicistic'} Ukrainian big-cat articles. Invoked ONLY by the translation-qa workflow via agentType; returns verdict and corrections. Not for general tasks.`;
-  const aOut = frontmatter(aName, aDesc, 'opus') + getPrompt('analyzer', sci) + '\n';
+  const aOut = frontmatter(aName, aDesc, 'opus', 'max') + getPrompt('analyzer', sci) + '\n';
   writeFileSync(resolve(AGENTS_DIR, aName + '.md'), aOut, 'utf8');
   written.push({ name: aName, bytes: Buffer.byteLength(aOut, 'utf8') });
 
@@ -77,7 +82,7 @@ for (const sci of [false, true]) {
 
   const tName = 'translation-translator' + (sci ? '-science' : '');
   const tDesc = `Translation-QA TRANSLATOR for ${sci ? 'SCIENTIFIC' : 'publicistic'} big-cat articles: translates a source-language article INTO Ukrainian (whole article, Markdown out). Invoked ONLY by the translation-qa workflow via agentType when the article is not yet Ukrainian. Not for general tasks.`;
-  const tOut = frontmatter(tName, tDesc, 'opus') + getPrompt('translate', sci) + '\n';
+  const tOut = frontmatter(tName, tDesc, 'opus', 'max') + getPrompt('translate', sci) + '\n';
   writeFileSync(resolve(AGENTS_DIR, tName + '.md'), tOut, 'utf8');
   written.push({ name: tName, bytes: Buffer.byteLength(tOut, 'utf8') });
 }

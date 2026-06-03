@@ -14,6 +14,34 @@
 //
 // `args` arrives from the Workflow tool as a JSON STRING in this runtime -> parse defensively.
 // Authored using only documented Workflow constructs.
+//
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+// HOW THE translation-qa SKILL DRIVES THIS, AND WHY. Rationale lives HERE (an executed file — node ignores
+// comments) so the orchestrator does NOT re-read it every run; SKILL.md stays a lean command list.
+//
+// Flow of `/translation-qa <id>`:
+//   1. haiku `translation-fetcher` runs fetch-api.mjs       -> GET  /news/{id}/translation -> source.json
+//   2. orchestrator runs bake-workflow.mjs                  -> inlines the article into a copy of THIS file
+//   3. orchestrator runs Workflow({scriptPath: run.mjs})    -> THIS loop (translate? -> analyze<->apply)
+//   4. haiku `translation-poster` runs post-api.mjs --apply -> POST /news/{id}/translation (autonomous)
+//   5. orchestrator reports the verdict. Opus never sees the article body.
+//
+// Why it is shaped this way:
+//   - Body never through an AI: the ~58 KB article moves file->curl->API both ways (fetch-api writes the GET
+//     body to a file; post-api streams it to curl via stdin). LLMs corrupt long text, so only node/curl touch
+//     the bytes — which is also WHY the I/O is two haiku agents running helpers, not the Opus orchestrator.
+//   - Server-side PHP does ALL verification (bearer auth; optimistic md5 lock -> 409; UTF-8 + C0 strip; 64 KB
+//     BYTE cap; flags is_translated/is_deep/is_deepest=1,is_auto=0; cycles->analysis_count). Agents verify nothing.
+//   - The write is AUTONOMOUS (no human gate). The optimistic md5 lock (publish_content unchanged since the read)
+//     is the safety net; a non-converged ('capped') run is REFUSED by post-api.mjs unless --force.
+//   - analyzer + translator run at effort:max (their .claude/agents frontmatter); the Sonnet editor does not
+//     (Sonnet has no xhigh/max). agent() has NO effort option -> frontmatter is the only per-agent knob.
+//   - Scope: the orchestrator does ONLY fetch->bake->run->post->report. It must NOT audit article state
+//     (language=en + is_translated=false is a NORMAL untranslated-review-queue input), read the body, or explore
+//     the codebase. The linguistic subagents may spend unlimited tokens for quality.
+//   - Prompts are baked into .claude/agents/translation-* by generate-agents.mjs (re-run + restart CC when
+//     resources/prompts/{translate,analyzer,editor}.md change). The old SSH-tinker read + writeback.mjs are superseded.
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const meta = {
   name: 'translation-qa',

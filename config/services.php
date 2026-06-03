@@ -88,4 +88,11 @@ return [
         'api_endpoint' => env('ANTHROPIC_API_ENDPOINT'),
         'api_timeout' => env('ANTHROPIC_API_TIMEOUT', 30),
     ],
+
+    // Shared bearer token for the translation-QA internal API endpoints
+    // (GET/POST /api/news/{id}/translation). Same value lives in the local
+    // shell env so the haiku agents can send it; never committed.
+    'tqa' => [
+        'token' => env('TQA_API_TOKEN'),
+    ],
 ];

@@ -3,6 +3,7 @@
 use App\Http\Controllers\BlueskyController;
 use App\Http\Controllers\FlickrPhotoController;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\NewsTranslationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -26,3 +27,10 @@ Route::any('/bluesky', [BlueskyController::class, 'index']);
 Route::get('flickr-photo', [FlickrPhotoController::class, 'process']);
 
 Route::get('news', [NewsController::class, 'process']);
+
+// translation-QA workflow I/O (haiku agents call these; all verification is PHP-side).
+// Bearer-token guarded (TQA_API_TOKEN). {id} is numeric-only.
+Route::middleware('api.token')->group(function () {
+    Route::get('news/{id}/translation', [NewsTranslationController::class, 'show'])->whereNumber('id');
+    Route::post('news/{id}/translation', [NewsTranslationController::class, 'update'])->whereNumber('id');
+});
