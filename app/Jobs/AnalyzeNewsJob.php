@@ -121,10 +121,10 @@ class AnalyzeNewsJob implements ShouldQueue
 
                 $params = [
                     'model' => $model->is_deep
-                        ? ($i > 1 ? 'anthropic/claude-opus-4-7' : 'claude-opus-4-7')
+                        ? ($i > 1 ? 'anthropic/claude-opus-4-8' : 'claude-opus-4-8')
                         : ($i > 1
-                            ? ($isOA ? 'openai/gpt-5.4' : 'gemini-3.1-pro-preview')
-                            : ($isOA ? 'gpt-5.4' : 'gemini-3.1-pro-preview')
+                            ? ($isOA ? 'openai/gpt-5.5' : 'gemini-3.1-pro-preview')
+                            : ($isOA ? 'gpt-5.5' : 'gemini-3.1-pro-preview')
                         ),
                 ];
 
