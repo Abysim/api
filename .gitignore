@@ -8,6 +8,7 @@
 /public/error_log
 /storage/*.key
 /storage/app/public/telegram
+/storage/photo-candidates/
 /vendor
 .env
 .env.backup
