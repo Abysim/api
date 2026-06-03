@@ -67,7 +67,7 @@ class BigCatsService
         return false;
     }
 
-    public function publishArticle(News $article): bool|string
+    public function publishArticle(News $article, bool $update = false): bool|string
     {
         if (empty($article->publish_tags)) {
             return false;
@@ -88,6 +88,9 @@ class BigCatsService
             'source_name' => $article->source,
             'tags' => self::parseTags($article->publish_tags),
         ];
+        if ($update) {
+            $data['update'] = true;
+        }
         $response = $this->request->post(config('services.bigcats.url') . 'articles/create', $data)->json();
 
         if (!empty($response['status']) && $response['status'] == 'success') {
