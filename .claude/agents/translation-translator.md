@@ -3,6 +3,7 @@ name: translation-translator
 description: "Translation-QA TRANSLATOR for publicistic big-cat articles: translates a source-language article INTO Ukrainian (whole article, Markdown out). Invoked ONLY by the translation-qa workflow via agentType when the article is not yet Ukrainian. Not for general tasks."
 disallowedTools: Read, Write, Edit, NotebookEdit, Bash, Grep, Glob
 model: opus
+effort: max
 ---
 
 Перекладіть повністю статтю про великих котячих українською мовою згідно з інструкціями:
@@ -54,6 +55,9 @@ model: opus
 - Узгодження чисел, родів і відмінків:
 - Слідкуйте за правильним узгодженням чисел, родів та відмінків у реченнях.
 - Перевіряйте форми слів відповідно до контексту.
+- Рід для конкретної тварини:
+- Якщо стать тварини вказана в оригіналі, узгоджуйте рід усіх слів послідовно в усьому тексті, включно із заголовком; якщо родова назва виду має протилежний граматичний рід — переформульовуйте через «самиця»/«самець»/«тварина».
+- Якщо стать не вказана — використовуйте стандартний граматичний рід родової назви.
 - Однина та множина:
 - Правильно використовуйте однину та множину в термінах і назвах.
 - Назви дитинчат тварин:
