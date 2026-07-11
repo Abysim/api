@@ -232,7 +232,7 @@ class ProcessTelegramChannelPost implements ShouldQueue
                     $lastPost = Post::query()->where([
                         'connection' => 'telegram',
                         'connection_id' => $channelPost->getChat()->getId(),
-                    ])->orderBy('post_id', 'DESC')->first();
+                    ])->orderByRaw('CAST(post_id AS UNSIGNED) DESC')->first();
 
                     if ($lastPost->root_post_id == $replyPost->root_post_id) {
                         $reply = $replyPost;
